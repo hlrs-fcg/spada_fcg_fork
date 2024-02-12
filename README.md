@@ -14,6 +14,12 @@ types, operations, attributes, basic blocks, and regions. By default, all blocks
 
 ### Types
 
+We use the following notation for types
+```
+type-name<type-arguments>
+```
+The type arguments can either be literals or other types.
+
 #### Scalar Types
 
 The scalar types include
@@ -65,7 +71,7 @@ type-inference to deduce the extent accesses. We require the extent accesses to 
 
 A sequence of extent accesses forms the extent:
 ```
-stencil.extent<[ extent-access* ]>
+stencil.extent<extent-access* >
 ```
 
 ### Field Types
@@ -89,8 +95,31 @@ stencil.interval<a, None>
 stencil.interval<None, b>
 stencil.interval<None, None>
 ```
+We may also use placeholder values `?` to indicate a fixed bound that has yet to be inferred:
+```
+stencil.interval<?, ?>
+stencil.interval<?, None>
+stencil.interval<None, ?>
+stencil.interval<None, None>
+```
+The purpose of this type system is to allow representation of both implicit padding and explicit padding.
+After type-inference all placeholders must have been removed.
+
+### Schedule Type
+
+There are three possible schedules
+
+```
+stencil.schedule-type<PARALLEL | FORWARD | BACKWARD>
+```
 
 ## Operations
+
+We use the following notation, borrowed from MLIR:
+```
+result = operation(inputs) { properties } : input-types -> output-types { contained-region }
+```
+Properties are a kind of compile-time known attribute associated with an operation.
 
 ### stencil.statement
 
@@ -114,16 +143,17 @@ If for example every output computes also the right-neighbor, then the extent is
 ### stencil.computation
 
 A stencil accesses a set of input fields `in_1, ... in_n` and produces a set of output fields `out_1, ...., out_n`.
-It has a property `extent` which contains for each input field the offsets at which the field is accessed
-throughput the computation. 
-Moreover, it has a property `schedule` which defines the order in which the last dimension is traversed.
+It has a property `schedule` which defines the order in which the last dimension is traversed.
 The interval defines the iteration range with a value of type `interval`.
-An interval may be set for one or more dimensions `x`, `y`, `z`.
+for each dimension `x`, `y`, `z`.
+
+_**Note**: This representation allows us to both handle implicitly padded domains
+(through the use of `?` domains and intervals), as well as explicitly padded domains._
 
 ```
 %out_1, ..., %out_m = stencil.computation(%in_1, ..., %in_n) {
-           schedule = {parallel | forward | backward,
-           interval = {z = x: interval }
+           schedule = s : schedule-type,
+           interval = [x: interval, y: interval, z: interval]
    } : field [D, E_1, T_1] , ...,  field [D, E_n, T_n]
  -> field [D, E_n+1, T_N+1] , ...,  field [D, E_n+m, T_n+m] {
    stencil-statement-block
