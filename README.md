@@ -256,6 +256,10 @@ A stencil program contains one ore more stencil computations.
 The outputs of individual stencil computations define intermediate fields, which may
 serve as inputs to further computation blocks.
 
+The input argument's extent types must be super-types of the consuming computations.
+Similarly for the extent types of intermediate fields.
+
+
 _TODO: Add spatial mapping attributes or field types. I would probably define the spatial mapping as additional attributes to the operations (stencil.program in particular). 
 The alternative is to create a "mapped field" type that additionally contains information about how it is mapped onto the device.
 This would allow putting different fields onto different locations, so it's more general._
