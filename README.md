@@ -99,7 +99,10 @@ there is a field type
 ```
 stencil.field<D, E, T>
 ```
-that models a multi-dimensional array (field) over iteration domain D with extent E and scalar type T
+that models a multi-dimensional array (field) over iteration domain D with extent E and scalar type T.
+
+A field type `stencil.field<D, E1, T>` is a subtype of a type `stencil.field<D, E2, T>` if `E1` is a subtype of `E2`.
+The domains and scalar types must match.
 
 ### Interval Types
 
@@ -119,6 +122,9 @@ stencil.interval<?, None>
 stencil.interval<None, ?>
 stencil.interval<None, None>
 ```
+As before, a placeholder value creates a super-type.
+In particular, all intervals are subtypes of `stencil.interval<?, ?>`.
+
 The purpose of this type system is to allow representation of both implicit padding and explicit padding.
 After type-inference all placeholders must have been removed.
 
@@ -143,19 +149,23 @@ Properties are a kind of compile-time known attribute associated with an operati
 ```
 %out = stencil.statement(%in_1, ... %in_n) {
     } : field [D, E1, T1] , ...,  field [D, E_n, T_n] -> field [D, E_0, T_0] {
-        statement
+        expression
     }
 ```
-
-The statement may only contain references to `in_1, ... in _n` at the specified extents.
-
 A field that is the result of a stencil statement is an intermediate field.
-For any field, only accesses that are within their extent type are permitted within the statements.
-Statements accessing a field with placeholders in their extent type always type check.
 
-Note that the output type's extent `E_0` defines which values are available for subsequent statements.
-In particular, if every output value is computed only once, then the extent is `extent[(0, 0, 0)]`.
-If for example every output computes also the right-neighbor, then the extent is `extent[(0, 0, 0), (0, 1, 0)]`.
+The output type's extent `E_0` defines which values are available for subsequent statements.
+In particular, if every output value is computed only once at `(0, 0, 0)`, then the extent is `extent[(0, 0, 0)]`.
+If also the right-neighbor is available, then the extent is `extent[(0, 0, 0), (0, 1, 0)]`.
+
+The expression may only contain accesses to `in_1, ... in _n` at the allowed extents.
+For any field, only accesses that are within their extent type are permitted within the statements.
+Which accesses are permitted is relative to the output's extent type.
+Specifically, every access to `(i, j, k)` is added to every output extent `(x, y, z)`
+and results in an access to `(i+x, j+y, k+z)`.
+_This corresponds to a Minkovski sum of the accesses of the statements and the accesses of the output's extent type._
+The arguments to the statement must be a sub-type of the union of all these accesses.
+Specifically, accessing a field with placeholders in their extent type always type checks.
 
 ### stencil.computation
 
@@ -183,8 +193,8 @@ The execution semantics is equivalent to executing one statement after the other
 Note that the extent types, interval types, and domain type `D` must be compatible.
 That is, any extent access plus an interval must not go beyond the bounds of the domain type `D`.
 
-Moreover, the extent types of the intermediate fields must be compatible with the access types of their
-consuming statements.
+The input argument's extent types must be super-types of the consuming statements.
+Similarly for the extent types of intermediate fields.
 
 ### conditionals
 
@@ -221,7 +231,7 @@ Otherwise, it must be explicit.
 
 Example:
 ```
-scf.if (%mask)  {
+stencil.if (%mask)  {
   ...
 }
 ```
