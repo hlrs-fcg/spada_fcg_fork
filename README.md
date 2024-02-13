@@ -36,6 +36,10 @@ and the floating point types
 ```
 f<16>, f<32>
 ```
+and boolean types
+```
+bool
+```
 
 Note that not all targets might support all scalar types natively.
 
@@ -68,10 +72,24 @@ stencil.access<i, j, k>
 ```
 If an extent is unknown, it can contain the placeholder extent `?`. The purpose of placeholders is to allow
 type-inference to deduce the extent accesses. We require the extent accesses to be compile-time inferrable.
+Replacing a concrete value with a `?` creates a super-type. That is, the type `stencil.access<?, ?, ? >` is a
+super-type of all stencil accesses.
 
 A sequence of extent accesses forms the extent:
 ```
 stencil.extent<extent-access* >
+```
+
+An extent `E_sub` where every access is a subtype of an access of another extent `E_sup` is a sub-type of `E_sup`.
+As such, values of type `E_sub` may be consumed everywhere that values of type `E_sup` may be consumed.
+
+Example:
+```
+%x_sup : stencil.extent<[0, 0, 0]>
+%x_sub : stencil.extent<[0, 0, 0], [0, 0, 1]>
+// x_sub is a sub-type of x_sup
+%y : stencil.extent<[0, 0, ?]>
+// y is a super-type of both x_sup and x_sub
 ```
 
 ### Field Types
@@ -82,7 +100,6 @@ there is a field type
 stencil.field<D, E, T>
 ```
 that models a multi-dimensional array (field) over iteration domain D with extent E and scalar type T
-
 
 ### Interval Types
 
@@ -160,7 +177,7 @@ _**Note**: This representation allows us to both handle implicitly padded domain
 }
 ```
 
-A stencil-statement-block is a block that contains one or more stencil.statements.
+A stencil-statement-block is a block that contains one or more stencil.statements and stencil.ifs.
 The execution semantics is equivalent to executing one statement after the other.
 
 Note that the extent types, interval types, and domain type `D` must be compatible.
@@ -169,9 +186,46 @@ That is, any extent access plus an interval must not go beyond the bounds of the
 Moreover, the extent types of the intermediate fields must be compatible with the access types of their
 consuming statements.
 
-### stencil.conditional
+### conditionals
 
-[TODO Not (yet) supported]
+The stencil.if operation represents an if-then-else construct for conditionally executing two regions of code.
+The operand to an if operation is a boolean field or integer field. For example:
+```
+stencil.if (%mask) : field [D, extent[(0,0,0)], bool] {
+  ...
+} else {
+  ...
+}
+```
+
+stencil.if may also produce one ore more results. For example, when the if-else is used to represent
+a ternary expression. 
+Which values are returned depends on which execution path is taken.
+
+Example:
+
+```
+%x = stencil.if (%mask): field [D, extent[(0,0,0)], bool] -> (field [D, E_1, T_1]) {
+  %x_1 = ...
+  stencil.yield %x_1 : field [D, E_1, T_1]
+} else {
+  %x_2 = ...
+  stencil.yield %x_2 : field [D, E_1, T_1]
+}
+```
+The “then” region has exactly 1 block. The “else” region may have 0 or 1 block.
+In case the stencil.if produces results, the “else” region must also have exactly 1 block.
+The blocks are always terminated with stencil.yield.
+If stencil.if defines no values, the stencil.yield can be left out, and will be inserted implicitly.
+Otherwise, it must be explicit.
+
+Example:
+```
+scf.if (%mask)  {
+  ...
+}
+```
+The types of the yielded values must match the result types of the stencil.if.
 
 ### stencil.while
 
