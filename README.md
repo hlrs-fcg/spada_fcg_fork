@@ -106,7 +106,7 @@ The domains and scalar types must match.
 
 ### Interval Types
 
-A  type defines inclusive lower intervals and exclusive upper intervals for an iteration. Both upper and lower intervals are optional.
+An interval type defines an inclusive lower bound and exclusive upper bound for an iteration. Both upper and lower bound are optional.
 
 For every pair of integers `a` , `b` we have types:
 ```
