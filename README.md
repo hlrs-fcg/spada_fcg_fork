@@ -374,7 +374,7 @@ spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)>, f<32>> -> spst.field<s
 Performing type inference on the extents results in the following:
 
 ```mlir
-// Version 1: Inferred extents.
+// Version with inferred extents.
 %res = spst.computation (%in) 
 {
     schedule: spst.schedule<PARALLEL>,
@@ -407,7 +407,7 @@ This indicates a schedule where no recomputation is done.
 Instead, the values are explicitly communicated.
 
 ```
-// Version 2, with cast_extent to prevent type-propagation
+// Version with materialize to prevent recomputation
 %res = spst.computation (%in) 
 {
     schedule: spst.schedule<PARALLEL>,
