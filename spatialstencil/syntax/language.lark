@@ -6,17 +6,15 @@ hex_digit  : /[0-9a-fA-F]/
 hex_digits : /[0-9a-fA-F]+/
 letter     : /[a-zA-Z]/
 letters    : /[a-zA-Z]+/
-id_punct   : /[$._-]/
 underscore : /[_]/
 true       : "true"
 false      : "false"
-id_chars: /[$.]/
 
 // Literals
 bool_literal : true | false
 decimal_literal : digits
 hexadecimal_literal : "0x" hex_digits
-integer_literal : decimal_literal | hexadecimal_literal
+?integer_literal : decimal_literal | hexadecimal_literal
 negated_integer_literal : "-" integer_literal
 ?posneg_integer_literal : integer_literal | negated_integer_literal
 float_literal : /[-+]?[0-9]+[.][0-9]*([eE][-+]?[0-9]+)?/
@@ -25,7 +23,7 @@ constant_literal : bool_literal | integer_literal | float_literal | string_liter
 unknown_literal : "?"
 
 // Identifier syntax (loosely following MLIR conventions)
-bare_id : (letter| underscore) (letter|digit|underscore|id_chars)*
+bare_id : (letter| underscore) (letter|digit|underscore)*
 suffix_id : digits | bare_id
 identifier : "%" suffix_id
 

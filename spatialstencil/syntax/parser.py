@@ -4,6 +4,7 @@ import sys
 from typing import TextIO
 
 from spatialstencil.syntax import astnodes
+from spatialstencil.syntax import lark_to_ast
 
 
 class Parser:
@@ -20,7 +21,7 @@ class Parser:
 
         # Create a parsr
         self.parser = lark.Lark(ebnf, parser='earley')
-
+        self.transformer = lark_to_ast.TreeToAST()
 
     def parse(self, code: str) -> astnodes.Program:
         """
@@ -31,7 +32,8 @@ class Parser:
         :return: A Program node representing the root of the AST.
         """
         tree = self.parser.parse(code)
-        return tree
+        ast = self.transformer.transform(tree)
+        return ast
 
 
 def parse_string(code: str) -> astnodes.Program:

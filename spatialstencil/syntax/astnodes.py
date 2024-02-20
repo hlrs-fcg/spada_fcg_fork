@@ -1,3 +1,8 @@
+"""
+Native class definitions for the spatial stencil Abstract Syntax Tree (AST).
+"""
+from dataclasses import dataclass
+
 
 class Node:
     """
@@ -5,8 +10,17 @@ class Node:
     """
     pass
 
+
 class Program(Node):
     """
     Root node of a stencil program AST.
     """
     pass
+
+
+@dataclass
+class StringLiteral(Node):
+    """
+    A string literal AST node ("string").
+    """
+    value: str
