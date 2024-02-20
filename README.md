@@ -48,15 +48,15 @@ Note that not all targets might support all scalar types natively.
 For every triple of positive integers `x, y, z`, there is a domain type
 
 ```
-stencil.domain<x, y, z>
+spst.cartesian<x, y, z>
 ```
 
 If one or more dimensions of the domain are unknown,
 they may be replaced with a `?` placeholder:
 ```
-stencil.domain<?, ?, ?>
-stencil.domain<x, ?, ?>
-stencil.domain<x, y, ?>
+spst.cartesian<?, ?, ?>
+spst.cartesian<x, ?, ?>
+spst.cartesian<x, y, ?>
 ...
 ```
 The purpose of placeholders is to allow type-inference to deduce the
@@ -65,10 +65,12 @@ of the iteration domain have been inferred at compile time.
 
 ### Extent types
 
+TODO: Opening paragraph.
+
 An extent defines the access offsets of a stencil operation.
 For every integer triple `i, j, k` there is an extent access:
 ```
-stencil.access<i, j, k>
+stencil.access<i, j, k> ::= (i, j, k)
 ```
 If an extent is unknown, it can contain the placeholder extent `?`. The purpose of placeholders is to allow
 type-inference to deduce the extent accesses. We require the extent accesses to be compile-time inferrable.
@@ -79,29 +81,40 @@ A sequence of extent accesses forms the extent:
 ```
 stencil.extent<extent-access* >
 ```
+This sequence must *contain no duplicates*.
 
 An extent `E_sub` where every access is a subtype of an access of another extent `E_sup` is a sub-type of `E_sup`.
 As such, values of type `E_sub` may be consumed everywhere that values of type `E_sup` may be consumed.
 
 Example:
 ```
-%x_sup : stencil.extent<[0, 0, 0]>
-%x_sub : stencil.extent<[0, 0, 0], [0, 0, 1]>
+%x_sup : stencil.extent<(0, 0, 0)>
+%x_sub : stencil.extent<(0, 0, 0), (0, 0, 1)>
 // x_sub is a sub-type of x_sup
-%y : stencil.extent<[0, 0, ?]>
+%y : stencil.extent<(0, 0, ?)>
 // y is a super-type of both x_sup and x_sub
 ```
+
+For example, in the following program, the extent of `out` is `spst.extent<(0, 0, 0)>`:
+and valid extents of inp are:
+
+```
+inp : extent<(?, ?, ?)>
+inp : extent<(?, ?, 0)>
+inp : extent< (-1, 0, 0), (0, 0, 0), (0, -1, 0), (0, 1, 0), (1, 0, 0)>
+```
+
 
 ### Field Types
 
 For every domain type D, scalar type T, and extent type E,
 there is a field type
 ```
-stencil.field<D, E, T>
+spst.field<D, E, T>
 ```
 that models a multi-dimensional array (field) over iteration domain D with extent E and scalar type T.
 
-A field type `stencil.field<D, E1, T>` is a subtype of a type `stencil.field<D, E2, T>` if `E1` is a subtype of `E2`.
+A field type `spst.field<D, E1, T>` is a subtype of a type `spst.field<D, E2, T>` if `E1` is a subtype of `E2`.
 The domains and scalar types must match.
 
 ### Interval Types
@@ -110,20 +123,20 @@ A  type defines inclusive lower intervals and exclusive upper intervals for an i
 
 For every pair of integers `a` , `b` we have types:
 ```
-stencil.interval<a, b>
-stencil.interval<a, None>
-stencil.interval<None, b>
-stencil.interval<None, None>
+spst.interval<a, b>
+spst.interval<a, None>
+spst.interval<None, b>
+spst.interval<None, None>
 ```
 We may also use placeholder values `?` to indicate a fixed bound that has yet to be inferred:
 ```
-stencil.interval<?, ?>
-stencil.interval<?, None>
-stencil.interval<None, ?>
-stencil.interval<None, None>
+spst.interval<?, ?>
+spst.interval<?, None>
+spst.interval<None, ?>
+spst.interval<None, None>
 ```
 As before, a placeholder value creates a super-type.
-In particular, all intervals are subtypes of `stencil.interval<?, ?>`.
+In particular, all intervals are subtypes of `spst.interval<?, ?>`.
 
 The purpose of this type system is to allow representation of both implicit padding and explicit padding.
 After type-inference all placeholders must have been removed.
@@ -133,7 +146,7 @@ After type-inference all placeholders must have been removed.
 There are three possible schedules
 
 ```
-stencil.schedule-type<PARALLEL | FORWARD | BACKWARD>
+spst.schedule<PARALLEL | FORWARD | BACKWARD>
 ```
 
 ## Operations
@@ -144,19 +157,25 @@ result = operation(inputs) { properties } : input-types -> output-types { contai
 ```
 Properties are a kind of compile-time known attribute associated with an operation.
 
-### stencil.statement
+If an operation has no properties, it may use the shorthand
+```
+result = operation(inputs) : input-types -> output-types { contained-region }
+```
+
+### spst.statement
 
 ```
-%out = stencil.statement(%in_1, ... %in_n) {
-    } : field [D, E1, T1] , ...,  field [D, E_n, T_n] -> field [D, E_0, T_0] {
-        expression
-    }
+%out = spst.statement(%in_1, ... %in_n) :
+       spst.field<D, E1, T1> , ...,   spst.field<D, E_n, T_n> ->  spst.field<D, E_0, T_0> 
+{
+    expression
+}
 ```
 A field that is the result of a stencil statement is an intermediate field.
 
 The output type's extent `E_0` defines which values are available for subsequent statements.
-In particular, if every output value is computed only once at `(0, 0, 0)`, then the extent is `extent[(0, 0, 0)]`.
-If also the right-neighbor is available, then the extent is `extent[(0, 0, 0), (0, 1, 0)]`.
+In particular, if every output value is computed only once at `(0, 0, 0)`, then the extent is ` spst.extent<(0, 0, 0)>`.
+If also the right-neighbor is available, then the extent is ` spst.extent<(0, 0, 0), (0, 1, 0)>`.
 
 The expression may only contain accesses to `in_1, ... in _n` at the allowed extents.
 For any field, only accesses that are within their extent type are permitted within the statements.
@@ -167,7 +186,7 @@ _This corresponds to a Minkovski sum of the accesses of the statements and the a
 The arguments to the statement must be a sub-type of the union of all these accesses.
 Specifically, accessing a field with placeholders in their extent type always type checks.
 
-### stencil.computation
+### spst.computation
 
 A stencil accesses a set of input fields `in_1, ... in_n` and produces a set of output fields `out_1, ...., out_n`.
 It has a property `schedule` which defines the order in which the last dimension is traversed.
@@ -178,16 +197,16 @@ _**Note**: This representation allows us to both handle implicitly padded domain
 (through the use of `?` domains and intervals), as well as explicitly padded domains._
 
 ```
-%out_1, ..., %out_m = stencil.computation(%in_1, ..., %in_n) {
-           schedule = s : schedule-type,
-           interval = [x: interval, y: interval, z: interval]
-   } : field [D, E_1, T_1] , ...,  field [D, E_n, T_n]
- -> field [D, E_n+1, T_N+1] , ...,  field [D, E_n+m, T_n+m] {
+%out_1, ..., %out_m = spst.computation(%in_1, ..., %in_n) {
+           schedule = s : spst.schedule,
+           interval = [x: spst.interval, y: spst.interval, z: spst.interval]
+   } : spst.field<D, E_1, T_1> , ...,  spst.field<D, E_n, T_n>
+ -> spst.field<D, E_n+1, T_N+1> , ...,  spst.field<D, E_n+m, T_n+m> {
    stencil-statement-block
 }
 ```
 
-A stencil-statement-block is a block that contains one or more stencil.statements and stencil.ifs.
+A stencil-statement-block is a block that contains one or more spst.statements and spst.ifs.
 The execution semantics is equivalent to executing one statement after the other.
 
 Note that the extent types, interval types, and domain type `D` must be compatible.
@@ -198,57 +217,60 @@ Similarly for the extent types of intermediate fields.
 
 ### conditionals
 
-The stencil.if operation represents an if-then-else construct for conditionally executing two regions of code.
+The spst.if operation represents an if-then-else construct for conditionally executing two regions of code.
 The operand to an if operation is a boolean field or integer field. For example:
 ```
-stencil.if (%mask) : field [D, extent[(0,0,0)], bool] {
+spst.if (%mask) : spst.field<D, spst.extent<(0,0,0)>, bool> {
   ...
 } else {
   ...
 }
 ```
 
-stencil.if may also produce one ore more results. For example, when the if-else is used to represent
+spst.if may also produce one or more results. For example, when the if-else is used to represent
 a ternary expression. 
-Which values are returned depends on which execution path is taken.
+Which values are returned depends on which execution path is taken at each grid
+point of the domain, as indicated by the mask.
 
 Example:
 
 ```
-%x = stencil.if (%mask): field [D, extent[(0,0,0)], bool] -> (field [D, E_1, T_1]) {
+%x = spst.if (%mask): spst.field<D, extent<(0,0,0)>, bool> -> spst.field<D, E_1, T_1> {
   %x_1 = ...
-  stencil.yield %x_1 : field [D, E_1, T_1]
+  spst.yield (%x_1) : spst.field<D, E_1, T_1>
 } else {
   %x_2 = ...
-  stencil.yield %x_2 : field [D, E_1, T_1]
+  spst.yield (%x_2) : spst.field<D, E_1, T_1>
 }
 ```
 The “then” region has exactly 1 block. The “else” region may have 0 or 1 block.
-In case the stencil.if produces results, the “else” region must also have exactly 1 block.
-The blocks are always terminated with stencil.yield.
-If stencil.if defines no values, the stencil.yield can be left out, and will be inserted implicitly.
+In case the spst.if produces results, the “else” region must also have exactly 1 block.
+The blocks are always terminated with spst.yield.
+If spst.if defines no values, the spst.yield can be left out, and will be inserted implicitly.
 Otherwise, it must be explicit.
 
 Example:
 ```
-stencil.if (%mask)  {
+spst.if (%mask)  {
   ...
 }
 ```
-The types of the yielded values must match the result types of the stencil.if.
+The types of the yielded values must match the result types of the spst.if.
 
-### stencil.while
+### spst.while
 
 [TODO Not (yet) supported]
 
-### stencil.program
+### spst.program
 
-A stencil program contains one ore more stencil computations.
+A stencil program contains one more more stencil computations.
+Its arguments and return types may contain both scalar types
+as well as field types.
 
 ```
-%out_1, ..., %out_m = stencil.program(%in_1, ..., %in_n) {
-   } : field [D, E_1, T_1] , ...,  field [D, E_n, T_n]
- -> field [D, E_n+1, T_N+1] , ...,  field [D, E_n+m, T_n+m] {
+%out_1, ..., %out_m = spst.program(%in_1, ..., %in_n) {
+   } : T_1, ...,  T_n
+ -> T_N+1 , ...,  T_n+m {
    stencil-computation-block
 }
 ```
@@ -256,10 +278,113 @@ A stencil program contains one ore more stencil computations.
 The outputs of individual stencil computations define intermediate fields, which may
 serve as inputs to further computation blocks.
 
-The input argument's extent types must be super-types of the consuming computations.
+The field input argument's extent types must be super-types of the consuming computations.
 Similarly for the extent types of intermediate fields.
 
 
-_TODO: Add spatial mapping attributes or field types. I would probably define the spatial mapping as additional attributes to the operations (stencil.program in particular). 
+## Examples
+
+Consider the following laplacian stencil program expressed in gtscript:
+
+```python
+@gtscript.stencil(backend=cartesian_backend)
+def lap_cartesian(
+    inp: gtscript.Field[dtype],
+    out: gtscript.Field[dtype],
+    ext: gtscript.Field[dtype]
+):
+    with computation(PARALLEL), interval(0, None):
+        out = -4.0 * inp[0, 0, 0] + inp[-1, 0, 0] + inp[1, 0, 0] + inp[0, -1, 0] + inp[0, 1, 0]
+        ex_t = out[0, 0, 0] + out[0, 1, 0]
+```
+
+A direct translation results in the following computation:
+
+```mlir
+// Version with ? extents.
+%res = spst.computation (%in) 
+{
+    schedule: spst.schedule<PARALLEL>,
+    interval: [x: spsp.interval<?, ?> , y: spsp.interval<?, ?>, z: spst.interval<0, None>]
+} :
+spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)>, f<32>> -> spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)>, f<32>> {
+    %out_1 = spst.statement(%in) : spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)> -> spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)> {
+            return -4.0 * %in[0, 0, 0] + %in[-1, 0, 0] + %in[1, 0, 0] + %in[0, -1, 0] + %in[0, 1, 0]
+        }
+    %out_2 = spst.statement(%out_1) : spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)> -> spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)> {
+            return %out_1[0, 0, 0] + %out_1[0, 1, 0]
+        }
+    return %out_2
+}
+```
+
+Performing type inference on the extents results in the following:
+
+```mlir
+// Version 1: Inferred extents.
+%res = spst.computation (%in) 
+{
+    schedule: spst.schedule<PARALLEL>,
+    interval: [x: spst.interval<?, ?> , y: spst.interval<?, ?>, z: spst.interval<0, None>]
+} : spst.field<spst.cartesian<?,?,?>,
+    spst.extent<(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0)
+                (0, 1, 0), (-1, 1, 0), (1, 1, 0), (0, 2, 0)>, f<32>>
+  -> spst.field<D, spst.extent<(?, ?, ?)>, f<32>>
+{
+    %out_1 = spst.statement(%in)
+            : spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0)
+                                                            (0, 1, 0), (-1, 1, 0), (1, 1, 0), (0, 2, 0)>, f<32>>
+            -> spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0), (0, 1, 0)>, f<32>>
+        {
+            return -4.0 * %in[0, 0, 0] + %in[-1, 0, 0] + %in[1, 0, 0] + %in[0, -1, 0] + %in[0, 1, 0]
+        }
+    %out_2 = spst.statement(%out_1) 
+            : spst.field<spst.cartesian<?,?,?>, extent<(0, 0, 0), (0, 1, 0)>, f<32>>
+            -> spst.field<D, spst.extent<(0, 0, 0)>, f<32>> 
+        {
+            return %out_1[0, 0, 0] + %out_1[0, 1, 0]
+        }
+    return %out_2
+}
+```
+
+If we insert an extent_cast in between the two statements,
+the extents no longer propagate across the boundaries.
+This indicates a schedule where no recomputation is done.
+Instead, the values are explicitly communicated.
+
+```
+// Version 2, with cast_extent to prevent type-propagation
+%res = spst.computation (%in) 
+{
+    schedule: spst.schedule<PARALLEL>,
+    interval: [x: spst.interval<?, ?> , y: spst.interval<?, ?>, z: spst.interval<0, None>]
+} : spst.field<spst.cartesian<?,?,?>,
+               spst.extent<(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0)
+                           (0, 1, 0), (-1, 1, 0), (1, 1, 0), (0, 2, 0)>, f<32>>
+  -> spst.field<D, spst.extent<(?, ?, ?)>, f<32>>
+{
+    %out_1 = spst.statement(%in) 
+            : spst.field<spst.cartesian<?,?,?>,
+               spst.extent<(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0)>, f<32>>
+            -> spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0)>, f<32>>
+        {
+            return -4.0 * %in[0, 0, 0] + %in[-1, 0, 0] + %in[1, 0, 0] + %in[0, -1, 0] + %in[0, 1, 0]
+        }
+    %out_typed = spst.cast_extent(%out1) : spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0)>, f<32>>
+                                         -> spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 1, 0)>, f<32>>
+    %out_2 = spst.statement(%out_1, %out_typed)
+        : spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0)>, f<32>>,
+          spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 1, 0)>, f<32>> 
+        -> spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0)>, f<32>> {
+            return %out_1[0, 0, 0] + %out_typed[0, 1, 0]
+        }
+    return %out_2
+}
+```
+
+
+
+_TODO: Add spatial mapping attributes or field types. I would probably define the spatial mapping as additional attributes to the operations (spst.program in particular). 
 The alternative is to create a "mapped field" type that additionally contains information about how it is mapped onto the device.
 This would allow putting different fields onto different locations, so it's more general._
