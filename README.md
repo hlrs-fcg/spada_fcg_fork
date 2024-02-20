@@ -382,7 +382,7 @@ Performing type inference on the extents results in the following:
 } : spst.field<spst.cartesian<?,?,?>,
     spst.extent<(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0)
                 (0, 1, 0), (-1, 1, 0), (1, 1, 0), (0, 2, 0)>, f<32>>
-  -> spst.field<D, spst.extent<(?, ?, ?)>, f<32>>
+  -> spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)>, f<32>>
 {
     %out_1 = spst.statement(%in)
             : spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0)
@@ -415,7 +415,7 @@ Instead, the values are explicitly communicated.
 } : spst.field<spst.cartesian<?,?,?>,
                spst.extent<(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0)
                            (0, 1, 0), (-1, 1, 0), (1, 1, 0), (0, 2, 0)>, f<32>>
-  -> spst.field<D, spst.extent<(?, ?, ?)>, f<32>>
+  -> spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)>, f<32>>
 {
     %out_1 = spst.statement(%in) 
             : spst.field<spst.cartesian<?,?,?>,
