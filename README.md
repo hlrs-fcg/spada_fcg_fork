@@ -215,6 +215,59 @@ That is, any extent access plus an interval must not go beyond the bounds of the
 The input argument's extent types must be super-types of the consuming statements.
 Similarly for the extent types of intermediate fields.
 
+
+### spst.materialize
+
+By default, intermediate fields are not materialized, instead
+their values are computed from the input fields at every offset
+that is consumed. To reduce computation costs, one might instead
+want to materialize an intermediate and send its value to the
+consuming grid points.
+
+The `spst.materialize` operation implements this.
+Structurally, this manifests as a type cast from the input field
+to the output field.
+Without materialization, the extents propagate in a way that every intermediate
+field is re-computed for each of its (distinct) consuming accesses. 
+A `spst.materialize` may interrupt this propagation of extent type by 
+means of a type-cast.
+    
+Example:
+```
+%mat = spst.materialize(%intermediate) : spst.field<D, spst.extent<(0, 0, 0)>, T> -> spst.field<D, spst.extent<(1, 1, 0)>, T>
+```
+In the example, consuming statement of `%mat` may access `%mat[1, 1, 0]` without affecting the type of `%intermediate`.
+
+Semantically, this has the effect that whenever `%mat` is consumed,
+it corresponds to reading information about `%intermediate` from other grid
+points at the appropriately translated offsets.
+In other words, the intermediate field `%intermediate` becomes materialized
+and accessible via the `mat` variable.
+
+Note that it is valid to use placeholder extents `?` in the types
+of a materialize, as the actual values can be inferred based on the
+producing and consuming statements and fields. Specifically, 
+a materialize does not introduce any constraints on the input type.
+The output type is deduced as a sub-type that can be substituted
+into the consuming statements.
+
+Example:
+```
+%mat = spst.materialize(%intermediate) : spst.field<D, spst.extent<(?, ?, ?)>, T> -> spst.field<D, spst.extent<(?, ?, ?)>, T>
+...
+%mat[0, 1, 0]
+...
+%mat[1, 0, 0]
+...
+
+// Type inference leads to 
+
+%mat = spst.materialize(%intermediate) : spst.field<D, spst.extent<(?, ?, ?)>, T>
+        -> spst.field<D, spst.extent<(0, 1, 0), (1, 0, 0)>, T>
+
+
+```
+
 ### conditionals
 
 The spst.if operation represents an if-then-else construct for conditionally executing two regions of code.
@@ -348,7 +401,7 @@ Performing type inference on the extents results in the following:
 }
 ```
 
-If we insert an extent_cast in between the two statements,
+If we insert a `materialize` in between the two statements,
 the extents no longer propagate across the boundaries.
 This indicates a schedule where no recomputation is done.
 Instead, the values are explicitly communicated.
@@ -371,13 +424,13 @@ Instead, the values are explicitly communicated.
         {
             return -4.0 * %in[0, 0, 0] + %in[-1, 0, 0] + %in[1, 0, 0] + %in[0, -1, 0] + %in[0, 1, 0]
         }
-    %out_typed = spst.cast_extent(%out1) : spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0)>, f<32>>
+    %out_mat = spst.materialize(%out1) : spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0)>, f<32>>
                                          -> spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 1, 0)>, f<32>>
-    %out_2 = spst.statement(%out_1, %out_typed)
+    %out_2 = spst.statement(%out_1, %out_mat)
         : spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0)>, f<32>>,
           spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 1, 0)>, f<32>> 
         -> spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0)>, f<32>> {
-            return %out_1[0, 0, 0] + %out_typed[0, 1, 0]
+            return %out_1[0, 0, 0] + %out_mat[0, 1, 0]
         }
     return %out_2
 }
