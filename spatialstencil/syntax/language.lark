@@ -19,8 +19,8 @@ negated_integer_literal : "-" integer_literal
 ?posneg_integer_literal : integer_literal | negated_integer_literal
 float_literal : /[-+]?[0-9]+[.][0-9]*([eE][-+]?[0-9]+)?/
 string_literal  : ESCAPED_STRING
-constant_literal : bool_literal | integer_literal | float_literal | string_literal
-unknown_literal : "?"
+?constant_literal : bool_literal | posneg_integer_literal | float_literal | string_literal
+unknown_dim_literal : "?"
 
 // Identifier syntax (loosely following MLIR conventions)
 bare_id : (letter| underscore) (letter|digit|underscore)*
@@ -32,21 +32,23 @@ identifier : "%" suffix_id
 !int_type : "i8" | "i16" | "i32" | "i64"
 !uint_type : "u8" | "u16" | "u32" | "u64"
 !bool_type : "bool"
-standard_type : float_type | int_type | uint_type | bool_type
+?standard_type : float_type | int_type | uint_type | bool_type
 
 // Built-in enumerations
-schedule_type : "PARALLEL" | "FORWARD" | "BACKWARD"
+!schedule_type : "PARALLEL" | "FORWARD" | "BACKWARD"
 enum_literal : schedule_type
 
 // Language built-in types
-dim : integer_literal | unknown_literal
+?dim : integer_literal | unknown_dim_literal
+dim_list: dim ("," dim)*
 extent_tuple : "(" dim ("," dim)* ")"
-extent_type : "extent" "<" extent_tuple ("," extent_tuple)* ">"
-domain_type : "domain" "<" dim ("," dim)* ">"
+extent_tuple_list : extent_tuple ("," extent_tuple)*
+extent_type : "extent" "<" extent_tuple_list ">"
+domain_type : "domain" "<" dim_list ">"
 field_type : "field" "<" domain_type "," extent_type "," standard_type ">"
 interval_type : "interval" "<" (dim | "None") "," (dim | "None") ">"
 multi_interval_type : "[" interval_type ("," interval_type)* "]"
-builtin_type : field_type | domain_type | extent_type | interval_type | multi_interval_type
+?builtin_type : field_type | domain_type | extent_type | interval_type | multi_interval_type
 
 ////////////////////////////////////////////////////
 // Common syntactic elements
@@ -68,17 +70,18 @@ statement : id_list "=" "stencil.statement" params attributes ":" type_list "->"
 
 ////////////////////////////////////////////////////
 // Define contents of stencil statements
-parens : "(" value_expr ")"
+?parens : "(" value_expr ")"
 unary_op : "-" value_expr
 binary_op : value_expr ("+" | "-" | "*" | "/" | "%" | "<" | "<=" | ">" | ">=" | "==" | "!=") value_expr
 ternary_op : value_expr "if" value_expr "else" value_expr
-subscript : identifier "[" posneg_integer_literal ("," posneg_integer_literal)* "]"
+subscript_slice : posneg_integer_literal ("," posneg_integer_literal)*
+subscript : identifier "[" subscript_slice "]"
 function_call : bare_id "(" (value_expr ("," value_expr)*)? ")"
 
 value_expr : constant_literal | identifier | parens | unary_op | binary_op | ternary_op | subscript | function_call
 assign_expr : id_list "=" value_expr (";")?
 return_expr : "return" value_expr (";")?
-statement_contents : assign_expr | return_expr
+?statement_contents : assign_expr | return_expr
 
 // TODO: Where should "stencil.if" reside?
 

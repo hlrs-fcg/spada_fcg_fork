@@ -4,7 +4,6 @@ import lark
 from spatialstencil.syntax import astnodes
 
 class TreeToAST(lark.Transformer):
-    ###############################################################
     # Low-level literal syntax
     digit = lambda self, val: int(val[0])
     digits = lambda self, val: int(val[0])
@@ -12,12 +11,9 @@ class TreeToAST(lark.Transformer):
     hex_digits = lambda self, val: str(val[0])
     letter = lambda self, val: str(val[0])
     letters = lambda self, val: str(val[0])
-    id_punct = lambda self, val: str(val[0])
     underscore = lambda self, val: str(val[0])
     true = lambda self, _: True
     false = lambda self, _: False
-    id_chars = lambda self, val: str(val[0])
-    inttype_width = lambda self, val: int(val[0])
 
     # Literals
     @lark.v_args(inline=True)
@@ -42,3 +38,12 @@ class TreeToAST(lark.Transformer):
     @lark.v_args(inline=True)
     def suffix_id(self, *suffix):
         return ''.join(str(s) for s in suffix)
+
+    # List types
+    extent_tuple = tuple
+    extent_tuple_list = list
+    dim_list = list
+    id_list = list
+    type_list = list
+    attributes = list
+    subscript_slice = list
