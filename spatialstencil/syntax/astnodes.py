@@ -8,7 +8,14 @@ class Node:
     """
     Abstract class representing an AST node for spatial stencils.
     """
-    pass
+
+    @classmethod
+    def from_lark(cls, args):
+        """
+        Simple constructor that calls the AST node object constructor with the
+        AST children in order. See ``lark_to_ast.py`` for usage.
+        """
+        return cls(*args)
 
 
 class Program(Node):
@@ -21,6 +28,14 @@ class Program(Node):
 @dataclass
 class StringLiteral(Node):
     """
-    A string literal AST node ("string").
+    A string literal AST node (``"string"``).
     """
     value: str
+
+
+@dataclass
+class Identifier(Node):
+    """
+    A field/scalar identifier (``%abc``).
+    """
+    name: str

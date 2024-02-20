@@ -47,3 +47,12 @@ class TreeToAST(lark.Transformer):
     type_list = list
     attributes = list
     subscript_slice = list
+
+    def value_expr(self, args, meta=None):
+        # Contract/inline value expressions that only contain another value expression
+        if len(args) == 1 and isinstance(args[0], lark.Tree) and args[0].data == 'value_expr':
+            return args[0]
+        return lark.Tree('value_expr', args, meta)
+
+    # Basic types
+    identifier = astnodes.Identifier.from_lark

@@ -67,4 +67,5 @@ if __name__ == '__main__':
         print('USAGE: python -m spatialstencil.syntax.parser <STENCIL FILE>')
         exit(1)
 
-    print(parse_file(sys.argv[1]))
+    out = parse_file(sys.argv[1])
+    print(out.pretty())
