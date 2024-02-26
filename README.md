@@ -168,6 +168,13 @@ If an operation has no properties, it may use the shorthand
 result = operation(inputs) : input-types -> output-types { contained-region }
 ```
 
+### spst.return
+
+The `spst.return` operation is used to return a value to the containing operation.
+The semantics depends on the containing operation.
+
+TODO Allowed syntax!
+
 ### spst.statement
 
 ```
@@ -191,6 +198,10 @@ and results in an access to `(i+x, j+y, k+z)`.
 _This corresponds to a Minkovski sum of the accesses of the statements and the accesses of the output's extent type._
 The arguments to the statement must be a sub-type of the union of all these accesses.
 Specifically, accessing a field with placeholders in their extent type always type checks.
+
+Every expression block must end with a spst.return operation.
+
+TODO syntax for the expressions.
 
 ### spst.computation
 
@@ -221,6 +232,7 @@ That is, any extent access plus an interval must not go beyond the bounds of the
 The input argument's extent types must be super-types of the consuming statements.
 Similarly for the extent types of intermediate fields.
 
+Every stentil-statement block must be terminated with a spst.return operation.
 
 ### spst.materialize
 
@@ -296,16 +308,16 @@ Example:
 ```
 %x = spst.if (%mask): spst.field<D, extent<(0,0,0)>, bool> -> spst.field<D, E_1, T_1> {
   %x_1 = ...
-  spst.yield (%x_1) : spst.field<D, E_1, T_1>
+  spst.return (%x_1) : spst.field<D, E_1, T_1>
 } else {
   %x_2 = ...
-  spst.yield (%x_2) : spst.field<D, E_1, T_1>
+  spst.return (%x_2) : spst.field<D, E_1, T_1>
 }
 ```
 The “then” region has exactly 1 block. The “else” region may have 0 or 1 block.
 In case the spst.if produces results, the “else” region must also have exactly 1 block.
-The blocks are always terminated with spst.yield.
-If spst.if defines no values, the spst.yield can be left out, and will be inserted implicitly.
+The blocks are always terminated with spst.return.
+If spst.if defines no values, the spst.return can be left out, and will be inserted implicitly.
 Otherwise, it must be explicit.
 
 Example:
@@ -368,12 +380,12 @@ A direct translation results in the following computation:
 } :
 spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)>, f32> -> spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)>, f32> {
     %out_1 = spst.statement(%in) : spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)> -> spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)> {
-            return -4.0 * %in[0, 0, 0] + %in[-1, 0, 0] + %in[1, 0, 0] + %in[0, -1, 0] + %in[0, 1, 0]
+            spst.return -4.0 * %in[0, 0, 0] + %in[-1, 0, 0] + %in[1, 0, 0] + %in[0, -1, 0] + %in[0, 1, 0]
         }
     %out_2 = spst.statement(%out_1) : spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)> -> spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)> {
-            return %out_1[0, 0, 0] + %out_1[0, 1, 0]
+            spst.return %out_1[0, 0, 0] + %out_1[0, 1, 0]
         }
-    return %out_2
+    spst.return %out_2
 }
 ```
 
@@ -395,15 +407,15 @@ Performing type inference on the extents results in the following:
                                                             (0, 1, 0), (-1, 1, 0), (1, 1, 0), (0, 2, 0)>, f32>
             -> spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0), (0, 1, 0)>, f32>
         {
-            return -4.0 * %in[0, 0, 0] + %in[-1, 0, 0] + %in[1, 0, 0] + %in[0, -1, 0] + %in[0, 1, 0]
+            spst.return -4.0 * %in[0, 0, 0] + %in[-1, 0, 0] + %in[1, 0, 0] + %in[0, -1, 0] + %in[0, 1, 0]
         }
     %out_2 = spst.statement(%out_1) 
             : spst.field<spst.cartesian<?,?,?>, extent<(0, 0, 0), (0, 1, 0)>, f32>
             -> spst.field<D, spst.extent<(0, 0, 0)>, f32> 
         {
-            return %out_1[0, 0, 0] + %out_1[0, 1, 0]
+            spst.return %out_1[0, 0, 0] + %out_1[0, 1, 0]
         }
-    return %out_2
+    spst.return %out_2
 }
 ```
 
@@ -428,7 +440,7 @@ Instead, the values are explicitly communicated.
                spst.extent<(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0)>, f32>
             -> spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0)>, f32>
         {
-            return -4.0 * %in[0, 0, 0] + %in[-1, 0, 0] + %in[1, 0, 0] + %in[0, -1, 0] + %in[0, 1, 0]
+            spst.return -4.0 * %in[0, 0, 0] + %in[-1, 0, 0] + %in[1, 0, 0] + %in[0, -1, 0] + %in[0, 1, 0]
         }
     %out_mat = spst.materialize(%out1) : spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0)>, f32>
                                          -> spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 1, 0)>, f32>
@@ -436,9 +448,9 @@ Instead, the values are explicitly communicated.
         : spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0)>, f32>,
           spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 1, 0)>, f32> 
         -> spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0)>, f32> {
-            return %out_1[0, 0, 0] + %out_mat[0, 1, 0]
+            spst.return %out_1[0, 0, 0] + %out_mat[0, 1, 0]
         }
-    return %out_2
+    spst.return %out_2
 }
 ```
 
