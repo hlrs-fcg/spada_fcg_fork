@@ -26,15 +26,15 @@ The scalar types include
 
 the signed integer types
 ```
-i<8>, i<16>, i<32>,
+i8, i16, i32,
 ```
 the unsigned integer types
 ```
-u<8>, u<16>, u<32>,
+u8, u16, u32,
 ```
 and the floating point types
 ```
-f<16>, f<32>
+f16, f32
 ```
 and boolean types
 ```
@@ -45,7 +45,12 @@ Note that not all targets might support all scalar types natively.
 
 ### Domain types
 
-For every triple of positive integers `x, y, z`, there is a domain type
+The abstract base domain type is
+```
+spst.domain
+```
+
+For every triple of positive integers `x, y, z`, there is a domain sub-type
 
 ```
 spst.cartesian<x, y, z>
@@ -65,7 +70,8 @@ of the iteration domain have been inferred at compile time.
 
 ### Extent types
 
-TODO: Opening paragraph.
+We utilize the type system to represent the access offsets of a stencil operation.
+The goal is that the type encapsulates the data layout and data movement.
 
 An extent defines the access offsets of a stencil operation.
 For every integer triple `i, j, k` there is an extent access:
@@ -360,7 +366,7 @@ A direct translation results in the following computation:
     schedule: spst.schedule<PARALLEL>,
     interval: [x: spsp.interval<?, ?> , y: spsp.interval<?, ?>, z: spst.interval<0, None>]
 } :
-spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)>, f<32>> -> spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)>, f<32>> {
+spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)>, f32> -> spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)>, f32> {
     %out_1 = spst.statement(%in) : spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)> -> spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)> {
             return -4.0 * %in[0, 0, 0] + %in[-1, 0, 0] + %in[1, 0, 0] + %in[0, -1, 0] + %in[0, 1, 0]
         }
@@ -381,19 +387,19 @@ Performing type inference on the extents results in the following:
     interval: [x: spst.interval<?, ?> , y: spst.interval<?, ?>, z: spst.interval<0, None>]
 } : spst.field<spst.cartesian<?,?,?>,
     spst.extent<(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0)
-                (0, 1, 0), (-1, 1, 0), (1, 1, 0), (0, 2, 0)>, f<32>>
-  -> spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)>, f<32>>
+                (0, 1, 0), (-1, 1, 0), (1, 1, 0), (0, 2, 0)>, f32>
+  -> spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)>, f32>
 {
     %out_1 = spst.statement(%in)
             : spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0)
-                                                            (0, 1, 0), (-1, 1, 0), (1, 1, 0), (0, 2, 0)>, f<32>>
-            -> spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0), (0, 1, 0)>, f<32>>
+                                                            (0, 1, 0), (-1, 1, 0), (1, 1, 0), (0, 2, 0)>, f32>
+            -> spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0), (0, 1, 0)>, f32>
         {
             return -4.0 * %in[0, 0, 0] + %in[-1, 0, 0] + %in[1, 0, 0] + %in[0, -1, 0] + %in[0, 1, 0]
         }
     %out_2 = spst.statement(%out_1) 
-            : spst.field<spst.cartesian<?,?,?>, extent<(0, 0, 0), (0, 1, 0)>, f<32>>
-            -> spst.field<D, spst.extent<(0, 0, 0)>, f<32>> 
+            : spst.field<spst.cartesian<?,?,?>, extent<(0, 0, 0), (0, 1, 0)>, f32>
+            -> spst.field<D, spst.extent<(0, 0, 0)>, f32> 
         {
             return %out_1[0, 0, 0] + %out_1[0, 1, 0]
         }
@@ -414,22 +420,22 @@ Instead, the values are explicitly communicated.
     interval: [x: spst.interval<?, ?> , y: spst.interval<?, ?>, z: spst.interval<0, None>]
 } : spst.field<spst.cartesian<?,?,?>,
                spst.extent<(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0)
-                           (0, 1, 0), (-1, 1, 0), (1, 1, 0), (0, 2, 0)>, f<32>>
-  -> spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)>, f<32>>
+                           (0, 1, 0), (-1, 1, 0), (1, 1, 0), (0, 2, 0)>, f32>
+  -> spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)>, f32>
 {
     %out_1 = spst.statement(%in) 
             : spst.field<spst.cartesian<?,?,?>,
-               spst.extent<(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0)>, f<32>>
-            -> spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0)>, f<32>>
+               spst.extent<(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0)>, f32>
+            -> spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0)>, f32>
         {
             return -4.0 * %in[0, 0, 0] + %in[-1, 0, 0] + %in[1, 0, 0] + %in[0, -1, 0] + %in[0, 1, 0]
         }
-    %out_mat = spst.materialize(%out1) : spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0)>, f<32>>
-                                         -> spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 1, 0)>, f<32>>
+    %out_mat = spst.materialize(%out1) : spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0)>, f32>
+                                         -> spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 1, 0)>, f32>
     %out_2 = spst.statement(%out_1, %out_mat)
-        : spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0)>, f<32>>,
-          spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 1, 0)>, f<32>> 
-        -> spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0)>, f<32>> {
+        : spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0)>, f32>,
+          spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 1, 0)>, f32> 
+        -> spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0)>, f32> {
             return %out_1[0, 0, 0] + %out_mat[0, 1, 0]
         }
     return %out_2
