@@ -160,7 +160,6 @@ class CostModel:
 
         return energy.sum()
 
-
     def local_communication_volume_of_edge(self, e):
         """
         The local communication volume is the number of elements communicated by each edge
@@ -175,7 +174,6 @@ class CostModel:
             communication_volume *= domain.z_column_length()
 
         return communication_volume
-
 
     def communication_volume_of_edge(self, e):
         # the number of elements communicated by each edge is the number of elements in the stencil shape
@@ -232,7 +230,7 @@ class CostModel:
         """
         contention = 0.0
         for v in fields:
-            for e in self.stencil_graph.graph.es.select(_target=v):
+            for e in self.stencil_graph.in_edges(v):
                 assert e.target == v.index
                 contention += self.local_communication_volume_of_edge(e)
         return contention
@@ -245,7 +243,7 @@ class CostModel:
         """
         contention = 0.0
         for v in fields:
-            for e in self.stencil_graph.graph.es.select(_source=v):
+            for e in self.stencil_graph.out_edges(v):
                 assert e.source == v.index
                 contention += self.local_communication_volume_of_edge(e)
         return contention
