@@ -6,7 +6,8 @@ from spatialstencil.placement.model import Placement, CostModel
 
 def demo_graph():
 
-    domain = np.array([[256, 256, 64]], dtype=np.int32)
+    domain = np.array([[0, 0, 0], [256, 256, 64]], dtype=np.int32)
+    print(domain)
     domain_type = FieldDomain(domain)
 
     five_point_stencil = np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0]], dtype=np.int32)

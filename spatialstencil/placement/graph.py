@@ -8,38 +8,52 @@ import numpy as np
 @dataclass
 class FieldDomain:
     """
-    Represents the 1x3 domain of a field
-    """
+    Represents the 3D domain of a field
 
-    # Represented as a 1 by 3 array
+    Represented as a 2 by 3 array
+    The first row is the lower bound of the domain
+    The second row is the upper bound of the domain
+    """
     domain: np.ndarray
 
     def x(self):
-        return self.domain[0][0]
+        """
+        Returns the x coordinate of the upper bound of the domain
+        :return:
+        """
+        return self.domain[1][0]
 
     def y(self):
-        return self.domain[0][1]
+        """
+        Returns the y coordinate of the upper bound of the domain
+        :return:
+        """
+        return self.domain[1][1]
 
     def z(self):
-        return self.domain[0][2]
+        """
+        Returns the z coordinate of the upper bound of the domain
+        :return:
+        """
+        return self.domain[1][2]
 
     # Check if a domain is valid
-    # A domain is valid if it is a 1x3 shaped array and all its elements are integers
+    # A domain is valid if it is a 2x3 shaped array and all its elements are integers
     def __post_init__(self):
-        assert self.domain.shape == (1, 3)
+        assert self.domain.shape == (2, 3)
         assert np.issubdtype(self.domain.dtype, np.integer)
 
     def __eq__(self, other):
         return np.array_equal(self.domain, other.domain)
 
     def volume(self):
-        return np.prod(self.domain)
+        return self.z_column_length() * self.xy_plane_area()
 
     def xy_plane_area(self):
-        return self.domain[0][0] * self.domain[0][1]
+        return (self.domain[1][0] - self.domain[0][0]) * (self.domain[1][1] - self.domain[0][1])
 
     def z_column_length(self):
-        return self.domain[0][2]
+        return self.domain[1][2] - self.domain[0][2]
 
 @dataclass
 class StencilShape:
@@ -50,7 +64,7 @@ class StencilShape:
     # A stencil is valid if it is a k times 3 shaped array and all its elements are integers
     def __post_init__(self):
         assert self.shape.shape[1] == 3
-        assert self.shape.shape[0] >= 0
+        assert self.shape.shape[0] > 0
         assert np.issubdtype(self.shape.dtype, np.integer)
 
     def __eq__(self, other):
@@ -58,7 +72,7 @@ class StencilShape:
 
     def is_horizontal(self) -> bool:
         """
-        A stencil is horiontal if all z values (3rd coordinate) are 0
+        A stencil is horizontal if all z values (3rd coordinate) are 0
         :return: bool   True if the stencil is horizontal, False otherwise
         """
         return np.all(self.shape[:, 2] == 0)
@@ -115,6 +129,12 @@ class StencilGraph:
 
     def edges(self):
         return self.graph.es
+
+    def out_edges(self, vertex):
+        return self.graph.es.select(_source=vertex)
+
+    def in_edges(self, vertex):
+        return self.graph.es.select(_target=vertex)
 
     def plot(self):
         # Plot the stencil graph
