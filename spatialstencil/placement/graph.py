@@ -138,7 +138,7 @@ class StencilGraph:
 
     def plot(self):
         # Plot the stencil graph
-        layout = self.graph.layout_reingold_tilford()
+        layout = self.graph.layout_reingold_tilford(mode="in")
         ig.plot(self.graph,
                 layout=layout,
                 vertex_label=self.graph.vs["name"],
