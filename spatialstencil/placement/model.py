@@ -65,12 +65,12 @@ class CostModel:
             # Calculate the l1 norm of each row
             # then take the maximum across the columns
             # to get the maximum distance of the edge
-            distances[e.index] = np.max(np.sum(np.abs(delta), axis=1))
+            distances[e.index] = np.max(delta)
 
         return distances
 
     @staticmethod
-    def distance_vector_of_edge(placement: Placement, e):
+    def distance_vector_of_edge(placement: Placement, e) -> np.ndarray:
         """
         Calculate the distance vector of an edge for a given placement.
         This is the distance of each element of the stencil shape of the edge.
@@ -83,11 +83,9 @@ class CostModel:
         $$\Delta(e)^{(i)} = O(v)-O(u) - I(u) \odot \delta^{(i)} \enspace .$$
         Note that this formulation works for both horizontal and vertical stencils and that $\delta_z$ does not influence the computation.
 
-        The \emph{distance weight} of edge $e$ is given by $\max_i |\Delta(e)|_1^{(i)}$.
-
         :param placement:
         :param e: edge in the graph
-        :return:
+        :return: An array of distances, of size equal to the number of elements in the stencil
         """
 
         # Calculate the distance of the edge
@@ -100,6 +98,9 @@ class CostModel:
         offset_tail = placement.offsets[tail]
         stride_head = placement.strides[head]
 
+        # Assert strides of head and tail match
+        assert np.array_equal(placement.strides[tail], stride_head)
+
         # Get the stencil shape [(delta_x, delta_y)] of the edge
         delta_xy = e[StencilGraph.STENCIL].shape[:, :2]
 
@@ -110,7 +111,11 @@ class CostModel:
         # this works by broadcasting the 1x2 arrays to kx2 arrays
         # and then element-wise multiplication
         delta = offset_tail - offset_head - stride_head * delta_xy
-        return delta
+
+        # Now, we compute the Manhattan distance across axis 1
+        # To get a 1D array
+        distances = np.sum(np.abs(delta), axis=1)
+        return distances
 
     def distance_of_placement(self, distances):
         """
@@ -151,12 +156,11 @@ class CostModel:
         """
         energy = np.zeros_like(self.stencil_graph.edges())
         for e in self.stencil_graph.edges():
-            delta = self.distance_vector_of_edge(placement, e)
-            # Calculate the l1 norm of each row
-            # then take the maximum across the columns
-            # to get the maximum distance of the edge
-            energy[e.index] = np.sum(np.abs(delta))
-            energy[e.index] *= self.communication_volume_of_edge(e)
+            distances = self.distance_vector_of_edge(placement, e)
+
+            # Energy is distance times volume,
+            # summed over each stencil element
+            energy[e.index] = np.sum(distances) * self.communication_volume_of_edge(e)
 
         return energy.sum()
 
