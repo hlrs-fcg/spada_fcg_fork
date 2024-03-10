@@ -22,6 +22,8 @@ class Placement:
     \end{itemize}
     We place each cell of a field $v$ onto a PE by placing the $(j, k)$-th column
     of $v$ at position $O(v) + (j \cdot I_x(v) , k \cdot  I_y(v) )$.
+
+    # column 0 -> x, column 1 -> y
     """
     offsets: np.ndarray
     strides: np.ndarray

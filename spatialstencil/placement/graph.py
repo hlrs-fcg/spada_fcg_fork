@@ -11,6 +11,7 @@ class FieldDomain:
     Represents the 3D domain of a field
 
     Represented as a 2 by 3 array
+    column 0 -> x, column 1 -> y, column 2 -> z
     The first row is the lower bound of the domain
     The second row is the upper bound of the domain
     """
@@ -39,6 +40,7 @@ class FieldDomain:
 
     # Check if a domain is valid
     # A domain is valid if it is a 2x3 shaped array and all its elements are integers
+    # column 0 -> x, column 1 -> y, column 2 -> z
     def __post_init__(self):
         assert self.domain.shape == (2, 3)
         assert np.issubdtype(self.domain.dtype, np.integer)
@@ -58,6 +60,7 @@ class FieldDomain:
 @dataclass
 class StencilShape:
     # Represented as a k by 3 array
+    # column 0 -> x, column 1 -> y, column 2 -> z
     shape: np.ndarray
 
     # Check if a stencil is valid
