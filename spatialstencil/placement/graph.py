@@ -18,24 +18,24 @@ class FieldDomain:
 
     def x(self):
         """
-        Returns the x coordinate of the upper bound of the domain
+        Returns the x coordinate upper and lower bounds of the domain
         :return:
         """
-        return self.domain[1][0]
+        return self.domain[:, 0]
 
     def y(self):
         """
-        Returns the y coordinate of the upper bound of the domain
+        Returns the y coordinate upper and lower bounds of the domain
         :return:
         """
-        return self.domain[1][1]
+        return self.domain[:, 1]
 
     def z(self):
         """
-        Returns the z coordinate of the upper bound of the domain
+        Returns the z coordinate upper and lower bounds of the domain
         :return:
         """
-        return self.domain[1][2]
+        return self.domain[:, 2]
 
     # Check if a domain is valid
     # A domain is valid if it is a 2x3 shaped array and all its elements are integers
@@ -99,6 +99,11 @@ class StencilDirection(Enum):
 
 class StencilGraph:
 
+    DOMAIN = 'domain'
+    STENCIL = 'stencil'
+    STENCIL_DIRECTION = 'direction'
+    FIELD_NAME = 'name'
+
     def __init__(self, graph: ig.Graph,
                  domain: FieldDomain,
                  field_domains: Sequence[FieldDomain],
@@ -108,24 +113,24 @@ class StencilGraph:
 
         self.graph = graph
         for v in self.graph.vs:
-            assert v['name'] is not None
+            assert v[StencilGraph.FIELD_NAME] is not None
         assert len(stencils) == len(graph.es)
         assert len(field_domains) == len(graph.vs)
-        self.graph.vs['domain'] = field_domains
-        self.graph.es['stencil'] = stencils
-        self.graph['domain'] = domain
+        self.graph.vs[StencilGraph.DOMAIN] = field_domains
+        self.graph.es[StencilGraph.STENCIL] = stencils
+        self.graph[StencilGraph.DOMAIN] = domain
         assert len(stencil_directions) == len(graph.es)
-        self.graph.es['direction'] = stencil_directions
+        self.graph.es[StencilGraph.STENCIL_DIRECTION] = stencil_directions
         # Check that for all forward edges the xy directions are 0 and the z direction is negative
         for i, edge in enumerate(self.graph.es):
-            if edge['direction'] == StencilDirection.FORWARD:
-                assert np.all(edge['stencil'].shape[:, 0:2] == 0)
-                assert np.all(edge['stencil'].shape[:, 2] < 0)
+            if edge[StencilGraph.STENCIL_DIRECTION] == StencilDirection.FORWARD:
+                assert np.all(edge[StencilGraph.STENCIL].shape[:, 0:2] == 0)
+                assert np.all(edge[StencilGraph.STENCIL].shape[:, 2] < 0)
         # Check for all backward edges the xy directions are 0 and the z direction is positive
         for i, edge in enumerate(self.graph.es):
-            if edge['direction'] == StencilDirection.BACKWARD:
-                assert np.all(edge['stencil'].shape[:, 0:2] == 0)
-                assert np.all(edge['stencil'].shape[:, 2] > 0)
+            if edge[StencilGraph.STENCIL_DIRECTION] == StencilDirection.BACKWARD:
+                assert np.all(edge[StencilGraph.STENCIL].shape[:, 0:2] == 0)
+                assert np.all(edge[StencilGraph.STENCIL].shape[:, 2] > 0)
 
     def edges(self):
         return self.graph.es
@@ -142,12 +147,11 @@ class StencilGraph:
         ig.plot(self.graph,
                 layout=layout,
                 vertex_label=self.graph.vs["name"],
-                #vertex_label=[f"{d}" for d in self.graph.es["max_distance"]],
                 vertex_size=30,
                 vertex_color="lightblue",
-                edge_color=["black" if d == StencilDirection.PARALLEL else "red" if d == StencilDirection.FORWARD else "blue" for d in self.graph.es["direction"]],
+                edge_color=["black" if d == StencilDirection.PARALLEL else "red" if d == StencilDirection.FORWARD else "blue" for d in self.graph.es[StencilGraph.STENCIL_DIRECTION]],
                 edge_width=1,
-                edge_label=[f"{s.shape}" for s in self.graph.es["stencil"]],
+                edge_label=[f"{s.shape}" for s in self.graph.es[StencilGraph.STENCIL]],
                 bbox=(500, 500),
                 margin=20,
                 target="stencil_graph.png")

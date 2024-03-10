@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from spatialstencil.placement.graph import StencilDirection
+from spatialstencil.placement.graph import StencilDirection, StencilGraph
 
 
 @dataclass
@@ -101,7 +101,7 @@ class CostModel:
         stride_head = placement.strides[head]
 
         # Get the stencil shape [(delta_x, delta_y)] of the edge
-        delta_xy = e['stencil'].shape[:, :2]
+        delta_xy = e[StencilGraph.STENCIL].shape[:, :2]
 
         # Calculate the distance vector
         # Note that the offset and stride are 1x2 arrays
@@ -179,10 +179,10 @@ class CostModel:
         # the number of elements communicated by each edge is the number of elements in the stencil shape
         # times the volume of the domain in the case of horizontal stencils
         # and a single x-y plane in the case of vertical stencils
-        communication_volume = e['stencil'].shape.shape[0]
+        communication_volume = e[StencilGraph.STENCIL].shape.shape[0]
 
-        domain = self.stencil_graph.graph.vs[e.source]['domain']
-        direction = e['direction']
+        domain = self.stencil_graph.graph.vs[e.source][StencilGraph.DOMAIN]
+        direction = e[StencilGraph.STENCIL_DIRECTION]
         if direction == StencilDirection.PARALLEL:
             communication_volume *= domain.volume()
         else:
