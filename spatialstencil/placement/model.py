@@ -1,8 +1,6 @@
 """
 Defines placements and the cost model of a placement.
 """
-from dataclasses import dataclass
-
 import numpy as np
 
 from spatialstencil.placement.graph import StencilDirection, StencilGraph
@@ -143,9 +141,9 @@ class CostModel:
         :param e: 
         :return: 
         """
-        communication_volume = e['stencil'].shape.shape[0]
-        domain = self.stencil_graph.graph.vs[e.source]['domain']
-        direction = e['direction']
+        communication_volume = e[StencilGraph.STENCIL].shape.shape[0]
+        domain = self.stencil_graph.graph.vs[e.source][StencilGraph.DOMAIN]
+        direction = e[StencilGraph.STENCIL].direction
         if direction == StencilDirection.PARALLEL:
             communication_volume *= domain.z_length()
 
@@ -158,7 +156,7 @@ class CostModel:
         communication_volume = e[StencilGraph.STENCIL].shape.shape[0]
 
         domain = self.stencil_graph.graph.vs[e.source][StencilGraph.DOMAIN]
-        direction = e[StencilGraph.STENCIL_DIRECTION]
+        direction = e[StencilGraph.STENCIL].direction
         if direction == StencilDirection.PARALLEL:
             communication_volume *= domain.volume()
         else:

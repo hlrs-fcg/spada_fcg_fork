@@ -3,21 +3,19 @@ import igraph as ig
 import numpy as np
 
 from spatialstencil.placement.domain import FieldDomain
-from spatialstencil.placement.stencil import StencilShape, StencilDirection
+from spatialstencil.placement.stencil import Stencil, StencilDirection
 
 
 class StencilGraph:
 
     DOMAIN = 'domain'
     STENCIL = 'stencil'
-    STENCIL_DIRECTION = 'direction'
     FIELD_NAME = 'name'
 
     def __init__(self, graph: ig.Graph,
                  domain: FieldDomain,
                  field_domains: Sequence[FieldDomain],
-                 stencils: Sequence[StencilShape],
-                 stencil_directions: Sequence[StencilDirection]
+                 stencils: Sequence[Stencil]
                  ) -> None:
 
         self.graph = graph
@@ -28,16 +26,14 @@ class StencilGraph:
         self.graph.vs[StencilGraph.DOMAIN] = field_domains
         self.graph.es[StencilGraph.STENCIL] = stencils
         self.graph[StencilGraph.DOMAIN] = domain
-        assert len(stencil_directions) == len(graph.es)
-        self.graph.es[StencilGraph.STENCIL_DIRECTION] = stencil_directions
         # Check that for all forward edges the xy directions are 0 and the z direction is negative
         for i, edge in enumerate(self.graph.es):
-            if edge[StencilGraph.STENCIL_DIRECTION] == StencilDirection.FORWARD:
+            if edge[StencilGraph.STENCIL].direction == StencilDirection.FORWARD:
                 assert np.all(edge[StencilGraph.STENCIL].shape[:, 0:2] == 0)
                 assert np.all(edge[StencilGraph.STENCIL].shape[:, 2] < 0)
         # Check for all backward edges the xy directions are 0 and the z direction is positive
         for i, edge in enumerate(self.graph.es):
-            if edge[StencilGraph.STENCIL_DIRECTION] == StencilDirection.BACKWARD:
+            if edge[StencilGraph.STENCIL].direction == StencilDirection.BACKWARD:
                 assert np.all(edge[StencilGraph.STENCIL].shape[:, 0:2] == 0)
                 assert np.all(edge[StencilGraph.STENCIL].shape[:, 2] > 0)
 
@@ -58,7 +54,7 @@ class StencilGraph:
                 vertex_label=self.graph.vs["name"],
                 vertex_size=30,
                 vertex_color="lightblue",
-                edge_color=["black" if d == StencilDirection.PARALLEL else "red" if d == StencilDirection.FORWARD else "blue" for d in self.graph.es[StencilGraph.STENCIL_DIRECTION]],
+                edge_color=["black" if d.direction == StencilDirection.PARALLEL else "red" if d.direction == StencilDirection.FORWARD else "blue" for d in self.graph.es[StencilGraph.STENCIL]],
                 edge_width=1,
                 edge_label=[f"{s.shape}" for s in self.graph.es[StencilGraph.STENCIL]],
                 bbox=(500, 500),

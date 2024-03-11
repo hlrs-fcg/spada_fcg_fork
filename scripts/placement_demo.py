@@ -1,7 +1,7 @@
 import numpy as np
 import igraph as ig
 
-from spatialstencil.placement.graph import StencilShape, StencilDirection, FieldDomain, StencilGraph
+from spatialstencil.placement.graph import Stencil, StencilDirection, FieldDomain, StencilGraph
 from spatialstencil.placement.model import CostModel
 from spatialstencil.placement.partition import FieldPartition
 
@@ -9,7 +9,6 @@ from spatialstencil.placement.partition import FieldPartition
 def demo_graph():
 
     domain = np.array([[0, 0, 0], [256, 256, 64]], dtype=np.int32)
-    print(domain)
     domain_type = FieldDomain(domain)
 
     five_point_stencil = np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0]], dtype=np.int32)
@@ -33,29 +32,23 @@ def demo_graph():
     # We alternate between horizontal (five point) and vertical stencils
     # so the stencils w-> a and z-> a and b-> c are vertical
     # and the rest are horizontal
-    stencils = [StencilShape(five_point_stencil),
-                StencilShape(five_point_stencil),
-                StencilShape(five_point_stencil),
-                StencilShape(five_point_stencil),
-                StencilShape(z_stencil_forward),
-                StencilShape(z_stencil_forward),
-                StencilShape(five_point_stencil),
-                StencilShape(z_stencil_backward),
-                StencilShape(one_point_stencil_up)]
-
     # All horizontal stencils are parallel, while the first vertical stencils are forward and the last is backward
-    stencil_directions = [StencilDirection.PARALLEL,
-                          StencilDirection.PARALLEL,
-                          StencilDirection.PARALLEL,
-                          StencilDirection.PARALLEL,
-                          StencilDirection.FORWARD,
-                          StencilDirection.FORWARD,
-                          StencilDirection.PARALLEL,
-                          StencilDirection.BACKWARD,
-                          StencilDirection.PARALLEL]
+
+    p = StencilDirection.PARALLEL
+    f = StencilDirection.FORWARD
+    b = StencilDirection.BACKWARD
+    stencils = [Stencil(five_point_stencil, p),
+                Stencil(five_point_stencil, p),
+                Stencil(five_point_stencil, p),
+                Stencil(five_point_stencil, p),
+                Stencil(z_stencil_forward, f),
+                Stencil(z_stencil_forward, f),
+                Stencil(five_point_stencil, p),
+                Stencil(z_stencil_backward, b),
+                Stencil(one_point_stencil_up, p)]
 
     # Create the StencilGraph
-    stencil_graph = StencilGraph(g, domain_type, [domain_type] * 9, stencils, stencil_directions)
+    stencil_graph = StencilGraph(g, domain_type, [domain_type] * 9, stencils)
 
     return stencil_graph
 

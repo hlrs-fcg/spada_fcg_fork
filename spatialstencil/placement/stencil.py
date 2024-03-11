@@ -4,11 +4,24 @@ from enum import Enum
 import numpy as np
 
 
+class StencilDirection(Enum):
+    """
+    Indicates the order in which the z-coordinate of the stencil is traversed
+    """
+    # The stencil is traversed in parallel
+    PARALLEL = 0
+    # The stencil is traversed in a forward direction (increasing z)
+    FORWARD = 1
+    # The stencil is traversed in a backward direction (decreasing z)
+    BACKWARD = 2
+
+
 @dataclass
-class StencilShape:
+class Stencil:
     # Represented as a k by 3 array
     # column 0 -> x, column 1 -> y, column 2 -> z
     shape: np.ndarray
+    direction: StencilDirection
 
     # Check if a stencil is valid
     # A stencil is valid if it is a k times 3 shaped array and all its elements are integers
@@ -16,6 +29,8 @@ class StencilShape:
         assert self.shape.shape[1] == 3
         assert self.shape.shape[0] > 0
         assert np.issubdtype(self.shape.dtype, np.integer)
+        assert self.is_vertical() or self.is_horizontal()
+        assert self.is_vertical() or self.direction == StencilDirection.PARALLEL
 
     def __eq__(self, other):
         return np.array_equal(self.shape, other.shape)
@@ -35,13 +50,4 @@ class StencilShape:
         return np.all(self.shape[:, 0:2] == 0)
 
 
-class StencilDirection(Enum):
-    """
-    Indicates the order in which the z-coordinate of the stencil is traversed
-    """
-    # The stencil is traversed in parallel
-    PARALLEL = 0
-    # The stencil is traversed in a forward direction (increasing z)
-    FORWARD = 1
-    # The stencil is traversed in a backward direction (decreasing z)
-    BACKWARD = 2
+
