@@ -2,7 +2,7 @@ import numpy as np
 import igraph as ig
 
 from spatialstencil.placement.graph import StencilShape, StencilDirection, FieldDomain, StencilGraph
-from spatialstencil.placement.model import Placement, CostModel
+from spatialstencil.placement.model import CostModel
 from spatialstencil.placement.partition import FieldPartition
 
 

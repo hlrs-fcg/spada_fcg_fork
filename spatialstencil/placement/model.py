@@ -6,37 +6,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from spatialstencil.placement.graph import StencilDirection, StencilGraph
-
-
-@dataclass
-class Placement:
-    """
-    A placement is a mapping from fields / vertices of a StencilGraph
-    to offsets and strides in the domain of the device.
-    each offset and stride is represented as 1x2 arrays of integers.
-
-    To place a stencil graph on our 2-dimensional PE grid, each field $v$ is associated with:
-    \begin{itemize}
-        \item An offset $O(v)=(O_x(v), O_y(v))$
-        \item A stride $I(v)=(I_x(v), I_y(v))$.
-    \end{itemize}
-    We place each cell of a field $v$ onto a PE by placing the $(j, k)$-th column
-    of $v$ at position $O(v) + (j \cdot I_x(v) , k \cdot  I_y(v) )$.
-
-    # column 0 -> x, column 1 -> y
-    """
-    offsets: np.ndarray
-    strides: np.ndarray
-
-    def __post_init__(self):
-        assert self.offsets.shape[1] == 2
-        assert self.strides.shape[1] == 2
-        assert self.offsets.shape[0] == self.strides.shape[0]
-        assert np.issubdtype(self.offsets.dtype, np.integer)
-        assert np.issubdtype(self.strides.dtype, np.integer)
-
-    def __eq__(self, other):
-        return np.array_equal(self.offsets, other.offsets) and np.array_equal(self.strides, other.strides)
+from spatialstencil.placement.partition import Placement
 
 
 class CostModel:
