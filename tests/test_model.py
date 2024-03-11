@@ -1,0 +1,106 @@
+import unittest
+import numpy as np
+from spatialstencil.placement.domain import FieldDomain
+from spatialstencil.placement.model import CostModel
+from spatialstencil.placement.partition import FieldPartition
+from spatialstencil.placement.stencil import Stencil, StencilDirection
+from spatialstencil.placement.graph import StencilGraph
+import igraph as ig
+
+class TestModel(unittest.TestCase):
+
+    def demo_graph(self):
+        domain = np.array([[0, 0, 0], [4, 6, 10]], dtype=np.int32)
+        domain_type = FieldDomain(domain)
+
+        one_point_stencil_left = np.array([[1, 0, 0]], dtype=np.int32)
+
+        # Create StencilGraph with 3 nodes
+        # and an inverted tree like shape
+        # u -> w, v-> w
+        # as numbers, we get
+        # u = 0, v = 1, w = 2
+        g = ig.Graph(directed=True, n=3)
+        g.add_edges([(0, 2), (1, 2)])
+        # Set the names of the nodes
+        g.vs["name"] = ["u", "v", "w"]
+
+        # We alternate between horizontal (five point) and vertical stencils
+        # so the stencils w-> a and z-> a and b-> c are vertical
+        # and the rest are horizontal
+        # All horizontal stencils are parallel, while the first vertical stencils are forward and the last is backward
+        p = StencilDirection.PARALLEL
+        stencils = [Stencil(one_point_stencil_left, p),
+                    Stencil(one_point_stencil_left, p)
+                    ]
+
+        # Create the StencilGraph
+        stencil_graph = StencilGraph(g, domain_type, [domain_type] * 3, stencils)
+
+        stencil_graph.plot("test_stencil.png")
+
+        return stencil_graph
+
+    def test_distance(self):
+        demo_graph = self.demo_graph()
+        domain: FieldDomain = demo_graph.graph[StencilGraph.DOMAIN]
+
+        # Create a partition with 1 part
+        partition_array = np.array([[0, 0], [0, 0], [0, 0]], dtype=np.int32)
+        partition = FieldPartition(partition_array)
+        # Create a block placement
+        placement = partition.place_blocked(demo_graph.graph[StencilGraph.DOMAIN])
+
+        # Create a cost model
+        cost_model = CostModel(demo_graph)
+        distances = cost_model.edge_distance_of_placement(placement)
+
+        self.assertEqual(1, distances[0], f"The distances are {distances}")
+        self.assertEqual(1, distances[1], f"The distances are {distances}")
+        self.assertEqual(1, cost_model.distance_of_placement(distances))
+
+        # Create a partition with 2 parts in the x direction
+        partition_array = np.array([[0, 0], [1, 0], [0, 0]], dtype=np.int32)
+        partition = FieldPartition(partition_array)
+        # Create a block placement
+        placement = partition.place_blocked(demo_graph.graph[StencilGraph.DOMAIN])
+
+        # Create a cost model
+        cost_model = CostModel(demo_graph)
+        distances = cost_model.edge_distance_of_placement(placement)
+
+        self.assertEqual(1, distances[0], f"The distances are {distances}")
+        self.assertEqual(domain.x_length() + 1, distances[1], f"The distances are {distances}")
+        self.assertEqual(domain.x_length() + 1, cost_model.distance_of_placement(distances))
+
+        # Create a partition with 2 parts in the y direction
+        partition_array = np.array([[0, 0], [0, 1], [0, 0]], dtype=np.int32)
+        partition = FieldPartition(partition_array)
+        # Create a block placement
+        placement = partition.place_blocked(demo_graph.graph[StencilGraph.DOMAIN])
+
+        # Create a cost model
+        cost_model = CostModel(demo_graph)
+        distances = cost_model.edge_distance_of_placement(placement)
+
+        self.assertEqual(1, distances[0], f"The distances are {distances}")
+        self.assertEqual(domain.y_length() + 1, distances[1], f"The distances are {distances}")
+        self.assertEqual(domain.y_length() + 1, cost_model.distance_of_placement(distances))
+
+        # Create an interleaved placement from a partition with 2 parts in the x direction
+        partition_array = np.array([[0, 0], [1, 0], [0, 0]], dtype=np.int32)
+        partition = FieldPartition(partition_array)
+        # Create a block placement
+        placement = partition.place_interleaved()
+
+        # Create a cost model
+        cost_model = CostModel(demo_graph)
+        distances = cost_model.edge_distance_of_placement(placement)
+
+        self.assertEqual(2, distances[0], f"The distances are {distances}")
+        self.assertEqual(3, distances[1], f"The distances are {distances}")
+        self.assertEqual(3, cost_model.distance_of_placement(distances))
+
+
+if __name__ == '__main__':
+    unittest.main()

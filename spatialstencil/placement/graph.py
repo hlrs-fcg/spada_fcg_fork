@@ -46,7 +46,7 @@ class StencilGraph:
     def in_edges(self, vertex):
         return self.graph.es.select(_target=vertex)
 
-    def plot(self):
+    def plot(self, filename="stencil_graph.png"):
         # Plot the stencil graph
         layout = self.graph.layout_reingold_tilford(mode="in")
         ig.plot(self.graph,
@@ -59,4 +59,4 @@ class StencilGraph:
                 edge_label=[f"{s.shape}" for s in self.graph.es[StencilGraph.STENCIL]],
                 bbox=(500, 500),
                 margin=20,
-                target="stencil_graph.png")
+                target=filename)
