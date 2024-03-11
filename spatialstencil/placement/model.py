@@ -177,7 +177,7 @@ class CostModel:
         domain = self.stencil_graph.graph.vs[e.source]['domain']
         direction = e['direction']
         if direction == StencilDirection.PARALLEL:
-            communication_volume *= domain.z_column_length()
+            communication_volume *= domain.z_length()
 
         return communication_volume
 

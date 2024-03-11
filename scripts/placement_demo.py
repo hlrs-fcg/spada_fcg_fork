@@ -80,9 +80,17 @@ def demo_placement_separated(domain: FieldDomain):
     :param domain:
     :return:
     """
+    parts = np.array([[0, 0], [0, 0], [0, 0], [1, 0], [1, 0], [1, 0], [0, 0], [0, 0], [0, 0]], dtype=np.int32)
+    # manual result
     offsets = np.array([[0, 0], [0, 0], [0, 0], [domain.x()[1], 0], [domain.x()[1], 0], [domain.x()[1], 0], [0, 0], [0, 0], [0, 0]], dtype=np.int32)
     strides = np.array([[1, 1], [1, 1], [1, 1], [1, 1], [1, 1], [1, 1], [1, 1], [1, 1], [1, 1]], dtype=np.int32)
-    return Placement(offsets, strides)
+    partition = FieldPartition(parts)
+    # automatic result
+    placement = partition.place_blocked(domain)
+    # check if the automatic result is the same as the manual result
+    assert np.allclose(placement.offsets, offsets)
+    assert np.allclose(placement.strides, strides)
+    return placement
 
 
 def demo_costs(stencil_graph, place):

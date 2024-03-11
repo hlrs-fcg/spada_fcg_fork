@@ -44,18 +44,28 @@ class FieldDomain:
     def __post_init__(self):
         assert self.domain.shape == (2, 3)
         assert np.issubdtype(self.domain.dtype, np.integer)
+        # Check that the lower bound is less than or equal to the upper bound
+        assert np.all(self.domain[0] <= self.domain[1])
 
     def __eq__(self, other):
         return np.array_equal(self.domain, other.domain)
 
-    def volume(self):
-        return self.z_column_length() * self.xy_plane_area()
+    def x_length(self):
+        return self.domain[1][0] - self.domain[0][0]
+
+    def y_length(self):
+        return self.domain[1][1] - self.domain[0][1]
+
+    def z_length(self):
+        return self.domain[1][2] - self.domain[0][2]
 
     def xy_plane_area(self):
-        return (self.domain[1][0] - self.domain[0][0]) * (self.domain[1][1] - self.domain[0][1])
+        return self.x_length() * self.y_length()
 
-    def z_column_length(self):
-        return self.domain[1][2] - self.domain[0][2]
+    def volume(self):
+        return self.z_length() * self.xy_plane_area()
+
+
 
 @dataclass
 class StencilShape:
