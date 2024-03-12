@@ -24,12 +24,14 @@ class PlacementCost:
     depth: float
 
     # The overall cost of the placement, which is the
-    # (maximum of contention, energy_over_links + distance) + depth
+    # (maximum of contention, energy_over_links + distance) + (2 * RAMP_TIME + 1) * depth
     overall: float
 
 
 class CostModel:
     stencil_graph: StencilGraph
+
+    RAMP_TIME: float = 2.0
 
     def __init__(self, stencil_graph):
         self.stencil_graph = stencil_graph
@@ -53,7 +55,7 @@ class CostModel:
         energy_over_links = self.energy_of_placement(placement) / number_of_links
         distance = self.distance_of_placement(self.edge_distance_of_placement(placement))
         depth = self.depth_of_placement()
-        overall = max(contention, energy_over_links + distance) + depth
+        overall = max(contention, energy_over_links + distance) + (2 * self.RAMP_TIME + 1) * depth
 
         return PlacementCost(contention,
                              energy_over_links,
@@ -267,7 +269,7 @@ class CostModel:
 
     def depth_of_placement(self) -> float:
         """
-        Calculate the depth of the stencil graph
+        Calculate the communication depth of the stencil graph
         which is the longest path in the stencilGraph, where all edges have weight 1.
         Use the topological sort of the graph to calculate the depth (using the dynamic programming approach).
         :return: float The depth of the placement
