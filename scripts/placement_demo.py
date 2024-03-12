@@ -1,6 +1,7 @@
 import numpy as np
 import igraph as ig
 
+from scripts import examples
 from spatialstencil.placement.graph import Stencil, StencilDirection, FieldDomain, StencilGraph
 from spatialstencil.placement.model import CostModel
 from spatialstencil.placement.partition import FieldPartition
@@ -99,6 +100,9 @@ def main():
     print("Separated placement")
     place2 = demo_placement_separated(stencil_graph.graph['domain'])
     demo_costs(stencil_graph, place2)
+
+    diffusion = examples.horizontal_diffusion()
+    diffusion.plot("h_diffusion.png")
 
 
 if __name__ == "__main__":
