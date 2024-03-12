@@ -68,15 +68,15 @@ def horizontal_diffusion():
         Stencil(np.array([[0, 0, 0], [0, -1, 0]], dtype=np.int32), StencilDirection.PARALLEL),
     ]
     # 11 vertices in_field = 0, out_field = 1, coeff = 2, lap_field = 3, res_x = 4, cond_x = 5, flx_field = 6,
-    # res_y = 7, cond_y = 8, fly_field = 9, out_field = 10
-    g = ig.Graph(directed=True, n=11, edges=[
-        (0, 3), (3, 4), (4, 5), (0, 5), (4, 6), (5, 6), (3, 7), (7, 8), (0, 8), (7, 9), (8, 9), (0, 1), (2, 1), (6, 10), (9, 10)
+    # res_y = 7, cond_y = 8, fly_field = 9
+    g = ig.Graph(directed=True, n=10, edges=[
+        (0, 3), (3, 4), (4, 5), (0, 5), (4, 6), (5, 6), (3, 7), (7, 8), (0, 8), (7, 9), (8, 9), (0, 1), (2, 1), (6, 1), (9, 1)
     ])
     # Set field names
-    g.vs["name"] = ["in_field", "out_field", "coeff", "lap_field", "res_x", "cond_x", "flx_field", "res_y", "cond_y", "fly_field", "out_field"]
+    g.vs["name"] = ["in_field", "out_field", "coeff", "lap_field", "res_x", "cond_x", "flx_field", "res_y", "cond_y", "fly_field"]
 
     # Define the graph
-    graph = StencilGraph(g, domain, [domain] * 11, stencils)
+    graph = StencilGraph(g, domain, [domain] * 10, stencils)
 
     return graph
 
