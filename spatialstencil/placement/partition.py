@@ -4,6 +4,8 @@ These fields are then placed on the same processing element.
 """
 from dataclasses import dataclass
 
+from numpy.typing import NDArray
+
 from spatialstencil.placement.graph import FieldDomain
 import numpy as np
 
@@ -23,8 +25,8 @@ class Placement:
 
     # column 0 -> x, column 1 -> y
     """
-    offsets: np.ndarray
-    strides: np.ndarray
+    offsets: NDArray[np.int32]
+    strides: NDArray[np.int32]
 
     def __post_init__(self):
         assert self.offsets.shape[1] == 2
@@ -36,7 +38,7 @@ class Placement:
     def __eq__(self, other):
         return np.array_equal(self.offsets, other.offsets) and np.array_equal(self.strides, other.strides)
 
-    def unique_offsets(self) -> np.ndarray:
+    def unique_offsets(self) -> NDArray[np.int32]:
         return np.unique(self.offsets, axis=0)
 
     def edge_crosses_partition(self, e) -> float:
@@ -51,7 +53,7 @@ class Placement:
         tail = e.target
         offset_head = self.offsets[head]
         offset_tail = self.offsets[tail]
-        return 1 if not np.array_equal(offset_head, offset_tail) else 0
+        return 1.0 if not np.array_equal(offset_head, offset_tail) else 0.0
 
 
 @dataclass
@@ -67,7 +69,7 @@ class FieldPartition:
     # and two integers denoting the (x, y) position of the partition it belongs to
     # the number of partitions is implicit in the number of distinct (x, y) values
     # column 0 -> x, column 1 -> y
-    part: np.ndarray
+    part: NDArray[np.int32]
 
     def __post_init__(self):
         # assert integer type

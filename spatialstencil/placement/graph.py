@@ -1,4 +1,5 @@
 from typing import Sequence
+
 import igraph as ig
 import numpy as np
 
@@ -43,13 +44,13 @@ class StencilGraph:
     def stencils(self) -> Sequence[Stencil]:
         return self.graph.es[StencilGraph.STENCIL]
 
-    def edges(self):
+    def edges(self) -> ig.EdgeSeq:
         return self.graph.es
 
-    def out_edges(self, vertex):
+    def out_edges(self, vertex) -> ig.EdgeSeq:
         return self.graph.es.select(_source=vertex)
 
-    def in_edges(self, vertex):
+    def in_edges(self, vertex) -> ig.EdgeSeq:
         return self.graph.es.select(_target=vertex)
 
     def plot(self, filename="stencil_graph.png"):

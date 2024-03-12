@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 import numpy as np
+from numpy.typing import NDArray
 
 
 class StencilDirection(Enum):
@@ -20,7 +21,7 @@ class StencilDirection(Enum):
 class Stencil:
     # Represented as a k by 3 array
     # column 0 -> x, column 1 -> y, column 2 -> z
-    shape: np.ndarray
+    shape: NDArray[np.int32]
     direction: StencilDirection
 
     # Check if a stencil is valid
@@ -48,6 +49,4 @@ class Stencil:
         :return: bool   True if the stencil is vertical, False otherwise
         """
         return np.all(self.shape[:, 0:2] == 0)
-
-
 

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 import numpy as np
+from numpy.typing import NDArray
 
 
 @dataclass
@@ -13,23 +14,23 @@ class FieldDomain:
     The first row is the lower bound of the domain
     The second row is the upper bound of the domain
     """
-    domain: np.ndarray
+    domain: NDArray[np.int32]
 
-    def x(self):
+    def x(self) -> NDArray[np.int32]:
         """
         Returns the x coordinate upper and lower bounds of the domain
         :return:
         """
         return self.domain[:, 0]
 
-    def y(self):
+    def y(self) -> NDArray[np.int32]:
         """
         Returns the y coordinate upper and lower bounds of the domain
         :return:
         """
         return self.domain[:, 1]
 
-    def z(self):
+    def z(self) -> NDArray[np.int32]:
         """
         Returns the z coordinate upper and lower bounds of the domain
         :return:
@@ -48,18 +49,18 @@ class FieldDomain:
     def __eq__(self, other):
         return np.array_equal(self.domain, other.domain)
 
-    def x_length(self):
+    def x_length(self) -> int:
         return self.domain[1][0] - self.domain[0][0]
 
-    def y_length(self):
+    def y_length(self) -> int:
         return self.domain[1][1] - self.domain[0][1]
 
-    def z_length(self):
+    def z_length(self) -> int:
         return self.domain[1][2] - self.domain[0][2]
 
-    def xy_plane_area(self):
+    def xy_plane_area(self) -> int:
         return self.x_length() * self.y_length()
 
-    def volume(self):
+    def volume(self) -> int:
         return self.z_length() * self.xy_plane_area()
 

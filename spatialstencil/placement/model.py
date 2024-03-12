@@ -2,7 +2,9 @@
 Defines placements and the cost model of a placement.
 """
 from dataclasses import dataclass
+from typing import Sequence
 
+import igraph
 import numpy as np
 
 from spatialstencil.placement.graph import StencilDirection, StencilGraph
@@ -83,7 +85,7 @@ class CostModel:
         return distances
 
     @staticmethod
-    def distance_vector_of_edge(placement: Placement, e) -> np.ndarray:
+    def distance_vector_of_edge(placement: Placement, e: igraph.Edge) -> np.ndarray:
         """
         Calculate the distance vector of an edge for a given placement.
         This is the distance of each element of the stencil shape of the edge.
@@ -132,7 +134,7 @@ class CostModel:
         distances = np.sum(np.abs(delta), axis=1)
         return distances
 
-    def distance_of_placement(self, distances):
+    def distance_of_placement(self, distances: np.ndarray) -> float:
         """
         Calculate the maximum distance of a placement (longest path in the graph, weighted by distances)
 
@@ -179,7 +181,7 @@ class CostModel:
 
         return energy.sum()
 
-    def contention_of_edge(self, e, placement: Placement):
+    def contention_of_edge(self, e: igraph.Edge, placement: Placement) -> float:
         """
         The contention of the edge is the number of elements communicated through the edge.
         This involves the height of the z column in the case of horizontal stencils.
@@ -204,7 +206,7 @@ class CostModel:
 
         return communication_volume
 
-    def communication_volume_of_edge(self, e):
+    def communication_volume_of_edge(self, e: igraph.Edge) -> float:
         # the number of elements communicated by each edge is the number of elements in the stencil shape
         # times the volume of the domain in the case of horizontal stencils
         # and a single x-y plane in the case of vertical stencils
@@ -250,7 +252,7 @@ class CostModel:
 
         return max(input_contention, output_contention)
 
-    def input_contention_of_fields(self, fields, placement: Placement):
+    def input_contention_of_fields(self, fields: Sequence[igraph.Vertex], placement: Placement) -> float:
         """
         The input contention of a field is the sum of the communication volumes of its incoming edges.
         :param placement:
@@ -264,7 +266,7 @@ class CostModel:
                 contention += self.contention_of_edge(e, placement)
         return contention
 
-    def output_contention_of_fields(self, fields, placement: Placement):
+    def output_contention_of_fields(self, fields: Sequence[igraph.Vertex], placement: Placement) -> float:
         """
         The output contention of a field is the sum of the communication volume of its outgoing edges.
         :param placement: Placement The placement of the stencil graph
