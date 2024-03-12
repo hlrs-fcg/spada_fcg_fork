@@ -10,21 +10,26 @@ import igraph as ig
 
 class TestModel(unittest.TestCase):
 
-    def demo_graph_3path(self):
+    def demo_graph_3path(self, vertical=True):
         domain = np.array([[0, 0, 0], [4, 6, 10]], dtype=np.int32)
         domain_type = FieldDomain(domain)
 
-        one_point_stencil_up = np.array([[0, 0, -1]], dtype=np.int32)
-        one_point_stencil_down = np.array([[0, 0, 1]], dtype=np.int32)
+        if vertical:
+            one_point_stencil_up = np.array([[0, 0, -1]], dtype=np.int32)
+            one_point_stencil_down = np.array([[0, 0, 1]], dtype=np.int32)
+            stencils = [Stencil(one_point_stencil_up, StencilDirection.FORWARD),
+                        Stencil(one_point_stencil_down, StencilDirection.BACKWARD)
+                        ]
+        else:
+            one_point_elementwise_stencil = np.array([[0, 0, 0]], dtype=np.int32)
+            stencils = [Stencil(one_point_elementwise_stencil, StencilDirection.PARALLEL),
+                        Stencil(one_point_elementwise_stencil, StencilDirection.PARALLEL)
+                        ]
 
         g = ig.Graph(directed=True, n=3)
         g.add_edges([(0, 1), (1, 2)])
 
         g.vs["name"] = ["u", "v", "w"]
-
-        stencils = [Stencil(one_point_stencil_up, StencilDirection.FORWARD),
-                    Stencil(one_point_stencil_down, StencilDirection.BACKWARD)
-                    ]
 
         stencil_graph = StencilGraph(g, domain_type, [domain_type] * 3, stencils)
         return stencil_graph
@@ -129,7 +134,7 @@ class TestModel(unittest.TestCase):
         graph = self.demo_graph_3path()
         cost_model = CostModel(graph)
         self.assertEqual(2, cost_model.depth_of_placement())
-        graph.plot("test_stencil_3path.png")
+        graph.plot("test_stencil_3path_v.png")
 
     def test_contention(self):
         graph = self.demo_graph_wedge()
@@ -137,10 +142,45 @@ class TestModel(unittest.TestCase):
         placement = FieldPartition(np.array([[0, 0], [0, 0], [0, 0]], dtype=np.int32)).place_interleaved()
         self.assertEqual(2 * graph.domain().z_length(), cost_model.contention_of_placement(placement))
 
+        cost_model = CostModel(graph)
+        placement = FieldPartition(np.array([[0, 0], [1, 0], [0, 1]], dtype=np.int32)).place_interleaved()
+        self.assertEqual(2 * graph.domain().z_length(), cost_model.contention_of_placement(placement))
+
+        graph = self.demo_graph_3path(vertical=False)
+        graph.plot("test_stencil_3path_h.png")
+        cost_model = CostModel(graph)
+        placement = FieldPartition(np.array([[0, 0], [0, 0], [0, 0]], dtype=np.int32)).place_interleaved()
+        self.assertEqual(0, cost_model.contention_of_placement(placement))
+
+        graph = self.demo_graph_3path(vertical=False)
+        cost_model = CostModel(graph)
+        placement = FieldPartition(np.array([[0, 0], [0, 0], [1, 0]], dtype=np.int32)).place_interleaved()
+        self.assertEqual(graph.domain().z_length(), cost_model.contention_of_placement(placement))
+
+        graph = self.demo_graph_3path(vertical=False)
+        cost_model = CostModel(graph)
+        placement = FieldPartition(np.array([[0, 0], [1, 0], [0, 0]], dtype=np.int32)).place_interleaved()
+        self.assertEqual(graph.domain().z_length(), cost_model.contention_of_placement(placement))
+
         # If all stencils are forward/backward and there is a single partition, there is no contention!
+        placement = FieldPartition(np.array([[0, 0], [0, 0], [0, 0]], dtype=np.int32)).place_interleaved()
         graph = self.demo_graph_3path()
         cost_model = CostModel(graph)
         self.assertEqual(0, cost_model.contention_of_placement(placement))
+
+        placement = FieldPartition(np.array([[0, 0], [0, 0], [1, 0]], dtype=np.int32)).place_interleaved()
+        self.assertEqual(1, cost_model.contention_of_placement(placement))
+
+        placement = FieldPartition(np.array([[0, 0], [0, 0], [1, 0]], dtype=np.int32)).place_blocked(graph.domain())
+        self.assertEqual(1, cost_model.contention_of_placement(placement))
+
+        placement = FieldPartition(np.array([[0, 0], [1, 0], [1, 0]], dtype=np.int32)).place_interleaved()
+        self.assertEqual(1, cost_model.contention_of_placement(placement))
+
+        # here it still 1 because the input and output contention is both 1
+        placement = FieldPartition(np.array([[0, 0], [1, 0], [0, 0]], dtype=np.int32)).place_interleaved()
+        self.assertEqual(1, cost_model.contention_of_placement(placement))
+
 
     def test_energy(self):
         # If all stencils are forward/backward and there is a single partition, the energy is 0
@@ -148,6 +188,53 @@ class TestModel(unittest.TestCase):
         graph = self.demo_graph_3path()
         cost_model = CostModel(graph)
         self.assertEqual(0, cost_model.energy_of_placement(placement))
+
+        placement = FieldPartition(np.array([[0, 0], [1, 0], [0, 0]], dtype=np.int32)).place_interleaved()
+        graph = self.demo_graph_3path()
+        cost_model = CostModel(graph)
+        self.assertEqual(2 * graph.domain().xy_plane_area(), cost_model.energy_of_placement(placement))
+
+        placement = FieldPartition(np.array([[0, 0], [1, 0], [1, 0]], dtype=np.int32)).place_interleaved()
+        graph = self.demo_graph_3path()
+        cost_model = CostModel(graph)
+        self.assertEqual(graph.domain().xy_plane_area(), cost_model.energy_of_placement(placement))
+
+        placement = FieldPartition(np.array([[0, 0], [1, 0], [0, 0]], dtype=np.int32)).place_blocked(graph.domain())
+        graph = self.demo_graph_3path()
+        cost_model = CostModel(graph)
+        self.assertEqual(2 * graph.domain().xy_plane_area() * graph.domain().x_length(),
+                         cost_model.energy_of_placement(placement))
+
+        placement = FieldPartition(np.array([[0, 1], [0, 0], [0, 0]], dtype=np.int32)).place_blocked(graph.domain())
+        graph = self.demo_graph_3path()
+        cost_model = CostModel(graph)
+        self.assertEqual(graph.domain().xy_plane_area() * graph.domain().y_length(),
+                         cost_model.energy_of_placement(placement))
+
+        placement = FieldPartition(np.array([[0, 0], [0, 0], [0, 0]], dtype=np.int32)).place_interleaved()
+        graph = self.demo_graph_wedge()
+        cost_model = CostModel(graph)
+        self.assertEqual(2 * graph.domain().volume(), cost_model.energy_of_placement(placement))
+
+        graph = self.demo_graph_3path(vertical=False)
+        cost_model = CostModel(graph)
+        placement = FieldPartition(np.array([[0, 0], [0, 0], [0, 0]], dtype=np.int32)).place_interleaved()
+        self.assertEqual(0, cost_model.energy_of_placement(placement))
+
+        graph = self.demo_graph_3path(vertical=False)
+        cost_model = CostModel(graph)
+        placement = FieldPartition(np.array([[0, 0], [0, 0], [1, 0]], dtype=np.int32)).place_interleaved()
+        self.assertEqual(graph.domain().volume(), cost_model.energy_of_placement(placement))
+
+        graph = self.demo_graph_3path(vertical=False)
+        cost_model = CostModel(graph)
+        placement = FieldPartition(np.array([[0, 0], [0, 0], [1, 0]], dtype=np.int32)).place_blocked(graph.domain())
+        self.assertEqual(graph.domain().volume() * graph.domain().x_length(), cost_model.energy_of_placement(placement))
+
+        graph = self.demo_graph_3path(vertical=False)
+        cost_model = CostModel(graph)
+        placement = FieldPartition(np.array([[0, 0], [0, 0], [0, 1]], dtype=np.int32)).place_blocked(graph.domain())
+        self.assertEqual(graph.domain().volume() * graph.domain().y_length(), cost_model.energy_of_placement(placement))
 
 
 if __name__ == '__main__':

@@ -175,31 +175,36 @@ class CostModel:
 
             # Energy is distance times volume,
             # summed over each stencil element
-            energy[e.index] = np.sum(distances) * self.communication_volume_of_edge(e, placement)
+            energy[e.index] = np.sum(distances) * self.communication_volume_of_edge(e)
 
         return energy.sum()
 
-    def local_communication_volume_of_edge(self, e, placement: Placement):
+    def contention_of_edge(self, e, placement: Placement):
         """
-        The local communication volume is the number of elements communicated by each edge
-        times the height of the z column in the case of horizontal stencils
-        if the stencil is vertical, the communication volume is 0 if the edge does not cross a partition
+        The contention of the edge is the number of elements communicated through the edge.
+        This involves the height of the z column in the case of horizontal stencils.
+        If a part of a stencil has x==y==0, it only contributes to the contention if crosses a partition.
         :param placement: Placement The placement of the stencil graph
         :param e: edge in the graph
         :return: 
         """
-        # Note that [0, 0, 0] stencils do not cause communication
-        communication_volume = e[StencilGraph.STENCIL].shape.shape[0]
+        stencil_shape_xy = e[StencilGraph.STENCIL].shape[:, :2]
+
+        if placement.edge_crosses_partition(e):
+            communication_volume = stencil_shape_xy.shape[0]
+        else:
+            # Note that [0, 0, z] stencils do not cause communication when the edge does not cross the partition
+            nonzero_xy = np.sum(np.any(stencil_shape_xy != 0, axis=1))
+            communication_volume = nonzero_xy
+
         domain = self.stencil_graph.graph.vs[e.source][StencilGraph.DOMAIN]
         direction = e[StencilGraph.STENCIL].direction
         if direction == StencilDirection.PARALLEL:
             communication_volume *= domain.z_length()
-        else:
-            communication_volume *= placement.edge_crosses_partition(e)
 
         return communication_volume
 
-    def communication_volume_of_edge(self, e, placement: Placement):
+    def communication_volume_of_edge(self, e):
         # the number of elements communicated by each edge is the number of elements in the stencil shape
         # times the volume of the domain in the case of horizontal stencils
         # and a single x-y plane in the case of vertical stencils
@@ -210,7 +215,7 @@ class CostModel:
         if direction == StencilDirection.PARALLEL:
             communication_volume *= domain.volume()
         else:
-            communication_volume *= domain.xy_plane_area() * placement.edge_crosses_partition(e)
+            communication_volume *= domain.xy_plane_area()
 
         return communication_volume
 
@@ -256,7 +261,7 @@ class CostModel:
         for v in fields:
             for e in self.stencil_graph.in_edges(v):
                 assert e.target == v.index
-                contention += self.local_communication_volume_of_edge(e, placement)
+                contention += self.contention_of_edge(e, placement)
         return contention
 
     def output_contention_of_fields(self, fields, placement: Placement):
@@ -270,7 +275,7 @@ class CostModel:
         for v in fields:
             for e in self.stencil_graph.out_edges(v):
                 assert e.source == v.index
-                contention += self.local_communication_volume_of_edge(e, placement)
+                contention += self.contention_of_edge(e, placement)
         return contention
 
     def depth_of_placement(self) -> float:
