@@ -62,9 +62,9 @@ class StencilGraph:
                 vertex_label=self.graph.vs["name"],
                 vertex_size=60,
                 vertex_color="lightblue",
-                edge_color=["black" if d.direction == StencilDirection.PARALLEL else "red" if d.direction == StencilDirection.FORWARD else "blue" for d in self.graph.es[StencilGraph.STENCIL]],
+                edge_color=["#666" if d.direction == StencilDirection.PARALLEL else "red" if d.direction == StencilDirection.FORWARD else "blue" for d in self.graph.es[StencilGraph.STENCIL]],
                 edge_width=1,
                 edge_label=[f"{s.shape}" for s in self.graph.es[StencilGraph.STENCIL]],
                 bbox=(250 + len(self.graph.vs) * 60, 250 + len(self.graph.vs) * 60),
-                margin=60,
+                margin=40,
                 target=filename)
