@@ -55,15 +55,16 @@ class StencilGraph:
 
     def plot(self, filename="stencil_graph.png"):
         # Plot the stencil graph
-        layout = self.graph.layout_reingold_tilford(mode="in")
+        layout = self.graph.layout_sugiyama()
+
         ig.plot(self.graph,
                 layout=layout,
                 vertex_label=self.graph.vs["name"],
-                vertex_size=30,
+                vertex_size=60,
                 vertex_color="lightblue",
                 edge_color=["black" if d.direction == StencilDirection.PARALLEL else "red" if d.direction == StencilDirection.FORWARD else "blue" for d in self.graph.es[StencilGraph.STENCIL]],
                 edge_width=1,
                 edge_label=[f"{s.shape}" for s in self.graph.es[StencilGraph.STENCIL]],
-                bbox=(500, 500),
-                margin=20,
+                bbox=(250 + len(self.graph.vs) * 60, 250 + len(self.graph.vs) * 60),
+                margin=60,
                 target=filename)
