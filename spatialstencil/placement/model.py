@@ -175,14 +175,16 @@ class CostModel:
 
             # Energy is distance times volume,
             # summed over each stencil element
-            energy[e.index] = np.sum(distances) * self.communication_volume_of_edge(e)
+            energy[e.index] = np.sum(distances) * self.communication_volume_of_edge(e, placement)
 
         return energy.sum()
 
-    def local_communication_volume_of_edge(self, e):
+    def local_communication_volume_of_edge(self, e, placement: Placement):
         """
         The local communication volume is the number of elements communicated by each edge
         times the height of the z column in the case of horizontal stencils
+        if the stencil is vertical, the communication volume is 0 if the edge does not cross a partition
+        :param placement: Placement The placement of the stencil graph
         :param e: edge in the graph
         :return: 
         """
@@ -192,10 +194,12 @@ class CostModel:
         direction = e[StencilGraph.STENCIL].direction
         if direction == StencilDirection.PARALLEL:
             communication_volume *= domain.z_length()
+        else:
+            communication_volume *= placement.edge_crosses_partition(e)
 
         return communication_volume
 
-    def communication_volume_of_edge(self, e):
+    def communication_volume_of_edge(self, e, placement: Placement):
         # the number of elements communicated by each edge is the number of elements in the stencil shape
         # times the volume of the domain in the case of horizontal stencils
         # and a single x-y plane in the case of vertical stencils
@@ -206,7 +210,7 @@ class CostModel:
         if direction == StencilDirection.PARALLEL:
             communication_volume *= domain.volume()
         else:
-            communication_volume *= domain.xy_plane_area()
+            communication_volume *= domain.xy_plane_area() * placement.edge_crosses_partition(e)
 
         return communication_volume
 
@@ -236,14 +240,15 @@ class CostModel:
         input_contention = 0
         output_contention = 0
         for key in equivalence_classes:
-            input_contention = max(input_contention, self.input_contention_of_fields(equivalence_classes[key]))
-            output_contention = max(output_contention, self.output_contention_of_fields(equivalence_classes[key]))
+            input_contention = max(input_contention, self.input_contention_of_fields(equivalence_classes[key], placement))
+            output_contention = max(output_contention, self.output_contention_of_fields(equivalence_classes[key], placement))
 
         return max(input_contention, output_contention)
 
-    def input_contention_of_fields(self, fields):
+    def input_contention_of_fields(self, fields, placement: Placement):
         """
         The input contention of a field is the sum of the communication volumes of its incoming edges.
+        :param placement:
         :param fields: list of fields
         :return: float
         """
@@ -251,12 +256,13 @@ class CostModel:
         for v in fields:
             for e in self.stencil_graph.in_edges(v):
                 assert e.target == v.index
-                contention += self.local_communication_volume_of_edge(e)
+                contention += self.local_communication_volume_of_edge(e, placement)
         return contention
 
-    def output_contention_of_fields(self, fields):
+    def output_contention_of_fields(self, fields, placement: Placement):
         """
         The output contention of a field is the sum of the communication volume of its outgoing edges.
+        :param placement: Placement The placement of the stencil graph
         :param fields: list of fields
         :return: float
         """
@@ -264,7 +270,7 @@ class CostModel:
         for v in fields:
             for e in self.stencil_graph.out_edges(v):
                 assert e.source == v.index
-                contention += self.local_communication_volume_of_edge(e)
+                contention += self.local_communication_volume_of_edge(e, placement)
         return contention
 
     def depth_of_placement(self) -> float:

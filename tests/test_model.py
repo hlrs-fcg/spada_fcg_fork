@@ -7,6 +7,7 @@ from spatialstencil.placement.stencil import Stencil, StencilDirection
 from spatialstencil.placement.graph import StencilGraph
 import igraph as ig
 
+
 class TestModel(unittest.TestCase):
 
     def demo_graph_3path(self):
@@ -27,7 +28,6 @@ class TestModel(unittest.TestCase):
 
         stencil_graph = StencilGraph(g, domain_type, [domain_type] * 3, stencils)
         return stencil_graph
-
 
     def demo_graph_wedge(self):
         domain = np.array([[0, 0, 0], [4, 6, 10]], dtype=np.int32)
@@ -130,6 +130,24 @@ class TestModel(unittest.TestCase):
         cost_model = CostModel(graph)
         self.assertEqual(2, cost_model.depth_of_placement())
         graph.plot("test_stencil_3path.png")
+
+    def test_contention(self):
+        graph = self.demo_graph_wedge()
+        cost_model = CostModel(graph)
+        placement = FieldPartition(np.array([[0, 0], [0, 0], [0, 0]], dtype=np.int32)).place_interleaved()
+        self.assertEqual(2 * graph.domain().z_length(), cost_model.contention_of_placement(placement))
+
+        # If all stencils are forward/backward and there is a single partition, there is no contention!
+        graph = self.demo_graph_3path()
+        cost_model = CostModel(graph)
+        self.assertEqual(0, cost_model.contention_of_placement(placement))
+
+    def test_energy(self):
+        # If all stencils are forward/backward and there is a single partition, the energy is 0
+        placement = FieldPartition(np.array([[0, 0], [0, 0], [0, 0]], dtype=np.int32)).place_interleaved()
+        graph = self.demo_graph_3path()
+        cost_model = CostModel(graph)
+        self.assertEqual(0, cost_model.energy_of_placement(placement))
 
 
 if __name__ == '__main__':
