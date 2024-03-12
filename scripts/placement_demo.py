@@ -11,8 +11,7 @@ def demo_graph():
     domain = np.array([[0, 0, 0], [256, 256, 64]], dtype=np.int32)
     domain_type = FieldDomain(domain)
 
-    # The [0, 0, 0] does not cause communication
-    five_point_stencil = np.array([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0]], dtype=np.int32)
+    five_point_stencil = np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0]], dtype=np.int32)
 
     # one_point_stencil_right = np.array( [[1, 0, 0]], dtype=np.int32)
     one_point_stencil_up = np.array([[0, 1, 0]], dtype=np.int32)
@@ -86,6 +85,7 @@ def demo_costs(stencil_graph, place):
     cost_model = CostModel(stencil_graph)
     cost = cost_model.cost(place)
     print(f"Cost: {cost}")
+
 
 def main():
 
