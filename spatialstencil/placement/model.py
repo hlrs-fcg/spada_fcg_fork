@@ -1,24 +1,65 @@
 """
 Defines placements and the cost model of a placement.
 """
+from dataclasses import dataclass
+
 import numpy as np
 
 from spatialstencil.placement.graph import StencilDirection, StencilGraph
 from spatialstencil.placement.partition import Placement
 
 
+@dataclass
+class PlacementCost:
+    """
+    The cost of a placement
+    """
+    # The contention of the placement
+    contention: float
+    # The energy term of the placement
+    energy_over_links: float
+    # The distance of the placement
+    distance: float
+    # The depth of the placement
+    depth: float
+
+    # The overall cost of the placement, which is the
+    # (maximum of contention, energy_over_links + distance) + depth
+    overall: float
+
+
 class CostModel:
+    stencil_graph: StencilGraph
 
     def __init__(self, stencil_graph):
         self.stencil_graph = stencil_graph
 
-    def cost(self, placement: Placement) -> float:
+    def cost(self, placement: Placement) -> PlacementCost:
         """
-        Calculate the cost of a placement
+        Calculate the cost of a placement using the spatial cost model (with contention)
         :param placement: Placement
         :return: float
         """
-        raise NotImplementedError
+        # Calculate number of communication links (bidirectional)
+        domain = self.stencil_graph.domain()
+        number_of_partitions = placement.unique_offsets().shape[0]
+        grid_size = domain.xy_plane_area() * number_of_partitions
+        # TODO Note that for n_x by 1 or 1 by n_y domains, the number of links is smaller
+        # Note that for the energy computation, effects around the border of the domain are neglected
+        # This is an approximation that is valid for large domains
+        number_of_links = grid_size * 8
+
+        contention = self.contention_of_placement(placement)
+        energy_over_links = self.energy_of_placement(placement) / number_of_links
+        distance = self.distance_of_placement(self.edge_distance_of_placement(placement))
+        depth = self.depth_of_placement()
+        overall = max(contention, energy_over_links + distance) + depth
+
+        return PlacementCost(contention,
+                             energy_over_links,
+                             distance,
+                             depth,
+                             overall)
 
     def edge_distance_of_placement(self, placement: Placement) -> np.ndarray:
         """
@@ -48,16 +89,18 @@ class CostModel:
         For the case where the strides of two fields $u$ and $v$ are the same,
         we can compute the distance of a dependency edge $(u, v)$ as follows:
         Consider the stencil shape
-        $S(e)=\{(\delta_x^{(0)}, \delta_y^{(0)}, \delta_z^{(0)}), \dotsc\}$ and let $\delta^{(i)} =(\delta_x^{(0)}, \delta_y^{(0)})$.
-        The distance vector $\Delta(e)^{(i)}$ is given by:
-        $$\Delta(e)^{(i)} = O(v)-O(u) - I(u) \odot \delta^{(i)} \enspace .$$
-        Note that this formulation works for both horizontal and vertical stencils and that $\delta_z$ does not influence the computation.
+        S(e)= [[delta_x^(0), delta_y^(0), delta_z^(0)], ]
+        and let delta^(i) = [delta_x^(0), delta_y^(0)].
+        The distance vector Delta(e)^(i) is given by:
+        Delta(e)^(i) = O(v)-O(u) - I(u) * delta^(i)
+
+        Note that this formulation works for both horizontal and vertical stencils.
+        delta_z does not influence the computation.
 
         :param placement:
         :param e: edge in the graph
         :return: An array of distances, of size equal to the number of elements in the stencil
         """
-
         # Calculate the distance of the edge
         # and store it in the result array
         head = e.source
@@ -137,10 +180,11 @@ class CostModel:
     def local_communication_volume_of_edge(self, e):
         """
         The local communication volume is the number of elements communicated by each edge
-        # times the height of the z column in the case of horizontal stencils
-        :param e: 
+        times the height of the z column in the case of horizontal stencils
+        :param e: edge in the graph
         :return: 
         """
+        # Note that [0, 0, 0] stencils do not cause communication
         communication_volume = e[StencilGraph.STENCIL].shape.shape[0]
         domain = self.stencil_graph.graph.vs[e.source][StencilGraph.DOMAIN]
         direction = e[StencilGraph.STENCIL].direction
@@ -178,15 +222,14 @@ class CostModel:
         :param placement: Placement
         :return: float The contention of the placement
         """
-
         equivalence_classes = dict()
 
         for v in self.stencil_graph.graph.vs:
             offset = placement.offsets[v.index]
-            tuple = (offset[0], offset[1])
-            if tuple not in equivalence_classes:
-                equivalence_classes[tuple] = []
-            equivalence_classes[tuple].append(v)
+            t = (offset[0], offset[1])
+            if t not in equivalence_classes:
+                equivalence_classes[t] = []
+            equivalence_classes[t].append(v)
 
         input_contention = 0
         output_contention = 0
@@ -222,10 +265,22 @@ class CostModel:
                 contention += self.local_communication_volume_of_edge(e)
         return contention
 
-    def depth_of_placement(self, placement: Placement) -> float:
+    def depth_of_placement(self) -> float:
         """
-        Calculate the depth of a placement
-        :param placement: Placement
-        :return: float
+        Calculate the depth of the stencil graph
+        which is the longest path in the stencilGraph, where all edges have weight 1.
+        Use the topological sort of the graph to calculate the depth (using the dynamic programming approach).
+        :return: float The depth of the placement
         """
-        raise NotImplementedError
+        top_order = self.stencil_graph.graph.topological_sorting(mode="IN")
+
+        # initialize the distance array
+        max_distance = np.zeros(len(self.stencil_graph.graph.vs), dtype=np.float32)
+
+        for v in top_order:
+            # get the maximum distance of the incoming edges
+            # and add the distance of the current edge
+            for e in self.stencil_graph.out_edges(v):
+                max_distance[v] = max(max_distance[v], max_distance[e.target] + 1)
+
+        return np.max(max_distance)

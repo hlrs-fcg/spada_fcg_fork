@@ -37,6 +37,12 @@ class StencilGraph:
                 assert np.all(edge[StencilGraph.STENCIL].shape[:, 0:2] == 0)
                 assert np.all(edge[StencilGraph.STENCIL].shape[:, 2] > 0)
 
+    def domain(self) -> FieldDomain:
+        return self.graph[StencilGraph.DOMAIN]
+
+    def stencils(self) -> Sequence[Stencil]:
+        return self.graph.es[StencilGraph.STENCIL]
+
     def edges(self):
         return self.graph.es
 

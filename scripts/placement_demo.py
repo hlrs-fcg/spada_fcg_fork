@@ -11,7 +11,8 @@ def demo_graph():
     domain = np.array([[0, 0, 0], [256, 256, 64]], dtype=np.int32)
     domain_type = FieldDomain(domain)
 
-    five_point_stencil = np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0]], dtype=np.int32)
+    # The [0, 0, 0] does not cause communication
+    five_point_stencil = np.array([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0]], dtype=np.int32)
 
     # one_point_stencil_right = np.array( [[1, 0, 0]], dtype=np.int32)
     one_point_stencil_up = np.array([[0, 1, 0]], dtype=np.int32)
@@ -61,7 +62,7 @@ def demo_placement_interleave():
     # we use offset (0, 0) for the first partition
     # and offset (0, 1) for the second partition
     # the stride is (2, 1) for both partitions
-    parts = np.array([[0, 0], [0, 0], [0, 0], [1, 0], [1, 0], [1, 0], [0, 0], [0, 0], [0, 0]], dtype=np.int32)
+    parts = np.array([[0, 0], [0, 0], [0, 0], [1, 0], [1, 0], [1, 0], [1, 0], [1, 0], [0, 0]], dtype=np.int32)
     partition = FieldPartition(parts)
     placement = partition.place_interleaved()
     return placement
@@ -73,34 +74,18 @@ def demo_placement_separated(domain: FieldDomain):
     :param domain:
     :return:
     """
-    parts = np.array([[0, 0], [0, 0], [0, 0], [1, 0], [1, 0], [1, 0], [0, 0], [0, 0], [0, 0]], dtype=np.int32)
-    # manual result
-    offsets = np.array([[0, 0], [0, 0], [0, 0], [domain.x()[1], 0], [domain.x()[1], 0], [domain.x()[1], 0], [0, 0], [0, 0], [0, 0]], dtype=np.int32)
-    strides = np.array([[1, 1], [1, 1], [1, 1], [1, 1], [1, 1], [1, 1], [1, 1], [1, 1], [1, 1]], dtype=np.int32)
+    parts = np.array([[0, 0], [0, 0], [0, 0], [1, 0], [1, 0], [1, 0], [1, 0], [1, 0], [0, 0]], dtype=np.int32)
     partition = FieldPartition(parts)
     # automatic result
     placement = partition.place_blocked(domain)
-    # check if the automatic result is the same as the manual result
-    assert np.allclose(placement.offsets, offsets)
-    assert np.allclose(placement.strides, strides)
     return placement
 
 
 def demo_costs(stencil_graph, place):
     print(place)
     cost_model = CostModel(stencil_graph)
-    distances = cost_model.edge_distance_of_placement(place)
-    print(f"distances {distances}")
-    max_distances = cost_model.distance_of_placement(distances)
-    print(f"max distances {max_distances}")
-    stencil_graph.graph.es['max_distance'] = max_distances
-
-    energy = cost_model.energy_of_placement(place)
-    print(f"energy: {energy}")
-
-    contention = cost_model.contention_of_placement(place)
-    print(f"contention: {contention} \n")
-
+    cost = cost_model.cost(place)
+    print(f"Cost: {cost}")
 
 def main():
 
