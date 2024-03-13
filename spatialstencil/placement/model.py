@@ -44,14 +44,7 @@ class CostModel:
         :param placement: Placement
         :return: float
         """
-        # Calculate number of communication links (bidirectional)
-        domain = self.stencil_graph.domain()
-        number_of_partitions = placement.unique_offsets().shape[0]
-        grid_size = domain.xy_plane_area() * number_of_partitions
-        # TODO Note that for n_x by 1 or 1 by n_y domains, the number of links is smaller
-        # Note that for the energy computation, effects around the border of the domain are neglected
-        # This is an approximation that is valid for large domains
-        number_of_links = grid_size * 8
+        number_of_links = self.number_of_links_of_placement(placement)
 
         contention = self.contention_of_placement(placement)
         energy_over_links = self.energy_of_placement(placement) / number_of_links
@@ -64,6 +57,33 @@ class CostModel:
                              distance,
                              depth,
                              overall)
+
+    def number_of_links_of_placement(self, placement: Placement) -> float:
+        """
+        Calculate the number of communication links of a placement
+        Note that this is an upper bound that ignores the border of the domain
+        and ignores the communication pattern being used.
+        :param placement: Placement
+        :return: float
+        """
+        domain = self.stencil_graph.domain()
+        number_of_partitions = placement.unique_offsets().shape[0]
+        grid_size = domain.xy_plane_area() * number_of_partitions
+
+        # Start with the number of PEs as number of links
+        number_of_links = grid_size
+
+        if domain.x_length() > 1 and domain.y_length() > 1:
+            # If the domain is larger than kx1 or 1xk, there are 4 neighbors per grid point
+            number_of_links *= 4
+        else:
+            # If the domain is kx1 or 1xk, there are 2 neighbors per grid point
+            number_of_links *= 2
+
+        # Add bi-directional links
+        number_of_links *= 2
+
+        return number_of_links
 
     def edge_distance_of_placement(self, placement: Placement) -> np.ndarray:
         """
@@ -167,6 +187,9 @@ class CostModel:
         communication volume. This equals the size of the domain in the case of horizontal stencils and a single x-y
         plane in the case of vertical stencils.
         Then, we sum all edge costs to get the total energy.
+
+        Note that for the energy computation, effects around the border of the domain are neglected
+        This is an approximation that is valid for large domains (compared to the stencil size).
 
         :param placement:
         :return:
