@@ -30,7 +30,7 @@ def horizontal_diffusion():
     """
 
     # Define the domain
-    domain = FieldDomain(np.array([[0, 0, 0], [256, 256, 50]], dtype=np.int32))
+    domain = FieldDomain(np.array([[0, 0, 0], [256, 256, 80]], dtype=np.int32))
 
     # Define the stencils
     stencils = [
