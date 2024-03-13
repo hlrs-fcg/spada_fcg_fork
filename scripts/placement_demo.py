@@ -104,6 +104,14 @@ def main():
     diffusion = examples.horizontal_diffusion()
     diffusion.plot("h_diffusion.png")
 
+    advection = examples.vertical_advection_simplified()
+    parts = np.array([[0, 0]] * advection.graph.vcount(), dtype=np.int32)
+    partition = FieldPartition(parts)
+    # automatic result
+    placement = partition.place_blocked(advection.domain())
+    advection.plot("v_advection.png")
+    demo_costs(advection, placement)
+
 
 if __name__ == "__main__":
     main()
