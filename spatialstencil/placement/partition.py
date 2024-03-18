@@ -3,12 +3,16 @@ Represents a partition of the set of fields into disjoint subsets of fields.
 These fields are then placed on the same processing element.
 """
 from dataclasses import dataclass
+from math import log, ceil
 
+from hilbertcurve.hilbertcurve import HilbertCurve
 from numpy.typing import NDArray
+import numpy as np
+import igraph
+from typing import Tuple
 
 from spatialstencil.placement.graph import FieldDomain
-import numpy as np
-
+from spatialstencil.placement.mla import linearize_with_random_forest
 
 @dataclass
 class Placement:
@@ -40,6 +44,12 @@ class Placement:
 
     def unique_offsets(self) -> NDArray[np.int32]:
         return np.unique(self.offsets, axis=0)
+
+    def parts(self) -> NDArray[np.int32]:
+        unique_offsets = self.unique_offsets()
+        # Find for each offset the index of the occurrence in the unique_offsets array
+        # This is the partition number
+        return np.array([np.where(np.all(unique_offsets == offset, axis=1))[0][0] for offset in self.offsets])
 
     def edge_crosses_partition(self, e) -> float:
         """
@@ -126,3 +136,76 @@ class FieldPartition:
         strides = np.ones_like(self.part)
         offsets = self.part.copy() * np.array([x_offset_multiplier, y_offset_multiplier])
         return Placement(offsets=offsets, strides=strides)
+
+
+    @staticmethod
+    def from_mla(g: igraph.Graph,
+                 partitions_shape: Tuple[int, int],
+                 mla_func=linearize_with_random_forest) -> 'FieldPartition':
+        """
+        Partitions the fields of the graph using a minimum linear arrangement of the graph.
+        0) TODO: Merge versions of identical fields
+        1) Compute a minimum linear arrangement of the graph.
+        2) Partition the fields of the graph using the minimum linear arrangement, assigning consecutive fields to the same partition.
+        Here, each partition is identified with a single integer. There are partitions_shape[0] * partitions_shape[1] partitions.
+        3) Map the partition numbers to the 2D grid of processing elements using a hilbert curve.
+        :param g:
+        :param partitions_shape:
+        :param mla_func: function that takes a graph and a list and returns a minimum linear arrangement of the graph
+        :return:
+        """
+        # 0) TODO: Merge versions of fields
+
+        # 1)
+        order = []
+        g.vs["original_id"] = [i for i in range(g.vcount())]
+        mla_func(g, order, base_size=2)
+        order_array = np.array(order, dtype=np.int32)
+        # 2)
+        num_parts = partitions_shape[0] * partitions_shape[1]
+        partition_id = np.zeros(g.vcount(), dtype=np.int32)
+
+        # We would like to assign the number of vertices as equally as possible among the partitions
+        # to deal with rounding errors, some partitions may have one more vertex than others
+        # this will be the first k partitions (where k is the remainder of the division)
+        # TODO this assumes equal storage for each field
+        # TODO In particular merge versions of fields
+        fields_per_partition = g.vcount() // num_parts
+        remainer = g.vcount() % num_parts
+
+        # For example, if we have 6 fields and 3 partitions
+        # with order_array = [5, 4, 3, 2, 1, 0]
+        # we get partition_id = [2, 2, 1, 1, 0, 0]
+        # if order_array = [5, 1, 2, 3, 4, 0]
+        # we get partition_id = [2, 0, 1, 1, 1, 0]
+        # Now, an example with 7 fields and 3 partitions
+        # with order_array = [6, 5, 4, 3, 2, 1, 0]
+        # we get partition_id = [2, 2, 1, 1, 0, 0, 0]
+
+        partition_id[order_array] = np.concatenate([np.full(fields_per_partition + 1, i) if i < remainer else np.full(fields_per_partition, i) for i in range(num_parts)])
+        assert np.all(partition_id < num_parts)
+        assert np.all(partition_id >= 0)
+        assert np.max(partition_id) == num_parts - 1
+        assert np.min(partition_id) == 0
+
+        # 2.5) un-merge versions of fields
+
+        # 3)
+        hilbert_p = int(ceil(log(num_parts, 4)))
+        curve = HilbertCurve(hilbert_p, 2).points_from_distances(np.arange(4 ** hilbert_p))
+        curve_arr = np.asarray(curve, dtype=np.int32)
+        # choose those rows where x < partitions_shape[0] and y < partitions_shape[1]
+        curve_arr = curve_arr[curve_arr[:, 0] < partitions_shape[0]]
+        curve_arr = curve_arr[curve_arr[:, 1] < partitions_shape[1]]
+
+        assert np.all(curve_arr[:, 0] < partitions_shape[0])
+        assert np.all(curve_arr[:, 1] < partitions_shape[1])
+        assert np.all(curve_arr >= 0)
+        assert np.max(curve_arr[:, 0]) == partitions_shape[0] - 1
+        assert np.max(curve_arr[:, 1]) == partitions_shape[1] - 1
+        # hilbert property
+        assert (np.abs(np.diff(curve_arr[:, 0])) + np.abs(np.diff(curve_arr[:, 1]))).max() <= 1
+
+        partition = FieldPartition(part=curve_arr[partition_id])
+        return partition
+

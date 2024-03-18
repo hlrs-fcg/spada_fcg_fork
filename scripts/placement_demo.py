@@ -1,9 +1,14 @@
+from typing import Tuple
+
 import numpy as np
 import igraph as ig
+from numpy._typing import NDArray
 
 from scripts import examples
-from spatialstencil.placement.graph import Stencil, StencilDirection, FieldDomain, StencilGraph
-from spatialstencil.placement.model import CostModel
+from spatialstencil.placement.graph import Stencil, StencilDirection, FieldDomain, StencilGraph, PlacedStencilGraph
+from spatialstencil.placement.mla import linearize_with_ck
+from spatialstencil.placement.model import CostModel, PlacementCost
+from spatialstencil.placement.optimizer import best_of_k_placement
 from spatialstencil.placement.partition import FieldPartition
 
 
@@ -28,7 +33,8 @@ def demo_graph():
     g = ig.Graph(directed=True, n=9)
     g.add_edges([(0, 2), (1, 2), (3, 5), (4, 5), (2, 6), (5, 6), (6, 7), (7, 8), (0, 8)])
     # Set the names of the nodes
-    g.vs["name"] = ["u", "v", "w", "x", "y", "z", "a", "b", "c"]
+    names = ["u", "v", "w", "x", "y", "z", "a", "b", "c"]
+    versions = [0, 0, 0, 0, 0, 0, 0, 0, 0]
 
     # We alternate between horizontal (five point) and vertical stencils
     # so the stencils w-> a and z-> a and b-> c are vertical
@@ -49,7 +55,7 @@ def demo_graph():
                 Stencil(one_point_stencil_up, p)]
 
     # Create the StencilGraph
-    stencil_graph = StencilGraph(g, domain_type, [domain_type] * 9, stencils)
+    stencil_graph = StencilGraph(g, domain_type, [domain_type] * 9, names, versions, stencils)
 
     return stencil_graph
 
@@ -81,36 +87,22 @@ def demo_placement_separated(domain: FieldDomain):
     return placement
 
 
-def demo_costs(stencil_graph, place):
-    print(place)
-    cost_model = CostModel(stencil_graph)
-    cost = cost_model.cost(place)
-    print(f"Cost: {cost}")
-
-
 def main():
 
-    stencil_graph = demo_graph()
-    stencil_graph.plot()
-
-    print("Interleaved placement")
-    place = demo_placement_interleave()
-    demo_costs(stencil_graph, place)
-
-    print("Separated placement")
-    place2 = demo_placement_separated(stencil_graph.graph['domain'])
-    demo_costs(stencil_graph, place2)
-
+    np.random.seed(42)
     diffusion = examples.horizontal_diffusion()
-    diffusion.plot("h_diffusion.png")
+    diffusion.plot(diffusion.graph['name'] + ".png")
+    print("H diffusion Automatic placement (interleaved)")
+    g_placed, cost = best_of_k_placement(diffusion, 10, (2, 2))
+    g_placed.plot(diffusion.graph['name'] + "_auto.png")
+    print("\n")
 
+    np.random.seed(43)
     advection = examples.vertical_advection_simplified()
-    parts = np.array([[0, 0]] * advection.graph.vcount(), dtype=np.int32)
-    partition = FieldPartition(parts)
-    # automatic result
-    placement = partition.place_blocked(advection.domain())
-    advection.plot("v_advection.png")
-    demo_costs(advection, placement)
+    advection.plot(advection.graph['name'] + ".png")
+    print("V advection Automatic placement (interleaved)")
+    g_placed, cost = best_of_k_placement(advection, 10, (2, 2))
+    g_placed.plot(advection.graph['name'] + "_auto.png")
 
 
 if __name__ == "__main__":
