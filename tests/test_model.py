@@ -29,9 +29,10 @@ class TestModel(unittest.TestCase):
         g = ig.Graph(directed=True, n=3)
         g.add_edges([(0, 1), (1, 2)])
 
-        g.vs["name"] = ["u", "v", "w"]
+        names = ["u", "v", "w"]
+        versions = [0, 0, 0]
 
-        stencil_graph = StencilGraph(g, domain_type, [domain_type] * 3, stencils)
+        stencil_graph = StencilGraph(g, domain_type, [domain_type] * 3, names, versions, stencils)
         return stencil_graph
 
     def demo_graph_wedge(self):
@@ -48,7 +49,8 @@ class TestModel(unittest.TestCase):
         g = ig.Graph(directed=True, n=3)
         g.add_edges([(0, 2), (1, 2)])
         # Set the names of the nodes
-        g.vs["name"] = ["u", "v", "w"]
+        names = ["u", "v", "w"]
+        versions = [0, 0, 0]
 
         # We alternate between horizontal (five point) and vertical stencils
         # so the stencils w-> a and z-> a and b-> c are vertical
@@ -60,7 +62,7 @@ class TestModel(unittest.TestCase):
                     ]
 
         # Create the StencilGraph
-        stencil_graph = StencilGraph(g, domain_type, [domain_type] * 3, stencils)
+        stencil_graph = StencilGraph(g, domain_type, [domain_type] * 3, names, versions, stencils)
 
         stencil_graph.plot("test_stencil_wedge.png")
 
@@ -180,7 +182,6 @@ class TestModel(unittest.TestCase):
         # here it still 1 because the input and output contention is both 1
         placement = FieldPartition(np.array([[0, 0], [1, 0], [0, 0]], dtype=np.int32)).place_interleaved()
         self.assertEqual(2 * graph.domain().z_length(), cost_model.contention_of_placement(placement))
-
 
     def test_energy(self):
         # Path [0, 0, +-1] stencils

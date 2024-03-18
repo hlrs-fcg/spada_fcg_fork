@@ -73,11 +73,12 @@ def horizontal_diffusion():
         (0, 3), (3, 4), (4, 5), (0, 5), (4, 6), (5, 6), (3, 7), (7, 8), (0, 8), (7, 9), (8, 9), (0, 1), (2, 1), (6, 1), (9, 1)
     ])
     # Set field names
-    g.vs["name"] = ["in_field", "out_field", "coeff", "lap_field", "res_x", "cond_x", "flx_field", "res_y", "cond_y", "fly_field"]
+    names = ["in_field", "out_field", "coeff", "lap_field", "res_x", "cond_x", "flx_field", "res_y", "cond_y", "fly_field"]
+    versions = [0] * 10
 
     # Define the graph
-    graph = StencilGraph(g, domain, [domain] * 10, stencils)
-
+    graph = StencilGraph(g, domain, [domain] * 10, names, versions, stencils)
+    graph.graph["name"] = "horizontal_diffusion"
     return graph
 
 
@@ -236,8 +237,11 @@ def vertical_advection_simplified():
         (17, 20), (3, 20)
     ])
 
-    g.vs["name"] = ["utens_st", "u_stage", "wcon", "u_pos", "utens", "gav", "gcv", "as_", "cs", "acol", "ccol", "bcol",
-                    "correction", "dcol", "divided", "ccol_2", "dcol_2", "datacol", "data_col", "data_col_2", "utens_st_2"]
+    names = ["utens_st", "u_stage", "wcon", "u_pos", "utens", "gav", "gcv", "as_", "cs", "acol", "ccol", "bcol",
+                    "correction", "dcol", "divided", "ccol", "dcol", "datacol", "data_col", "data_col", "utens_st"]
 
-    graph = StencilGraph(g, domain, [domain] * g.vcount(), stencils)
+    versions = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1]
+
+    graph = StencilGraph(g, domain, [domain] * g.vcount(), names, versions, stencils)
+    graph.graph["name"] = "vertical_advection"
     return graph
