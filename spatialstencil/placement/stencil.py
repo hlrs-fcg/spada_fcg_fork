@@ -30,8 +30,6 @@ class Stencil:
         assert self.shape.shape[1] == 3
         assert self.shape.shape[0] > 0
         assert np.issubdtype(self.shape.dtype, np.integer)
-        assert self.is_vertical() or self.is_horizontal()
-        assert self.is_vertical() or self.direction == StencilDirection.PARALLEL
 
     def __eq__(self, other):
         return np.array_equal(self.shape, other.shape)
@@ -50,3 +48,10 @@ class Stencil:
         """
         return np.all(self.shape[:, 0:2] == 0)
 
+    def is_3d(self) -> bool:
+        """
+        A stencil is 3D if it is neither horizontal nor vertical
+        That is, it has some non-zero x, y and z values.
+        :return:
+        """
+        return not self.is_horizontal() and not self.is_vertical()

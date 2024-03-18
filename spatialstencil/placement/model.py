@@ -216,31 +216,27 @@ class CostModel:
         stencil_shape_xy = e[StencilGraph.STENCIL].shape[:, :2]
 
         if placement.edge_crosses_partition(e):
+            # If the edge crosses the partition, the entire stencil contributes to the communication
             communication_volume = stencil_shape_xy.shape[0]
         else:
             # Note that [0, 0, z] stencils do not cause communication when the edge does not cross the partition
+            # Count the number of nonzero elements in the x-y stencil shape
             nonzero_xy = np.sum(np.any(stencil_shape_xy != 0, axis=1))
             communication_volume = nonzero_xy
 
+        # Every edge sends 1 column across each stencil that crosses a partition
         domain = self.stencil_graph.graph.vs[e.source][StencilGraph.DOMAIN]
-        direction = e[StencilGraph.STENCIL].direction
-        if direction == StencilDirection.PARALLEL:
-            communication_volume *= domain.z_length()
+        communication_volume *= domain.z_length()
 
         return communication_volume
 
     def communication_volume_of_edge(self, e: igraph.Edge) -> float:
         # the number of elements communicated by each edge is the number of elements in the stencil shape
-        # times the volume of the domain in the case of horizontal stencils
-        # and a single x-y plane in the case of vertical stencils
+        # times the volume of the domain
         communication_volume = e[StencilGraph.STENCIL].shape.shape[0]
 
         domain = self.stencil_graph.graph.vs[e.source][StencilGraph.DOMAIN]
-        direction = e[StencilGraph.STENCIL].direction
-        if direction == StencilDirection.PARALLEL:
-            communication_volume *= domain.volume()
-        else:
-            communication_volume *= domain.xy_plane_area()
+        communication_volume *= domain.volume()
 
         return communication_volume
 
@@ -248,18 +244,19 @@ class CostModel:
         """
         The input contention of a field is the sum of the communication volumes of its incoming edges.
         Similarly, the output contention of a field is the sum of the communication volume of its outgoing edges.
+        The contention is the sum of input and output contention.
 
         We assume that each pair of fields is either mapped to a disjoint or the same set of PEs. Then, to compute
         the most congested PE we need to group the fields according to if they map to the same PEs. This can be done
-        by  hashing the fields into buckets based on their top-left coordinate. Then, the input contention of the
-        placed stencil program is the largest sum of input contentions of the fields in any given bucket. Proceed
-        similarly for the output contention. The contention is the maximum of input and output contention.
+        by  hashing the fields into buckets based on their top-left coordinate. Then, contention of the
+        placed stencil program is the largest contention of the fields in any given bucket.
 
         :param placement: Placement
         :return: float The contention of the placement
         """
         equivalence_classes = dict()
 
+        # TODO: Note that the order is not deterministic
         for v in self.stencil_graph.graph.vs:
             offset = placement.offsets[v.index]
             t = (offset[0], offset[1])
@@ -267,13 +264,13 @@ class CostModel:
                 equivalence_classes[t] = []
             equivalence_classes[t].append(v)
 
-        input_contention = 0
-        output_contention = 0
+        contention = 0.0
         for key in equivalence_classes:
-            input_contention = max(input_contention, self.input_contention_of_fields(equivalence_classes[key], placement))
-            output_contention = max(output_contention, self.output_contention_of_fields(equivalence_classes[key], placement))
+            input_contention = self.input_contention_of_fields(equivalence_classes[key], placement)
+            output_contention = self.output_contention_of_fields(equivalence_classes[key], placement)
+            contention = max(contention, input_contention + output_contention)
 
-        return max(input_contention, output_contention)
+        return contention
 
     def input_contention_of_fields(self, fields: Sequence[igraph.Vertex], placement: Placement) -> float:
         """
