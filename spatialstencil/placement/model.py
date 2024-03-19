@@ -50,7 +50,7 @@ class CostModel:
         contention = self.contention_of_placement(placement)
         energy_over_links = self.energy_of_placement(placement) / number_of_links
         distance = self.distance_of_placement(self.edge_distance_of_placement(placement))
-        depth = self.depth_of_placement()
+        depth = self.depth_of_placement(placement)
         overall = max(float(contention), energy_over_links + distance) + (2 * self.RAMP_TIME + 1) * depth
 
         return PlacementCost(contention,
@@ -307,7 +307,7 @@ class CostModel:
                 contention += self.contention_of_edge(e, placement)
         return contention
 
-    def depth_of_placement(self) -> int:
+    def depth_of_placement(self, placement: Placement) -> int:
         """
         Calculate the communication depth of the stencil graph
         which is the longest path in the stencilGraph, where all edges have weight 1.
@@ -323,6 +323,15 @@ class CostModel:
             # get the maximum distance of the incoming edges
             # and add the distance of the current edge
             for e in self.stencil_graph.out_edges(v):
-                max_distance[v] = max(max_distance[v], max_distance[e.target] + 1)
+                add = 0
+                stencil_shape_xy = e[StencilGraph.STENCIL].shape[:, :2]
+                if placement.edge_crosses_partition(e):
+                    # If the edge crosses the partition, there is always communication
+                    add = 1
+                elif np.sum(np.any(stencil_shape_xy != 0, axis=1), dtype=np.int32) > 0:
+                    # If the edge does not cross the partition,
+                    # there is communication if the stencil shape xy-plane is not zero
+                    add = 1
+                max_distance[v] = max(max_distance[v], max_distance[e.target] + add)
 
         return np.max(max_distance)

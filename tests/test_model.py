@@ -131,11 +131,22 @@ class TestModel(unittest.TestCase):
     def test_depth(self):
         graph = self.demo_graph_wedge()
         cost_model = CostModel(graph)
-        self.assertEqual(1, cost_model.depth_of_placement())
+        placement = FieldPartition(np.array([[0, 0], [0, 0], [1, 0]], dtype=np.int32)).place_interleaved()
+        self.assertEqual(1, cost_model.depth_of_placement(placement))
+
+        placement = FieldPartition(np.array([[0, 0], [0, 0], [0, 0]], dtype=np.int32)).place_interleaved()
+        self.assertEqual(1, cost_model.depth_of_placement(placement))
 
         graph = self.demo_graph_3path()
         cost_model = CostModel(graph)
-        self.assertEqual(2, cost_model.depth_of_placement())
+        placement = FieldPartition(np.array([[0, 0], [1, 0], [0, 0]], dtype=np.int32)).place_interleaved()
+        self.assertEqual(2, cost_model.depth_of_placement(placement))
+
+        placement = FieldPartition(np.array([[0, 0], [1, 0], [1, 0]], dtype=np.int32)).place_interleaved()
+        self.assertEqual(1, cost_model.depth_of_placement(placement))
+
+        placement = FieldPartition(np.array([[0, 0], [0, 0], [0, 0]], dtype=np.int32)).place_interleaved()
+        self.assertEqual(0, cost_model.depth_of_placement(placement))
         graph.plot("test_stencil_3path_v.png")
 
     def test_contention(self):
