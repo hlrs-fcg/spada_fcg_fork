@@ -6,6 +6,7 @@ from typing import Sequence
 
 import igraph
 import numpy as np
+from numpy._typing import NDArray
 
 from spatialstencil.placement.graph import StencilDirection, StencilGraph
 from spatialstencil.placement.partition import Placement
@@ -17,13 +18,13 @@ class PlacementCost:
     The cost of a placement
     """
     # The contention of the placement
-    contention: float
+    contention: int
     # The energy term of the placement
     energy_over_links: float
     # The distance of the placement
-    distance: float
+    distance: int
     # The depth of the placement
-    depth: float
+    depth: int
 
     # The overall cost of the placement, which is the
     # (maximum of contention, energy_over_links + distance) + (2 * RAMP_TIME + 1) * depth
@@ -50,7 +51,7 @@ class CostModel:
         energy_over_links = self.energy_of_placement(placement) / number_of_links
         distance = self.distance_of_placement(self.edge_distance_of_placement(placement))
         depth = self.depth_of_placement()
-        overall = max(contention, energy_over_links + distance) + (2 * self.RAMP_TIME + 1) * depth
+        overall = max(float(contention), energy_over_links + distance) + (2 * self.RAMP_TIME + 1) * depth
 
         return PlacementCost(contention,
                              energy_over_links,
@@ -58,7 +59,7 @@ class CostModel:
                              depth,
                              overall)
 
-    def number_of_links_of_placement(self, placement: Placement) -> float:
+    def number_of_links_of_placement(self, placement: Placement) -> int:
         """
         Calculate the number of communication links of a placement
         Note that this is an upper bound that ignores the border of the domain
@@ -85,8 +86,9 @@ class CostModel:
 
         return number_of_links
 
-    def edge_distance_of_placement(self, placement: Placement) -> np.ndarray:
+    def edge_distance_of_placement(self, placement: Placement) -> NDArray[np.int64]:
         """
+        TODO this could be a method of placement?
         Calculate the distance of each edge for a given placement.
         :param placement: Placement
         :return: for each edge, its distance under the placement
@@ -94,7 +96,7 @@ class CostModel:
         # Iterate over all edges in order
         # For each edge, calculate the distance
         # Return the distances as a numpy array
-        distances = np.zeros(len(self.stencil_graph.edges()), dtype=np.float32)
+        distances = np.zeros(len(self.stencil_graph.edges()), dtype=np.int64)
         for e in self.stencil_graph.edges():
             delta = self.distance_vector_of_edge(placement, e)
             # Calculate the l1 norm of each row
@@ -105,8 +107,9 @@ class CostModel:
         return distances
 
     @staticmethod
-    def distance_vector_of_edge(placement: Placement, e: igraph.Edge) -> np.ndarray:
+    def distance_vector_of_edge(placement: Placement, e: igraph.Edge) -> NDArray[np.int64]:
         """
+        TODO This could be a method of placement
         Calculate the distance vector of an edge for a given placement.
         This is the distance of each element of the stencil shape of the edge.
 
@@ -151,10 +154,11 @@ class CostModel:
 
         # Now, we compute the Manhattan distance across axis 1
         # To get a 1D array
-        distances = np.sum(np.abs(delta), axis=1)
+        distances = np.sum(np.abs(delta), axis=1, dtype=np.int64)
+        assert np.all(distances >= 0)
         return distances
 
-    def distance_of_placement(self, distances: np.ndarray) -> float:
+    def distance_of_placement(self, distances: NDArray[np.integer]) -> int:
         """
         Calculate the maximum distance of a placement (longest path in the graph, weighted by distances)
 
@@ -170,7 +174,7 @@ class CostModel:
         top_order = self.stencil_graph.graph.topological_sorting(mode="IN")
 
         # initialize the distance array
-        max_distance = np.zeros(len(self.stencil_graph.graph.vs), dtype=np.float32)
+        max_distance: NDArray[np.int64] = np.zeros(len(self.stencil_graph.graph.vs), dtype=np.int64)
 
         for v in top_order:
             # get the maximum distance of the incoming edges
@@ -178,9 +182,9 @@ class CostModel:
             for e in self.stencil_graph.graph.vs[v].out_edges():
                 max_distance[v] = max(max_distance[v], max_distance[e.target] + distances[e.index])
 
-        return np.max(max_distance)
+        return np.max(max_distance).item()
 
-    def energy_of_placement(self, placement: Placement) -> float:
+    def energy_of_placement(self, placement: Placement) -> int:
         """
         For the case where the strides of every field connected by a dependency edge is the same, we use the same
         distance vector computation and sum all the contributions. Each distance vector is multiplied by the
@@ -204,8 +208,9 @@ class CostModel:
 
         return energy.sum()
 
-    def contention_of_edge(self, e: igraph.Edge, placement: Placement) -> float:
+    def contention_of_edge(self, e: igraph.Edge, placement: Placement) -> int:
         """
+        TODO This should be a method of placement
         The contention of the edge is the number of elements communicated through the edge.
         This involves the height of the z column in the case of horizontal stencils.
         If a part of a stencil has x==y==0, it only contributes to the contention if crosses a partition.
@@ -221,7 +226,7 @@ class CostModel:
         else:
             # Note that [0, 0, z] stencils do not cause communication when the edge does not cross the partition
             # Count the number of nonzero elements in the x-y stencil shape
-            nonzero_xy = np.sum(np.any(stencil_shape_xy != 0, axis=1))
+            nonzero_xy = np.sum(np.any(stencil_shape_xy != 0, axis=1), dtype=np.int32)
             communication_volume = nonzero_xy
 
         # Every edge sends 1 column across each stencil that crosses a partition
@@ -230,7 +235,8 @@ class CostModel:
 
         return communication_volume
 
-    def communication_volume_of_edge(self, e: igraph.Edge) -> float:
+    def communication_volume_of_edge(self, e: igraph.Edge) -> int:
+        # TODO Move to Placement
         # the number of elements communicated by each edge is the number of elements in the stencil shape
         # times the volume of the domain
         communication_volume = e[StencilGraph.STENCIL].shape.shape[0]
@@ -240,7 +246,7 @@ class CostModel:
 
         return communication_volume
 
-    def contention_of_placement(self, placement: Placement) -> float:
+    def contention_of_placement(self, placement: Placement) -> int:
         """
         The input contention of a field is the sum of the communication volumes of its incoming edges.
         Similarly, the output contention of a field is the sum of the communication volume of its outgoing edges.
@@ -256,7 +262,8 @@ class CostModel:
         """
         equivalence_classes = dict()
 
-        # TODO: Note that the order is not deterministic
+        # Note that even though the order is not deterministic the result still is because
+        # of the use of integers for the contention
         for v in self.stencil_graph.graph.vs:
             offset = placement.offsets[v.index]
             t = (offset[0], offset[1])
@@ -264,7 +271,7 @@ class CostModel:
                 equivalence_classes[t] = []
             equivalence_classes[t].append(v)
 
-        contention = 0.0
+        contention = 0
         for key in equivalence_classes:
             input_contention = self.input_contention_of_fields(equivalence_classes[key], placement)
             output_contention = self.output_contention_of_fields(equivalence_classes[key], placement)
@@ -272,35 +279,35 @@ class CostModel:
 
         return contention
 
-    def input_contention_of_fields(self, fields: Sequence[igraph.Vertex], placement: Placement) -> float:
+    def input_contention_of_fields(self, fields: Sequence[igraph.Vertex], placement: Placement) -> int:
         """
         The input contention of a field is the sum of the communication volumes of its incoming edges.
         :param placement:
         :param fields: list of fields
-        :return: float
+        :return: int
         """
-        contention = 0.0
+        contention = 0
         for v in fields:
             for e in self.stencil_graph.in_edges(v):
                 assert e.target == v.index
                 contention += self.contention_of_edge(e, placement)
         return contention
 
-    def output_contention_of_fields(self, fields: Sequence[igraph.Vertex], placement: Placement) -> float:
+    def output_contention_of_fields(self, fields: Sequence[igraph.Vertex], placement: Placement) -> int:
         """
         The output contention of a field is the sum of the communication volume of its outgoing edges.
         :param placement: Placement The placement of the stencil graph
         :param fields: list of fields
-        :return: float
+        :return: int
         """
-        contention = 0.0
+        contention = 0
         for v in fields:
             for e in self.stencil_graph.out_edges(v):
                 assert e.source == v.index
                 contention += self.contention_of_edge(e, placement)
         return contention
 
-    def depth_of_placement(self) -> float:
+    def depth_of_placement(self) -> int:
         """
         Calculate the communication depth of the stencil graph
         which is the longest path in the stencilGraph, where all edges have weight 1.
@@ -310,7 +317,7 @@ class CostModel:
         top_order = self.stencil_graph.graph.topological_sorting(mode="IN")
 
         # initialize the distance array
-        max_distance = np.zeros(len(self.stencil_graph.graph.vs), dtype=np.float32)
+        max_distance = np.zeros(len(self.stencil_graph.graph.vs), dtype=np.int32)
 
         for v in top_order:
             # get the maximum distance of the incoming edges
