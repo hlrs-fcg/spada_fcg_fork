@@ -2,10 +2,11 @@ from typing import Tuple
 
 import numpy as np
 import igraph as ig
-from numpy._typing import NDArray
+from numpy.typing import NDArray
 
 from scripts import examples
-from spatialstencil.placement.graph import Stencil, StencilDirection, FieldDomain, StencilGraph, PlacedStencilGraph
+from spatialstencil.placement.graph import Stencil, StencilDirection, FieldDomain, StencilGraph
+from spatialstencil.placement.placed_graph import PlacedStencilGraph
 from spatialstencil.placement.mla import linearize_with_ck
 from spatialstencil.placement.model import CostModel, PlacementCost
 from spatialstencil.placement.optimizer import best_of_k_placement
@@ -92,14 +93,16 @@ def main():
     np.random.seed(42)
     diffusion = examples.horizontal_diffusion()
     diffusion.plot(diffusion.graph['name'] + ".png")
+    diffusion.merge_versions_of_fields().plot(diffusion.graph['name'] + "_merged.png")
     print("H diffusion Automatic placement (interleaved)")
-    g_placed, cost = best_of_k_placement(diffusion, 10, (2, 2))
+    g_placed, cost = best_of_k_placement(diffusion, 10, (2, 1))
     g_placed.plot(diffusion.graph['name'] + "_auto.png")
     print("\n")
 
     np.random.seed(43)
     advection = examples.vertical_advection_simplified()
     advection.plot(advection.graph['name'] + ".png")
+    advection.merge_versions_of_fields().plot(advection.graph['name'] + "_merged.png")
     print("V advection Automatic placement (interleaved)")
     g_placed, cost = best_of_k_placement(advection, 10, (2, 2))
     g_placed.plot(advection.graph['name'] + "_auto.png")

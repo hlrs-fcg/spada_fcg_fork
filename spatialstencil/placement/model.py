@@ -6,10 +6,10 @@ from typing import Sequence
 
 import igraph
 import numpy as np
-from numpy._typing import NDArray
+from numpy.typing import NDArray
 
-from spatialstencil.placement.graph import StencilDirection, StencilGraph
-from spatialstencil.placement.partition import Placement
+from spatialstencil.placement.graph import StencilGraph
+from spatialstencil.placement.placement import Placement
 
 
 @dataclass
@@ -88,7 +88,6 @@ class CostModel:
 
     def edge_distance_of_placement(self, placement: Placement) -> NDArray[np.int64]:
         """
-        TODO this could be a method of placement?
         Calculate the distance of each edge for a given placement.
         :param placement: Placement
         :return: for each edge, its distance under the placement
@@ -98,64 +97,12 @@ class CostModel:
         # Return the distances as a numpy array
         distances = np.zeros(len(self.stencil_graph.edges()), dtype=np.int64)
         for e in self.stencil_graph.edges():
-            delta = self.distance_vector_of_edge(placement, e)
+            delta = placement.distance_vector_of_edge(e)
             # Calculate the l1 norm of each row
             # then take the maximum across the columns
             # to get the maximum distance of the edge
             distances[e.index] = np.max(delta)
 
-        return distances
-
-    @staticmethod
-    def distance_vector_of_edge(placement: Placement, e: igraph.Edge) -> NDArray[np.int64]:
-        """
-        TODO This could be a method of placement
-        Calculate the distance vector of an edge for a given placement.
-        This is the distance of each element of the stencil shape of the edge.
-
-        For the case where the strides of two fields $u$ and $v$ are the same,
-        we can compute the distance of a dependency edge $(u, v)$ as follows:
-        Consider the stencil shape
-        S(e)= [[delta_x^(0), delta_y^(0), delta_z^(0)], ]
-        and let delta^(i) = [delta_x^(0), delta_y^(0)].
-        The distance vector Delta(e)^(i) is given by:
-        Delta(e)^(i) = O(v)-O(u) - I(u) * delta^(i)
-
-        Note that this formulation works for both horizontal and vertical stencils.
-        delta_z does not influence the computation.
-
-        :param placement:
-        :param e: edge in the graph
-        :return: An array of distances, of size equal to the number of elements in the stencil
-        """
-        # Calculate the distance of the edge
-        # and store it in the result array
-        head = e.source
-        tail = e.target
-
-        # Get the offsets and strides of the fields
-        offset_head = placement.offsets[head]
-        offset_tail = placement.offsets[tail]
-        stride_head = placement.strides[head]
-
-        # Assert strides of head and tail match
-        assert np.array_equal(placement.strides[tail], stride_head)
-
-        # Get the stencil shape [(delta_x, delta_y)] of the edge
-        delta_xy = e[StencilGraph.STENCIL].shape[:, :2]
-
-        # Calculate the distance vector
-        # Note that the offset and stride are 1x2 arrays
-        # and the delta is a kx2 array
-        # The result is a kx2 array
-        # this works by broadcasting the 1x2 arrays to kx2 arrays
-        # and then element-wise multiplication
-        delta = offset_tail - offset_head - stride_head * delta_xy
-
-        # Now, we compute the Manhattan distance across axis 1
-        # To get a 1D array
-        distances = np.sum(np.abs(delta), axis=1, dtype=np.int64)
-        assert np.all(distances >= 0)
         return distances
 
     def distance_of_placement(self, distances: NDArray[np.integer]) -> int:
@@ -200,51 +147,13 @@ class CostModel:
         """
         energy = np.zeros_like(self.stencil_graph.edges())
         for e in self.stencil_graph.edges():
-            distances = self.distance_vector_of_edge(placement, e)
+            distances = placement.distance_vector_of_edge(e)
 
             # Energy is distance times volume,
             # summed over each stencil element
-            energy[e.index] = np.sum(distances) * self.communication_volume_of_edge(e)
+            energy[e.index] = np.sum(distances) * placement.communication_volume_of_edge(self.stencil_graph, e)
 
         return energy.sum()
-
-    def contention_of_edge(self, e: igraph.Edge, placement: Placement) -> int:
-        """
-        TODO This should be a method of placement
-        The contention of the edge is the number of elements communicated through the edge.
-        This involves the height of the z column in the case of horizontal stencils.
-        If a part of a stencil has x==y==0, it only contributes to the contention if crosses a partition.
-        :param placement: Placement The placement of the stencil graph
-        :param e: edge in the graph
-        :return: 
-        """
-        stencil_shape_xy = e[StencilGraph.STENCIL].shape[:, :2]
-
-        if placement.edge_crosses_partition(e):
-            # If the edge crosses the partition, the entire stencil contributes to the communication
-            communication_volume = stencil_shape_xy.shape[0]
-        else:
-            # Note that [0, 0, z] stencils do not cause communication when the edge does not cross the partition
-            # Count the number of nonzero elements in the x-y stencil shape
-            nonzero_xy = np.sum(np.any(stencil_shape_xy != 0, axis=1), dtype=np.int32)
-            communication_volume = nonzero_xy
-
-        # Every edge sends 1 column across each stencil that crosses a partition
-        domain = self.stencil_graph.graph.vs[e.source][StencilGraph.DOMAIN]
-        communication_volume *= domain.z_length()
-
-        return communication_volume
-
-    def communication_volume_of_edge(self, e: igraph.Edge) -> int:
-        # TODO Move to Placement
-        # the number of elements communicated by each edge is the number of elements in the stencil shape
-        # times the volume of the domain
-        communication_volume = e[StencilGraph.STENCIL].shape.shape[0]
-
-        domain = self.stencil_graph.graph.vs[e.source][StencilGraph.DOMAIN]
-        communication_volume *= domain.volume()
-
-        return communication_volume
 
     def contention_of_placement(self, placement: Placement) -> int:
         """
@@ -290,7 +199,7 @@ class CostModel:
         for v in fields:
             for e in self.stencil_graph.in_edges(v):
                 assert e.target == v.index
-                contention += self.contention_of_edge(e, placement)
+                contention += placement.contention_of_edge(self.stencil_graph, e)
         return contention
 
     def output_contention_of_fields(self, fields: Sequence[igraph.Vertex], placement: Placement) -> int:
@@ -304,7 +213,7 @@ class CostModel:
         for v in fields:
             for e in self.stencil_graph.out_edges(v):
                 assert e.source == v.index
-                contention += self.contention_of_edge(e, placement)
+                contention += placement.contention_of_edge(self.stencil_graph, e)
         return contention
 
     def depth_of_placement(self, placement: Placement) -> int:

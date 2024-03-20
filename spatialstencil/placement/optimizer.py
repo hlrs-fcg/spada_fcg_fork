@@ -1,8 +1,21 @@
 from typing import Tuple
+import igraph
+import numpy as np
 
-from spatialstencil.placement.graph import StencilGraph, PlacedStencilGraph
+from spatialstencil.placement.graph import StencilGraph
+from spatialstencil.placement.placed_graph import PlacedStencilGraph
 from spatialstencil.placement.model import PlacementCost, CostModel
 from spatialstencil.placement.partition import FieldPartition
+
+
+def color_graph(g: StencilGraph):
+    """
+    Computes a coloring of the graph g (ignores the edge directions) using a greedy algorithm.
+    Converts to networks and uses the networkx algorithm.
+    :param g:
+    :return:
+    """
+    pass
 
 
 def best_of_k_placement(g: StencilGraph, k: int, shape: Tuple[int, int]) -> Tuple[PlacedStencilGraph, PlacementCost]:
@@ -19,8 +32,15 @@ def best_of_k_placement(g: StencilGraph, k: int, shape: Tuple[int, int]) -> Tupl
     best_placement = None
     best_distances = None
     cost_model = CostModel(g)
+    merged_graph = g.merge_versions_of_fields()
     for i in range(k):
-        partition_auto = FieldPartition.from_mla(g.graph, shape)
+        partition_merged = FieldPartition.from_mla(merged_graph.graph, shape)
+        # map the partition into a partition of the original graph
+        partition_auto_pt = np.zeros((g.graph.vcount(), 2), dtype=np.int32)
+        for j in range(g.graph.vcount()):
+            partition_auto_pt[j, :] = partition_merged.part[merged_graph.original_field_to_merged[j]]
+        partition_auto = FieldPartition(part=partition_auto_pt)
+
         place_auto = partition_auto.place_interleaved()
         cost = cost_model.cost(place_auto)
         distances = cost_model.edge_distance_of_placement(place_auto)

@@ -13,57 +13,8 @@ from typing import Tuple
 
 from spatialstencil.placement.graph import FieldDomain
 from spatialstencil.placement.mla import linearize_with_random_forest
+from spatialstencil.placement.placement import Placement
 
-@dataclass
-class Placement:
-    """
-    A placement is a mapping from fields / vertices of a StencilGraph
-    to offsets and strides in the domain of the device.
-    each offset and stride is represented as 1x2 arrays of integers.
-
-    To place a stencil graph on our 2-dimensional PE grid, each field $v$ is associated with:
-        * An offset O(v)=(O_x(v), O_y(v))
-        * A stride I(v)=(I_x(v), I_y(v))
-    We place each cell of a field $v$ onto a PE by placing the $(j, k)$-th column
-    of v at position O(v) + (j * I_x(v) , k * I_y(v) ).
-
-    # column 0 -> x, column 1 -> y
-    """
-    offsets: NDArray[np.int32]
-    strides: NDArray[np.int32]
-
-    def __post_init__(self):
-        assert self.offsets.shape[1] == 2
-        assert self.strides.shape[1] == 2
-        assert self.offsets.shape[0] == self.strides.shape[0]
-        assert np.issubdtype(self.offsets.dtype, np.integer)
-        assert np.issubdtype(self.strides.dtype, np.integer)
-
-    def __eq__(self, other):
-        return np.array_equal(self.offsets, other.offsets) and np.array_equal(self.strides, other.strides)
-
-    def unique_offsets(self) -> NDArray[np.int32]:
-        return np.unique(self.offsets, axis=0)
-
-    def parts(self) -> NDArray[np.int32]:
-        unique_offsets = self.unique_offsets()
-        # Find for each offset the index of the occurrence in the unique_offsets array
-        # This is the partition number
-        return np.array([np.where(np.all(unique_offsets == offset, axis=1))[0][0] for offset in self.offsets])
-
-    def edge_crosses_partition(self, e) -> float:
-        """
-        Calculate the weight of an edge in the depth calculation.
-        An edge that crosses a partition has weight 1, an edge that does not cross a partition has weight 0.
-        :param e: edge in the graph
-        :param placement: Placement
-        :return: float   1 if the edge crosses a partition, 0 otherwise
-        """
-        head = e.source
-        tail = e.target
-        offset_head = self.offsets[head]
-        offset_tail = self.offsets[tail]
-        return 1.0 if not np.array_equal(offset_head, offset_tail) else 0.0
 
 
 @dataclass
