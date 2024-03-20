@@ -117,15 +117,11 @@ class StencilGraph:
                 # because we insert the names in the order of appearance
                 original_index_to_merged_field_index[i] = len(field_name_to_indices) - 1
 
-        print(field_name_to_indices)
-        print(original_index_to_merged_field_index)
         # sort the dictionary by the first appearance of the field name (i.e. the first index)
         field_name_to_indices_sorted = sorted(field_name_to_indices.items(), key=lambda item: item[1][0])
-        print(field_name_to_indices_sorted)
         # We now get a list of tuples (field_name, [indices])
         merged_to_original_field: List[(str, List[int])] = [(i, indices)
                                                             for i, indices in field_name_to_indices_sorted]
-        print(merged_to_original_field)
 
         # then create a new graph with the merged fields
         # and create a mapping from the original fields to the merged fields (and back)
