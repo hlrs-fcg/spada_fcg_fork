@@ -16,7 +16,7 @@ class StencilGraph:
                  domain: FieldDomain,
                  field_domains: Sequence[FieldDomain],
                  field_names: Sequence[str],
-                 field_versions: Sequence[int],
+                 field_versions: Optional[Sequence[int]] = None,
                  stencils: Sequence[Stencil]
                  ) -> None:
 
