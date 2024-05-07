@@ -26,7 +26,7 @@ class StencilGraph:
         assert len(field_names) == len(graph.vs)
         assert len(field_versions) == len(graph.vs)
         self.graph.vs[StencilGraph.FIELD_NAME] = field_names
-        self.graph.vs[StencilGraph.FIELD_VERSION] = field_versions
+        self.graph.vs[StencilGraph.FIELD_VERSION] = field_versions or ([0] * len(field_names))
         self.graph.vs[StencilGraph.DOMAIN] = field_domains
         self.graph.es[StencilGraph.STENCIL] = stencils
         self.graph[StencilGraph.DOMAIN] = domain
