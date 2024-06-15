@@ -39,7 +39,7 @@ identifier : "%" suffix_id
 enum_literal : schedule_type
 
 // Language built-in types
-?dim : integer_literal | unknown_dim_literal
+?dim : posneg_integer_literal | unknown_dim_literal
 dim_list: dim ("," dim)*
 extent_tuple : "(" dim ("," dim)* ")"
 extent_tuple_list : extent_tuple ("," extent_tuple)*
@@ -49,6 +49,7 @@ field_type : "field" "<" domain_type "," extent_type "," standard_type ">"
 interval_type : "interval" "<" (dim | "None") "," (dim | "None") ">"
 multi_interval_type : "[" interval_type ("," interval_type)* "]"
 ?builtin_type : field_type | domain_type | extent_type | interval_type | multi_interval_type
+?field_or_scalar_type : field_type | standard_type
 
 ////////////////////////////////////////////////////
 // Operators and operator precedence
@@ -108,7 +109,7 @@ arguments: test ("," test)*
 // Common syntactic elements
 id_list : identifier ("," identifier)*
 params : "(" id_list? ")"
-type_list : field_type ("," field_type)*
+type_list : field_or_scalar_type ("," field_or_scalar_type)*
 
 attr : bare_id "=" (identifier | constant_literal | enum_literal | builtin_type)
 attributes : "{" attr? ("," attr)* "}"
@@ -127,7 +128,7 @@ statement : id_list "=" "stencil.statement" params attributes ":" type_list "->"
 subscript_slice : posneg_integer_literal ("," posneg_integer_literal)*
 value_expr : test     // Basic value type. See operator precedence for more information
 assign_expr : id_list "=" value_expr (";")?
-return_expr : "return" value_expr (";")?
+return_expr : "return" value_expr  ("," value_expr)* (";")?
 ?statement_contents : assign_expr | return_expr
 
 // TODO: Where should "stencil.if" reside?
