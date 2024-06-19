@@ -46,7 +46,7 @@ extent_tuple_list : extent_tuple ("," extent_tuple)*
 extent_type : "extent" "<" extent_tuple_list ">"
 domain_type : "domain" "<" dim_list ">"
 field_type : "field" "<" domain_type "," extent_type "," standard_type ">"
-interval_type : "interval" "<" (dim | "None") "," (dim | "None") ">"
+interval_type : "interval" "<" (dim | "END") "," (dim | "END") ">"
 multi_interval_type : "[" interval_type ("," interval_type)* "]"
 ?builtin_type : field_type | domain_type | extent_type | interval_type | multi_interval_type
 ?field_or_scalar_type : field_type | standard_type
