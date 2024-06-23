@@ -243,3 +243,17 @@ def hdiffsmag(arg0: Field3D, arg1: Field3D, arg2: Field3D, arg3: Field3D,
         i43 = arg1[0, 0, 0]
         i44 = i41 * i42
         arg4 = i44 + i43
+
+
+def uvbke(arg0: Field3D, arg1: Field3D, arg2: Field3D, arg3: Field3D,
+          arg4: Field3D, arg5: Field3D):
+    with computation(PARALLEL), interval(...):
+        i16 = (arg1[-1, 0, 0] + arg1[0, 0, 0]) * arg2[0, 0, 0]
+        i19 = arg0[0, -1, 0] + arg0[0, 0, 0]
+        i21 = 112.5 * (i19 - i16)
+        arg4 = arg3[0, 0, 0] * i21
+
+        i16 = (arg0[0, -1, 0] + arg0[0, 0, 0]) * arg2[0, 0, 0]
+        i19 = arg1[-1, 0, 0] + arg1[0, 0, 0]
+        i21 = 112.5 * (i19 - i16)
+        arg5 = arg3[0, 0, 0] * i21
