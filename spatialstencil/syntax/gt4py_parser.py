@@ -150,7 +150,10 @@ if __name__ == '__main__':
         out = out[sys.argv[2]]
         print(out.pretty())
     else:
+        from spatialstencil.syntax.gt4py_to_logical_ir import lower_gt4py_to_logical_ir
+
         for fname, func in out.items():
             print('\n====================================')
             print('Function', fname)
+            lower_gt4py_to_logical_ir(func)
             print(func.pretty())

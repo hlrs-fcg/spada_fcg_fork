@@ -31,7 +31,6 @@ def vertical_advection(
     wcon: Field3D,
     u_pos: Field3D,
     utens: Field3D,
-    *,
     dtr_stage: float,
 ):
     with computation(FORWARD):
