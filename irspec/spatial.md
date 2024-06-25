@@ -46,6 +46,118 @@ The `x` axis increased towards the east, and the `y` axis increases towards the 
 
 ### Vertical Advection
 
+
+```
+kernel vadv(f32[I, J, K] utens_stage,
+            f32[I, J, K] readonly u_stage,
+            f32[I, J, K] readonly wcon,
+            f32[I, J, K] readonly u_pos,
+            f32[I, J, K] readonly utens,
+            f32[I, J, K] writeonly datacol,       
+            f32 readonly dtr_stage,
+            f32 readonly BET_M,
+            f32 readonly BET_P) {
+  
+  ////
+  // Data placement (I/O)
+
+  place i, j in [0:I, 0:J] {
+      f32[K] utens_stage[i, j, 0:K];
+      f32[K] u_stage[i, j, 0:K];
+      f32[K] wcon[i, j, 0:K];
+      f32[K] u_pos[i, j, 0:K];
+      f32[K] utens[i, j, 0:K];
+      f32[K] datacol[i, j, 0:K];
+  }
+  
+  
+  ////
+  // Computation and communication
+  
+  // Set up communication streams
+  // The only communication is for wcon, which is sent to the west
+  
+  stream westwards = relative_stream(-1, 0);
+  
+  map spatial i, j in [0, 0:J] {
+    // Boundary condition
+    // ...
+    on_receive(westwards, K) -> k, x {
+      // ...
+    }
+  }
+  
+  map spatial i, j in [1:I, 0:J] {
+  
+      # Read the input fields to local fields (memcopy)
+      f32[K] wcon_l <- wcon;
+      f32[K] ustage_l <- u_stage;
+      f32[K] u_pos_l <- u_pos;
+      f32[K] utens_l <- utens;
+      f32[K] utens_stage_l <- utens_stage;
+      
+      # Local variables
+      f32[K] gav;
+      f32[K] gcv;
+      f32[K] as_;
+      f32[K] cs;
+      f32[K] acol;
+      f32[K] ccol;
+      f32[K] bcol;
+      f32[K] correction_term;
+      f32[K] dcol;
+      f32[K] ccol_2;
+      f32[K] dcol_2;
+      f32[K] datacol_l;
+      
+      send(wcon_local, westwards);
+  
+      completion wcon_comp_1 = on_receive(westwards, 1) -> k, x {
+          gav[k] = -0.25 * x * wcon_l[k];
+          gcv[k] = 0
+      }
+  
+      after (wcon_comp_1) {
+        completion wcon_comp_2 = on_receive(westwards, K-1) -> k, x {
+            gav[k] = -0.25 * x * wcon_l[k];
+            gcv[k-1] = 0.25 * x * wcon_l[k];
+            as_[k] = gav[k] * BET_M;
+            cs[k] = gcv[k] * BET_M;
+            acol[k] = gav[k] * BET_P;
+            ccol[k] = gcv[k] * BET_P;
+            bcol[k] = dtr_stage - acol[k] - ccol[k];
+  
+            correction_term[k] = -as_[k] * (u_stage_l[k-1] - u_stage_l[k]) - cs[k] * (u_stage_l[k+1] - u_stage_l[k]);
+            dcol[k] = dtr_stage * u_pos_l[k] + utens_l[k] + utens_stage_l[k] + correction_term[k];
+            
+            // Thomas forward
+            f32 divided = 1.0 / (bcol[k] - ccol[k-1] * acol[k]);
+            ccol_2[k] = ccol[k] * divided;
+            dcol_2[k] = (dcol[k] - dcol[k-1] * acol[k]) * divided;
+        }
+   
+        after (wcon_comp_2) {
+            // Boundary condition (k=K-1) not shown
+            // ...
+            // Main backwards loop          
+            for k in [K-1:0] {
+              datacol_l[k] = dcol_2[k] - ccol_2[k] * datacol_l[k+1];
+              utens_stage_l[k] = dtr_stage * (datacol_l[k] - u_pos_l[k]);
+            }
+            
+            utens_stage_l -> utens_stage;
+            datacol_l -> datacol;
+        }
+        
+      }   
+  }
+
+}
+
+
+```
+
+
 ### 2D Laplacian
 
 ```
