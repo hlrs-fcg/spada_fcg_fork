@@ -103,22 +103,23 @@ map spatial i, j in [1:I+1, 1:J+1] {
     completion f = map k in [0:K] {
         local_result[k] = local_input[k] * 4;
     }
-    wait(f);
 
-    send(local_input, westwards);
-    completion w = on_receive(westwards, K) -> k, x {
-        local_result[k] -= x;
+    after (f) {
+      send(local_input, westwards);
+      completion w = on_receive(westwards, K) -> k, x {
+          local_result[k] -= x;
+      }
+  
+      send(local_input, eastwards);
+      completion e = on_receive(eastwards, K) -> k, x {
+          local_result[k] -= x;
+      }
+      // ...
+      
+      after (w, e, n, s) {  
+        // Streaming write to output field
+        local_result -> lap_field;
+      }
     }
-
-    send(local_input, eastwards);
-    completion e = on_receive(eastwards, K) -> k, x {
-        local_result[k] -= x;
-    }
-    // ...
-
-    wait_all(w, e, n, s);
-
-    // Streaming write to output field
-    local_result -> lap_field;
 }
 ```
