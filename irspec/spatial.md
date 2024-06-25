@@ -48,15 +48,15 @@ The `x` axis increased towards the east, and the `y` axis increases towards the 
 
 
 ```
-kernel vadv(f32[I, J, K] utens_stage,
-            f32[I, J, K] readonly u_stage,
-            f32[I, J, K] readonly wcon,
-            f32[I, J, K] readonly u_pos,
-            f32[I, J, K] readonly utens,
-            f32[I, J, K] writeonly datacol,       
-            f32 readonly dtr_stage,
-            f32 readonly BET_M,
-            f32 readonly BET_P) {
+kernel vadv<I,J,K>(f32[I, J, K] utens_stage,
+                  f32[I, J, K] readonly u_stage,
+                  f32[I, J, K] readonly wcon,
+                  f32[I, J, K] readonly u_pos,
+                  f32[I, J, K] readonly utens,
+                  f32[I, J, K] writeonly datacol,       
+                  f32 constant dtr_stage,
+                  f32 constant BET_M,
+                  f32 constant BET_P) {
   
   ////
   // Data placement (I/O)
@@ -69,8 +69,7 @@ kernel vadv(f32[I, J, K] utens_stage,
       f32[K] utens[i, j, 0:K];
       f32[K] datacol[i, j, 0:K];
   }
-  
-  
+
   ////
   // Computation and communication
   
@@ -161,77 +160,78 @@ kernel vadv(f32[I, J, K] utens_stage,
 ### 2D Laplacian
 
 ```
-////////////////////////////////
-// Data placement (I/O)
-
-f32[I+2, J+2, K] input in_field;
-f32[I, J, K] output lap_field;
-
-place i, j in [0:I+2, 0:J+2] {
-    f32 in_field[i, j, 0:K];
-}
-
-place i, j in [1:I+1, 1:J+1] {
-    f32 lap_field[i-1, j-1, 0:K];
-}
-
-
-////////////////////////////////
-// Computation and communication
-
-
-// Set up communication streams
-// Communication streams as a first-class concept
-stream eastwards = relative_stream(1, 0);
-stream westwards = relative_stream(-1, 0);
-stream northwards = relative_stream(0, -1);
-stream southwards = relative_stream(0, 1);
-
-// Edge senders
-map spatial i, j in [0, 0:J] {
-    // Streaming read from in_field
-    f32[K] tosend <- in_field;
+kernel laplacian<I,J,K> (f32[I+2, J+2, K] readonly in_field,
+                         f32[I, J, K] writeonly lap_field) {
     
-    // Streaming send to the right
-    send(tosend, eastwards);
-    // We receive nothing
-}
-
-map spatial i, j in [I+1, 0:J] {
-    // Streaming read from in_field
-    f32[K] tosend <- in_field;
-    
-    // Streaming send to the left
-    send(tosend, westwards);
-    // We receive nothing
-}
-// ...
-
-map spatial i, j in [1:I+1, 1:J+1] {
-    f32[K] local_input <- in_field;
-    f32[K] local_result;
-
-    // Streaming parallel computation (map)
-    completion f = map k in [0:K] {
-        local_result[k] = local_input[k] * 4;
-    }
-
-    after (f) {
-      send(local_input, westwards);
-      completion w = on_receive(westwards, K) -> k, x {
-          local_result[k] -= x;
+  ////////////////////////////////
+  // Data placement
+  
+  place i, j in [0:I+2, 0:J+2] {
+      f32 in_field[i, j, 0:K];
+  }
+  
+  place i, j in [1:I+1, 1:J+1] {
+      f32 lap_field[i-1, j-1, 0:K];
+  }
+  
+  
+  ////////////////////////////////
+  // Computation and communication
+  
+  
+  // Set up communication streams
+  // Communication streams as a first-class concept
+  stream eastwards = relative_stream(1, 0);
+  stream westwards = relative_stream(-1, 0);
+  stream northwards = relative_stream(0, -1);
+  stream southwards = relative_stream(0, 1);
+  
+  // Edge senders
+  map spatial i, j in [0, 0:J] {
+      // Streaming read from in_field
+      f32[K] tosend <- in_field;
+      
+      // Streaming send to the right
+      send(tosend, eastwards);
+      // We receive nothing
+  }
+  
+  map spatial i, j in [I+1, 0:J] {
+      // Streaming read from in_field
+      f32[K] tosend <- in_field;
+      
+      // Streaming send to the left
+      send(tosend, westwards);
+      // We receive nothing
+  }
+  // ...
+  
+  map spatial i, j in [1:I+1, 1:J+1] {
+      f32[K] local_input <- in_field;
+      f32[K] local_result;
+  
+      // Streaming parallel computation (map)
+      completion f = map k in [0:K] {
+          local_result[k] = local_input[k] * 4;
       }
   
-      send(local_input, eastwards);
-      completion e = on_receive(eastwards, K) -> k, x {
-          local_result[k] -= x;
+      after (f) {
+        send(local_input, westwards);
+        completion w = on_receive(westwards, K) -> k, x {
+            local_result[k] -= x;
+        }
+    
+        send(local_input, eastwards);
+        completion e = on_receive(eastwards, K) -> k, x {
+            local_result[k] -= x;
+        }
+        // ...
+        
+        after (w, e, n, s) {  
+          // Streaming write to output field
+          local_result -> lap_field;
+        }
       }
-      // ...
-      
-      after (w, e, n, s) {  
-        // Streaming write to output field
-        local_result -> lap_field;
-      }
-    }
+  }
 }
 ```
