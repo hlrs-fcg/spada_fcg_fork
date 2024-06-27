@@ -62,12 +62,27 @@ kernel vadv<I,J,K>(f32[I, J, K] utens_stage,
   // Data placement (I/O)
 
   place i, j in [0:I, 0:J] {
-      f32[K] utens_stage[i, j, 0:K];
-      f32[K] u_stage[i, j, 0:K];
-      f32[K] wcon[i, j, 0:K];
-      f32[K] u_pos[i, j, 0:K];
-      f32[K] utens[i, j, 0:K];
-      f32[K] datacol[i, j, 0:K];
+      # Inputs & Outputs
+      f32[K] utens_stage_l <-> utens_stage[i, j, 0:K];
+      f32[K] u_stage_l <- u_stage[i, j, 0:K];
+      f32[K] wcon_l <- wcon[i, j, 0:K];
+      f32[K] u_pos_l <- u_pos[i, j, 0:K];
+      f32[K] utens_l <- utens[i, j, 0:K];
+      f32[K] datacol_l -> datacol[i, j, 0:K];
+      
+      # Local variables
+      f32[K] gav;
+      f32[K] gcv;
+      f32[K] as_;
+      f32[K] cs;
+      f32[K] acol;
+      f32[K] ccol;
+      f32[K] bcol;
+      f32[K] correction_term;
+      f32[K] dcol;
+      f32[K] ccol_2;
+      f32[K] dcol_2;
+      f32[K] datacol_l;
   }
 
   ////
@@ -87,27 +102,7 @@ kernel vadv<I,J,K>(f32[I, J, K] utens_stage,
   }
   
   map spatial i, j in [1:I, 0:J] {
-  
-      # Read the input fields to local fields (memcopy)
-      f32[K] wcon_l <- wcon;
-      f32[K] ustage_l <- u_stage;
-      f32[K] u_pos_l <- u_pos;
-      f32[K] utens_l <- utens;
-      f32[K] utens_stage_l <- utens_stage;
-      
-      # Local variables
-      f32[K] gav;
-      f32[K] gcv;
-      f32[K] as_;
-      f32[K] cs;
-      f32[K] acol;
-      f32[K] ccol;
-      f32[K] bcol;
-      f32[K] correction_term;
-      f32[K] dcol;
-      f32[K] ccol_2;
-      f32[K] dcol_2;
-      f32[K] datacol_l;
+
       
       send(wcon_local, westwards);
   
@@ -143,9 +138,7 @@ kernel vadv<I,J,K>(f32[I, J, K] utens_stage,
               datacol_l[k] = dcol_2[k] - ccol_2[k] * datacol_l[k+1];
               utens_stage_l[k] = dtr_stage * (datacol_l[k] - u_pos_l[k]);
             }
-            
-            utens_stage_l -> utens_stage;
-            datacol_l -> datacol;
+
         }
         
       }   
