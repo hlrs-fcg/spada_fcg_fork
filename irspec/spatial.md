@@ -270,7 +270,7 @@ that lie in the `subgrid_expression`.
 Tasks blocks *must* define **disjoint subgrids**.
 Not every PE must lie in a task block.
 
-#### Sending Data Streams: send
+#### Sending Data Streams with `send`
 
 The `send` statement sends data to a stream.
 
@@ -287,27 +287,27 @@ Note that the completion is triggered when the data has been sent, not when it i
 The completion merely indicates that the data in `local_array` may be safely overwritten
 without affecting the result of the computation.
 
-**Data Races**. Performing multiple sends to the same stream concurrently is considered a data race.
+*Data Races*. Performing multiple sends to the same stream concurrently is considered a data race on the stream.
 You must synchronize the sends using completions. Two sends are considered concurrent if they are not ordered by `after`.
 
-#### Receiving Data Streams: receive
+#### Receiving Data Streams with `receive`
 
-The `receive` statement wraps a stream in order to receive data from it.
+The `receive` statement wraps a stream to receive data from it.
 
 ```
 receive(stream_name)
 ```
 
-**Deadlocks**. 
 Send and receive calls must be compatible with the definitions of the streams in the dataflow blocks
 and must be matched across PEs. In particular, if there is a send from PE `A` to PE `B`, there must be one or more corresponding receives from PE `B` to PE `A`.
 Similarly, if there is a receive at PE `B`, there must be one or more corresponding sends with destination `B`.
 Such a pair of matched send and receive statements for a stream is called a *stream edge* from `A` to `B`.
-*Failure to construct proper stream edges may result in a deadlock*. The compiler
+
+*Deadlocks*. Failure to construct proper stream edges may result in a *deadlock*. The compiler
 will check these constraints and report potential deadlocks on a best-effort basis [Discuss].
 
-**Data Races**.
-Receiving from the same stream multiple times concurrently is considered a race condition.
+*Data Races*.
+Receiving from the same stream multiple times concurrently is considered a data race on the stream.
 
 #### Managing Concurrency with `after`
 
@@ -336,7 +336,7 @@ after (comp_1) {
 
 
 
-#### Processing Data Streams: foreach
+#### Processing Data Streams with `foreach`
 
 A `foreach` loop can be used to apply a computation to a stream of data.
 For each element in the stream, the computation is executed.
@@ -369,7 +369,7 @@ completion completion_name = foreach k, x in [0:K, receive(stream_1)] {
 
 The `completion_name` is a completion handle that may be used to wait for the completion of the task.
 
-**Deadlocks**:
+*Deadlocks*:
 The sizes sent and received must match:
 
 * This means that for each `send` statement on a given stream, there can be at most one `foreach` loop that does not specify the number of elements to receive.
@@ -379,11 +379,11 @@ the total sizes must match the total sizes of the arrays that are sent through t
 
 *Failure to correctly match the sizes sent and received may result in a deadlock.*
 
-**Data Races**: Writing to the same array from mutliple streams concurrently is considered a *data race*
+*Data Races*: Writing to the same array from mutliple streams concurrently is considered a *data race*
 and is undefined behavior. You must synchronize the writes using completions. Two streams are considered concurrent if
 they are not ordered by `after`.
 
-#### map
+#### Processing arrays in parallel with `map`
 
 The `map` statement is used to apply a computation to each element of an array.
 
@@ -396,7 +396,7 @@ There is no guarantee on the order in which the map is executed.
 Therefore, the map must not contain loop-carried dependencies.
 
 
-#### for
+#### Processing arrays sequentially with `for`
 
 The `for` statement is used to apply a computation to each element of an array in a sequential order.
 
@@ -406,9 +406,8 @@ for variable_name in [range_expression] {
 }
 ```
 
-For loops do not return completions, as they execute sequentially
-and in order.
-
+A `for` loop does not return completions, as it executes sequentially
+and in-order.
 
 ## Examples
 
