@@ -379,9 +379,14 @@ the total sizes must match the total sizes of the arrays that are sent through t
 
 *Failure to correctly match the sizes sent and received may result in a deadlock.*
 
-*Data Races*: Writing to the same array from mutliple streams concurrently is considered a *data race*
-and is undefined behavior. You must synchronize the writes using completions. Two streams are considered concurrent if
-they are not ordered by `after`.
+*Data Races*: Two `foreach` blocks are considered concurrent if
+they are not ordered by `after`. Writing to the same array from mutliple `foreach` blocks concurrently is considered a *data race*
+and is undefined behavior. You must synchronize the writes using the completions.
+Similarly, writing to an array in a `foreach` block while concurrently reading from it in another `foreach` block is also a data race.
+
+[TODO Discuss]
+Two statements in the same `foreach` block may also not write to the same array or read and write to the same array.
+Doing so is considered a data race.
 
 #### Processing arrays in parallel with `map`
 
@@ -395,6 +400,10 @@ completion comp = map variable_names in [range_expression] {
 There is no guarantee on the order in which the map is executed.
 Therefore, the map must not contain loop-carried dependencies.
 
+*Data Races*: Maps follow the same rules for data races as `foreach` blocks. That is, you may not access
+the same array concurrently from multiple maps or foreach blocks except if all accesses are read-only or
+ordered by `after`. Two statements in the same `map` block may also not write to the same array or read and write to the same array.
+Doing so is considered a data race.
 
 #### Processing arrays sequentially with `for`
 
@@ -493,7 +502,7 @@ kernel vadv<I,J,K>(f32[I, J, K] utens_stage,
    
         after (wcon_interval_2) {
             // Rest of the forward pass
-            // Could also be in the foreach loop
+            // Cannot be in the foreach block because of a data race on gav and gcv ??
             for k in [1:K] {
               as_[k] = gav[k] * BET_M;
               cs[k] = gcv[k] * BET_M;
