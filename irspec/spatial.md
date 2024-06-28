@@ -379,11 +379,7 @@ the total sizes must match the total sizes of the arrays that are sent through t
 
 *Failure to correctly match the sizes sent and received may result in a deadlock.*
 
-*Data Races*: Two `foreach` blocks are considered concurrent if
-they are not ordered by `after`. Writing to the same array from mutliple `foreach` blocks concurrently is considered a *data race*
-and is undefined behavior. You must synchronize the writes using the completions.
-Similarly, writing to an array in a `foreach` block while concurrently reading from it in another `foreach` block is also a data race.
-
+*Data Races*: 
 [TODO Discuss]
 Two statements in the same `foreach` block may also not write to the same array or read and write to the same array.
 Doing so is considered a data race.
@@ -400,9 +396,7 @@ completion comp = map variable_names in [range_expression] {
 There is no guarantee on the order in which the map is executed.
 Therefore, the map must not contain loop-carried dependencies.
 
-*Data Races*: Maps follow the same rules for data races as `foreach` blocks. That is, you may not access
-the same array concurrently from multiple maps or foreach blocks except if all accesses are read-only or
-ordered by `after`. Two statements in the same `map` block may also not write to the same array or read and write to the same array.
+*Data Races*: Two statements in the same `map` block may also not write to the same array or read and write to the same array.
 Doing so is considered a data race.
 
 #### Processing arrays sequentially with `for`
@@ -417,6 +411,19 @@ for variable_name in [range_expression] {
 
 A `for` loop does not return completions, as it executes sequentially
 and in-order.
+
+#### Data Races
+
+Two `foreach` blocks, `map` blocks are considered concurrent if
+they are not ordered by an interceding `after`.
+Writing to the same array from multiple such constructs concurrently is considered a *data race*
+and is undefined behavior. You must synchronize the writes using the completions.
+
+A statement is considered concurrent with another statement if they are not ordered by an `after` statement.
+Writing to an array in a statement of a `foreach` or `map` block while concurrently reading from it 
+in another statement anywhere (such as in a `for` loop or `send`) is considered a data race.
+In particular, sending data from an array while concurrently
+writing to it is considered a data race.
 
 ## Examples
 
@@ -593,8 +600,10 @@ kernel laplacian<I,J,K> (f32[I+2, J+2, K] readonly in_field,
           local_result[k] = local_input[k] * 4;
       }
   
+      // No data race, both map and send are reading from local_input
+      send(local_input, westwards);
       after (f) {
-        send(local_input, westwards);
+        // Writing to local_result form the map would be considered a data race.
         completion w = foreach k, x in [0:K, receive(westwards)] {
             local_result[k] -= x;
         }
