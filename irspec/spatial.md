@@ -34,46 +34,100 @@
 ## Specification
 
 
-### Fundamental Concepts
 
-- Scalars: `f16`, `f32`, `f64`, `i8`, `i16`, `i32`, `i64`, `bool` indicate scalar types.
+### Syntax Fundamentals
 
-- Constants: A constant is a scalar value that is known at compile time.
-  They may be indicated by adding the `constant` keyword after the type.
+#### Scalars
 
-- Constant literals: We may use constant literals to represent constant values.
-  For example `0`, `1`, `1024` are constant literals. 
-  Constant integer literals are `i32` and constant floating-point literals are `f32`.
+`f16`, `f32`, `f64`, `i8`, `i16`, `i32`, `i64`, `bool` indicate scalar types.
 
-- Array types: Any scalar type `T` and a `size_expression` may be used to create an array type `T[size_expression]`.
-  For example, `f32[10]`, `i32[I+2, J+2]` are array types.
+#### Constant literals
 
-- Parameters: Parameter literals are placeholders for an actual value that will be substituted with an integer 
-  value. They are denoted by capital letters or capital letters followed by a number string.
-  For example, `I`, `J`, `K`, `I0` can be used as parameter types.
+We may use constant literals to represent constant compile-time values. 
 
-- Variables: A variable starts with a lower case letter and may contain letters, numbers, and underscores.
-  For example, `x`, `y`, `my_variable`, `my_variable_2` are valid variable names.
+For example `0`, `1`, `1024`, `-12` are constant literals. 
+Constant integer literals are `i64` and constant floating-point literals are `f32`. 
 
-- Integer expressions: An integer expression may depend on parameters, constants, and in-scope variables.
-  They are used to specify the size of arrays and access them.
-  For example, `I`, `J+2`, `10`, `I+J` are integer expressions.
+#### Array types
 
-- A `range_expression` can be constructed using the following syntax:
+Any scalar type `T` and one or more parameter expressions `S_1`, `S_2`, ... `S_d` may be used to create an array type `T[S_1, S_2, ... S_d]`.
+It represents a d-dimensional array of type `T`, where the i-th dimension contains `S_i` elements.
+
+For example, `f32[10]`, `i32[I+2, J+2]` are array types. 
+
+#### Parameters
+
+Parameter literals are placeholders for an actual value that will be substituted with an integer 
+value at compile time. They are denoted by capital letters or capital letters followed by a number string.
+For example, `I`, `J`, `K`, `I001` denote parameter types.
+
+#### Variables
+
+A variable starts with a lower case letter and may contain letters, numbers, and underscores.
+For example, `x`, `y`, `my_variable`, `my_variable_2` are valid variable names.
+
+A variable is in scope if it is declared in the current block or any enclosing block.
+
+#### Arguments
+
+An argument is a named and typed array or scalar variable that is passed to a kernel.
+```
+argument ::= T variable_name | T readonly variable_name | T writeonly variable_name
+```
+where `T` is a type and `variable_name` is a variable name.
+
+If an argument may be *only* read from or written to, it is marked as `readonly` or `writeonly`, respectively.
+
+For example, `f32[I, J] readonly arg1`, `f32[I, J] writeonly arg2`, `f32[1024] arg3` are arguments.
+
+#### Parameter Expressions
+
+A parameter expression is an expression that may depend on parameters and constant literals. 
+ 
+For example, `I`, `J+2`, `10`, `I+J` are parameter expressions.
+
+#### Expressions
+
+An expression may depend on parameters, constants, in-scope variables, and arguments.
+
+For example, `I`, `J+2`, `i`, `I+i` are integer expressions.
+
+#### Range expressions
+
+A `range_expression` can be constructed using the following syntax:
 ```
 range_expression ::= start:stop | start | start:stop:step
 ```
-where `start`, `stop`, `step` are integer expressions.
+where `start`, `stop`, `step` are integer expressions. If all expressions are parameter expressions, the
+range expression is a parameter range expression.
 The start is inclusive, and the stop is exclusive. The `step` describes the stride of the range.
 
-- A `subgrid_expression` can be constructed from one or more `range_expression` using the following syntax:
-```
-subgrid_expression ::= range_expression, range_expression, ... 
-```
+#### Lists
 
-- Coordinate grid. The coordinate grid has two dimensions, `x` and `y`.
+A list of elements of `X` is separated by commas.
+
+For example, `1, 2, 3` is a list of constant literals.
+`x, y, z` is a list of variables.
+`f32[10], i32[I+2, J+2]` is a list of array types.
+`I+2, J+2` is a list of parameter expressions.
+
+### The coordinate grid
+
+The coordinate grid has two dimensions, `x` and `y`.
 The origin `(0, 0)` is at the north-west corner of the grid.
 The `x` axis increased towards the east, and the `y` axis increases towards the south.
+
+
+#### Subgrid expressions
+
+A subgrid expression is given by 
+```
+subgrid_expression ::= [parameter_expression, parameter_expression]
+```
+and it describes a subgrid of the PEs.
+
+For example, `[0:I, 0:J]` describes the entire grid of PEs.
+`[0:I:2, 0:J/2]` describes every second PE in the `x` direction and the first half of PEs in the `y` direction.
 
 ### Kernel
 
@@ -86,7 +140,6 @@ kernel kernel_name<parameters> (arguments) {
 }
 ```
 where parameters is a list of parameter literals, and arguments is a list of arguments to the kernel.
-The arguments are named and typed.
 
 A kernel gets the memory of its arguments from a host device,
 runs the computation, and returns the results to the host device.
@@ -99,13 +152,13 @@ If an argument may be only read from or written to, it is marked as `readonly` o
 All array data is placed on the PEs using one or more `place` blocks.
 A `place` block is used to describe the placement of data on the PEs.
 
-They syntax of the place block is as follows:
+The syntax of the place block is as follows:
 ```
-place variables in [subgrid_expression] {
+place var_1, var_2 in subgrid_expression {
    // Statements
 }
 ```
-Where `variables` is a list of variables that are bound to the coordinates of the PEs in the subgrid.
+Where `var_2`, `var_2` are variables that are bound to the coordinates of the PEs in the subgrid.
 
 For example:
 ```
@@ -120,16 +173,34 @@ They can be used by statements in the place block.
 
 Within the place block, the following statements are supported:
 
-- Allocate a local array: `T[size_expression] local_name;`
-- Read from an input array as a copy: `T[size_expression] local_name <- argument_name[subgrid_expression];`
-- Write to an output array as a copy: `T[size_expression] local_name -> argument_name[subgrid_expression];`
+- Allocate a local array: `T[S_0, ...] local_name;`
+- Read from an input array as a copy: `T[S_0, ...] local_name <- argument_name[range_expression, ...];`
+- Write to an output array as a copy: `T[S_0, ...] local_name -> argument_name[range_expression, ...];`
 
-In copy mode, inputs are read from before any tasks execute and outputs are read copied to the host once all tasks have executed.
+When using `<-` or `->` the number of dimensions of the local array must match the number of dimensions of size `>1` of the argument array.
+Any dimensions of size `1` are squeezed out or unsqueezed unless the number of dimensions match exactly.
+
+For example:
+```
+place i, j in [0:I, 0:J] {
+    f32[K] local_name1 <- arg1[i, j, 0:K];
+    f32[K] local_name2 -> arg2[0:K];
+    f32[J/2, K] local_name3 <- arg3[0:J:2, 0:K];
+    f32[1, 1, K] local_name4 <- arg1[i, j, 0:K];
+}
+```
+
+In copy mode, inputs are read from before any tasks execute and outputs are copied to the host once all tasks have executed.
 (Note that this is a bit restrictive, it does not yet allow streaming of data, and sending back partial results)
 
+#### Restrctions
 
 The subgrid of the `place` block is given by the PEs that lie in the `subgrid_expression`. An array may be placed using multiple `place` blocks.
 However, each `local_name` may appear at most once for any given PE over all `place` blocks.
+
+If the same memory location of an output array is written to by multiple PEs,
+this constitutes a *race condition* and is undefined behavior. 
+
 
 ### Dataflow block
 
@@ -137,7 +208,7 @@ All communication is set up in one or more `dataflow` blocks, which describe the
 
 The syntax of the dataflow block is as follows:
 ```
-dataflow variables in [subgrid_expression] {
+dataflow variables in subgrid_expression {
   //Statements
 }
 ```
@@ -147,73 +218,170 @@ The subgrids of the dataflow blocks must be disjoint.
 
 Within the dataflow block, the following statements are supported:
 
-#### Stream declaration
+#### Relative Stream Declaration
 
-- Declare a relative stream: `stream stream_name = relative_stream(dx, dy);`
-  where `dx` and `dy` are integer expressions that describe the relative position of the target PE.
-  This described a streaming communication channel from the current PE at
-  position `(i, j)` to the PE at the relative position `(i+dx, i+dy)`.
+A relative stream is declared as follows:
+```
+stream stream_name = relative_stream(dx, dy);
+```
+where `dx` and `dy` are parameter expressions that describe the relative position of the target PE.
+This describes a streaming communication channel from the current PE at some
+position `(i, j)` to the PE at the relative position `(i+dx, i+dy)`.
+
+For example,
+```
+dataflow i, j in [0:I, 0:J] {
+    stream eastwards = relative_stream(1, 0);
+    stream westwards = relative_stream(-1, 0);
+    stream northwards = relative_stream(0, -1);
+    stream southwards = relative_stream(0, 1);
+}
+```
+describes the communication streams to the east, west, north, and south of each PE.
+
+For example,
+```
+dataflow i, j in [0:I, 0:J] {
+    stream two_north = relative_stream(0, -2);
+}
+```
+describes a communication stream that sends data two PEs to the north.
+
+Note that the relative stream declaration does not imply that any data is
+ever sent over the stream. It merely declares the existence of a virtual communication channel.
 
 ### Task block
 
 The computation is described in one or more `task` blocks.
 Computation is inherently triggered by receiving data from a stream.
-Computations return completions that may trigger other tasks.
+Computations may return completions that may trigger other tasks.
 
 
 The task block is defined as follows:
 ```
-task variables in [subgrid_expression] {
+task variables in subgrid_expression {
   // Statements
 }
 ```
 
 The subgrid of the task block is given by the PEs
-that lie in the subgrid_expression.
+that lie in the `subgrid_expression`.
 
-Tasks blocks must define disjoint subgrids.
+Tasks blocks *must* define **disjoint subgrids**.
+Not every PE must lie in a task block.
 
-#### send
+#### Sending Data Streams: send
 
 The `send` statement sends data to a stream.
 
 ```
-send(local_array, stream_name);
+completion completion_name = send(local_array, stream_name);
 ```
 
 The `local_array` must be allocated for each PE in the subgrid
 in some `place` block. Similarly, the `stream_name` must be declared in a `dataflow` block
 for each PE in the subgrid.
 
-#### on_receive
+The `completion_name` is a completion handle that may be used to wait for the completion of the send task.
+Note that the completion is triggered when the data has been sent, not when it is received.
+The completion merely indicates that the data in `local_array` may be safely overwritten
+without affecting the result of the computation.
 
-The `on_receive` statement receives data from a stream and triggers a computation for 
-each element.
+**Data Races**. Performing multiple sends to the same stream concurrently is considered a data race.
+You must synchronize the sends using completions. Two sends are considered concurrent if they are not ordered by `after`.
 
-```
-completion comp = on_receive(stream_name, size_expression) -> variable_name_1, variable_name_2 {
-  // Scalar assignment statements
-}
-```
-The `size_expression` is the number of scalars of the data that is received.
-This may be less than the size of the array that is sent.
+#### Receiving Data Streams: receive
 
-The `variable_name_1` refers to the index of the received data.
-The `variable_name_2` refers to the data that is received.
-
-The `comp` is a completion handle that may be used to wait for the completion of the task.
-
-#### after
-
-The `after` statement is used to trigger a computation after a completion has been received.
+The `receive` statement wraps a stream in order to receive data from it.
 
 ```
-after (comp) {
+receive(stream_name)
+```
+
+**Deadlocks**. 
+Send and receive calls must be compatible with the definitions of the streams in the dataflow blocks
+and must be matched across PEs. In particular, if there is a send from PE `A` to PE `B`, there must be one or more corresponding receives from PE `B` to PE `A`.
+Similarly, if there is a receive at PE `B`, there must be one or more corresponding sends with destination `B`.
+Such a pair of matched send and receive statements for a stream is called a *stream edge* from `A` to `B`.
+*Failure to construct proper stream edges may result in a deadlock*. The compiler
+will check these constraints and report potential deadlocks on a best-effort basis [Discuss].
+
+**Data Races**.
+Receiving from the same stream multiple times concurrently is considered a race condition.
+
+#### Managing Concurrency with `after`
+
+The `after` statement is used to trigger a computation after a completion has been received,
+and introduce ordering constraints between tasks. These can be used to avoid data races on strams
+and arrays.
+
+```
+after (completion_name) {
   // Statements
 }
 ```
 
-The statements within the `after` block are executed after the completion `comp` has triggered.
+The statements within the `after` block are executed after the completion `completion_name` has triggered.
+
+For example, the following code sends data to `stream_1`
+and then sends data to `stream_2` after the completion of the first send and after rewriting the data array.
+```
+completion comp_1 = send(local_array, stream_name);
+after (comp_1) {
+    after (comp_2) {
+        send(local_array, stream_name);
+    }
+}
+```
+
+
+
+#### Processing Data Streams: foreach
+
+A `foreach` loop can be used to apply a computation to a stream of data.
+For each element in the stream, the computation is executed.
+The elements are processed in the order they are received.
+
+One may either provide the number of elements to receive[, or receive until the sender is done].
+```
+// Receive until the sender is done
+// Discuss: I am not sure we even want to allow for this!
+// I would for now, leave it out
+completion completion_name = foreach iteration_variable_name in [receive(stream_name)] {
+  // Assignment statements
+}
+
+// Receive a fixed number of elements
+completion completion_name = foreach iteration_variable_name, data_variable_name in [parameter_expression, receive(stream_name)] {
+  // Assignment statements
+}
+```
+If the number of elements received is known, it is always preferable to specify it explicitly in order
+to allow for performance optimizations.
+
+For example, the following code receives data from `stream_1` for `K` elements
+and assigns the received data to the array `a`.
+```
+completion completion_name = foreach k, x in [0:K, receive(stream_1)] {
+    a[k] = x;
+}
+```
+
+The `completion_name` is a completion handle that may be used to wait for the completion of the task.
+
+**Deadlocks**:
+The sizes sent and received must match:
+
+* This means that for each `send` statement on a given stream, there can be at most one `foreach` loop that does not specify the number of elements to receive.
+
+* If there are multiple `foreach` loops iterating over the same stream that *do* specify the number of elements to receive,
+the total sizes must match the total sizes of the arrays that are sent through the stream.
+
+*Failure to correctly match the sizes sent and received may result in a deadlock.*
+
+**Data Races**: Writing to the same array from mutliple streams concurrently is considered a *data race*
+and is undefined behavior. You must synchronize the writes using completions. Two streams are considered concurrent if
+they are not ordered by `after`.
 
 #### map
 
@@ -228,16 +396,6 @@ There is no guarantee on the order in which the map is executed.
 Therefore, the map must not contain loop-carried dependencies.
 
 
-DRAFT: instead of on-receive:
-Maps may be used to process streaming inputs as they arrive.
-
-```
-completion comp = map k, x in receive(stream_1, K) {
-    // Scalar assignment statements
-    a[k] = x;
-}
-```
-
 #### for
 
 The `for` statement is used to apply a computation to each element of an array in a sequential order.
@@ -251,8 +409,8 @@ for variable_name in [range_expression] {
 For loops do not return completions, as they execute sequentially
 and in order.
 
-## Examples
 
+## Examples
 
 ### Vertical Advection
 
@@ -264,9 +422,9 @@ kernel vadv<I,J,K>(f32[I, J, K] utens_stage,
                   f32[I, J, K] readonly u_pos,
                   f32[I, J, K] readonly utens,
                   f32[I, J, K] writeonly datacol,       
-                  f32 constant dtr_stage,
-                  f32 constant BET_M,
-                  f32 constant BET_P) {
+                  f32 readonly dtr_stage,
+                  f32 readonly BET_M,
+                  f32 readonly BET_P) {
   
   ////
   // Data placement (I/O)
@@ -321,35 +479,44 @@ kernel vadv<I,J,K>(f32[I, J, K] utens_stage,
       
       send(wcon_local, westwards);
   
-      completion wcon_comp_1 = on_receive(westwards, 1) -> k, x {
+      completion wcon_interval_1 = foreach k, x in [0:1, receive(westwards)] {
           gav[k] = -0.25 * x * wcon_l[k];
           gcv[k] = 0
+          // ...
       }
   
-      after (wcon_comp_1) {
-        completion wcon_comp_2 = on_receive(westwards, K-1) -> k, x {
+      after (wcon_interval_1) {
+        completion wcon_interval_2 = foreach k, x in [1:K, receive(westwards)] {
+            // TODO: Question: do we allow multiple statements here? Would be nice to have.
             gav[k] = -0.25 * x * wcon_l[k];
             gcv[k-1] = 0.25 * x * wcon_l[k];
-            as_[k] = gav[k] * BET_M;
-            cs[k] = gcv[k] * BET_M;
-            acol[k] = gav[k] * BET_P;
-            ccol[k] = gcv[k] * BET_P;
-            bcol[k] = dtr_stage - acol[k] - ccol[k];
-  
-            correction_term[k] = -as_[k] * (u_stage_l[k-1] - u_stage_l[k]) - cs[k] * (u_stage_l[k+1] - u_stage_l[k]);
-            dcol[k] = dtr_stage * u_pos_l[k] + utens_l[k] + utens_stage_l[k] + correction_term[k];
-            
-            // Thomas forward
-            f32 divided = 1.0 / (bcol[k] - ccol[k-1] * acol[k]);
-            ccol_2[k] = ccol[k] * divided;
-            dcol_2[k] = (dcol[k] - dcol[k-1] * acol[k]) * divided;
         }
    
-        after (wcon_comp_2) {
+        after (wcon_interval_2) {
+            // Rest of the forward pass
+            // Could also be in the foreach loop
+            for k in [1:K] {
+              as_[k] = gav[k] * BET_M;
+              cs[k] = gcv[k] * BET_M;
+              acol[k] = gav[k] * BET_P;
+              ccol[k] = gcv[k] * BET_P;
+              bcol[k] = dtr_stage - acol[k] - ccol[k];
+    
+              correction_term[k] = -as_[k] * (u_stage_l[k-1] - u_stage_l[k]) - cs[k] * (u_stage_l[k+1] - u_stage_l[k]);
+              dcol[k] = dtr_stage * u_pos_l[k] + utens_l[k] + utens_stage_l[k] + correction_term[k];
+
+              // Thomas forward
+              f32 divided = 1.0 / (bcol[k] - ccol[k-1] * acol[k]);
+              ccol_2[k] = ccol[k] * divided;
+              dcol_2[k] = (dcol[k] - dcol[k-1] * acol[k]) * divided;
+            }
+
             // Boundary condition (k=K-1) not shown
-            // ...
+            for k in [K-1] {
+                /// Boundary condition ...
+            }
             // Main backwards loop          
-            for k in [K-1:0] {
+            for k in [K-2:0] {
               datacol_l[k] = dcol_2[k] - ccol_2[k] * datacol_l[k+1];
               utens_stage_l[k] = dtr_stage * (datacol_l[k] - u_pos_l[k]);
             }
@@ -420,20 +587,22 @@ kernel laplacian<I,J,K> (f32[I+2, J+2, K] readonly in_field,
   
       after (f) {
         send(local_input, westwards);
-        completion w = on_receive(westwards, K) -> k, x {
+        completion w = foreach k, x in [0:K, receive(westwards)] {
             local_result[k] -= x;
         }
-    
-        send(local_input, eastwards);
-        completion e = on_receive(eastwards, K) -> k, x {
-            local_result[k] -= x;
+        // Writing to the same array from multiple streams concurrently
+        // is considered a data race.
+        // Hence, we need to run one after the other.
+        after (w) {
+          send(local_input, eastwards);
+          completion e = foreach k, x in [0:K, receive(eastwards)] {
+              local_result[k] -= x;
+          }
+          after (e) {
+            // ...         
+          }
         }
-        // ...
-        
-        after (w, e, n, s) {  
-          // Streaming write to output field
-          local_result -> lap_field;
-        }
+
       }
   }
 }
