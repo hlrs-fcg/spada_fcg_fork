@@ -41,19 +41,29 @@
 
 `f16`, `f32`, `f64`, `i8`, `i16`, `i32`, `i64`, `bool` indicate scalar types.
 
-#### Constant literals
+#### Constant Literals
 
 We may use constant literals to represent constant compile-time values. 
 
 For example `0`, `1`, `1024`, `-12` are constant literals. 
 Constant integer literals are `i64` and constant floating-point literals are `f32`. 
 
-#### Array types
+#### Arrays
 
 Any scalar type `T` and one or more parameter expressions `S_1`, `S_2`, ... `S_d` may be used to create an array type `T[S_1, S_2, ... S_d]`.
 It represents a d-dimensional array of type `T`, where the i-th dimension contains `S_i` elements.
 
-For example, `f32[10]`, `i32[I+2, J+2]` are array types.
+For example, `f32[10]`, `i32[I+2, J+2]` indicate array types.
+
+#### Channels
+
+A channel corresponds to a virtual communication channel between PEs or the host device and the PEs.
+[TODO: Discuss should there be subtype of channels depending on PE-PE or host-PE communication?]
+
+For any scalar type `T`,  `channel<T>` indicates the corresponding element type sent over the channel.
+
+Channels do not send a predetermined number of elements, but the sender and receiver must agree on the number of elements sent and received.
+This can be done explicitly (when the size is known from the parameters) or implicitly (by sending a completion signal with/after the last element).
 
 #### Parameters
 
@@ -71,18 +81,6 @@ variable ::= [a-z][a-zA-Z0-9_]*
 ```
 
 A variable is in scope if it is declared in the current block or any enclosing block.
-
-#### Arguments
-
-An argument is a named and typed array or scalar variable that is passed to a kernel.
-```
-argument ::= T variable_name | T readonly variable_name | T writeonly variable_name
-```
-where `T` is a type and `variable_name` is a variable name.
-
-If an argument may be *only* read from or written to, it is marked as `readonly` or `writeonly`, respectively.
-
-For example, `f32[I, J] readonly arg1`, `f32[I, J] writeonly arg2`, `f32[1024] arg3` are arguments.
 
 #### Parameter Expressions
 
@@ -160,6 +158,20 @@ kernel kernel_name<parameters> (arguments) {
 ```
 where parameters is a list of parameter literals, and arguments is a list of arguments to the kernel.
 
+#### Arguments
+
+An argument is a named and typed array or scalar variable that is passed to a kernel.
+```
+argument ::= T variable_name | T readonly variable_name | T writeonly variable_name
+```
+where `T` is a type name and `variable_name` is a variable name.
+
+If an argument may be *only* read from or written to, it is marked as `readonly` or `writeonly`, respectively.
+
+For example, `f32[I, J] readonly arg1`, `f32[I, J] writeonly arg2`, `f32[1024] arg3` are arguments.
+
+#### Kernel semantics
+
 A kernel gets the memory of its arguments from a host device,
 runs the computation, and returns the results to the host device.
 The returns values are specified as arguments to the kernel.
@@ -224,7 +236,7 @@ this constitutes a *race condition* and is undefined behavior.
 
 ### Dataflow block
 
-All communication is set up in one or more `dataflow` blocks, which describe the communication streams between PEs.
+All communication is set up in one or more `dataflow` blocks, which describe the communication channels between PEs.
 
 The syntax of the dataflow block is as follows:
 ```
@@ -236,40 +248,41 @@ The subgrid of the dataflow block is given by the PEs
 that lie in the `subgrid_expression`.
 The subgrids of the dataflow blocks must be disjoint.
 
-The dataflow block can be set up to support various types of streams.
-Currently, only *relative streams* are supported:
+The dataflow block can be set up to support various types of channels.
+Currently, only *affine channel* indexing is supported:
 
-#### Relative Stream Declaration
+#### Affine Channel Declaration
+[TODO Discuss what kinds of expressions should we allow -- we must be able to compile it]
 
-Inside a `dataflow block`, a relative stream is declared as follows:
+Inside a `dataflow block`, an affine coomunication channel is declared as follows:
 ```
-stream stream_name = relative_stream(dx, dy);
+channel<T> channel_name = affine_channel(exp1, exp2);
 ```
-where `dx` and `dy` are parameter expressions that describe the relative position of the target PE.
+where `T` is a scalar type and `exp1` and `exp2` are **affine** parameter expressions that describe the position of the target PE.
 This describes a streaming communication channel from the current PE at some
-position `(i, j)` to the PE at the relative position `(i+dx, i+dy)`.
+position to the PE at the absolute position `(exp1, exp2)`.
 
 For example,
 ```
 dataflow i, j in [0:I, 0:J] {
-    stream eastwards = relative_stream(1, 0);
-    stream westwards = relative_stream(-1, 0);
-    stream northwards = relative_stream(0, -1);
-    stream southwards = relative_stream(0, 1);
+    channel<f32> eastwards = affine_channel(i+1, i);
+    channel<f32> westwards = affine_channel(i-1, i);
+    channel<f32> northwards = affine_channel(i, i-1);
+    channel<f32> southwards = affine_channel(i, i+1);
 }
 ```
-describes the communication streams to the east, west, north, and south of each PE.
+describes four communication channels to the east, west, north, and south of each PE.
 
 For example,
 ```
 dataflow i, j in [0:I, 0:J] {
-    stream two_north = relative_stream(0, -2);
+    channel<f32> two_north = affine_channel(0, j-2);
 }
 ```
-describes a communication stream that sends data two PEs to the north.
+describes a communication channel that sends `fp32` data to the east-most PEs, two PEs to the north. 
 
-Note that the relative stream declaration does not imply that any data is
-ever sent over the stream. It merely declares the existence of a virtual communication channel.
+Note that the channel declaration does not imply that any data is ever sent over the channel.
+It merely declares the existence of a virtual communication channel.
 
 ### Task block
 
@@ -294,13 +307,18 @@ Not every PE must lie in a task block.
 Task blocks may contain the following statements:
 ```
 // Send
-completion_name = send(local_array, stream_name);
+completion_name = send(local_array, channel_name);
 // After completion
 after (completion_name) {
   // Statements
 }
-// Foreach loop over a receive() stream
-completion completion_name = foreach iteration_variable_names, data_variable_name in [parameter_expressions, receive(stream_name)] {
+// Foreach loop over a receive() stream until the sender is done
+completion completion_name = foreach iteration_variable_name in [receive(channel_name)] {
+  // Assignment statements
+}
+
+// Foreach loop over a receive() stream of defined size
+completion completion_name = foreach iteration_variable_names, data_variable_name in [parameter_expressions, receive(channel_name)] {
   // Assignment statements
 }
 // Parallel map
@@ -319,16 +337,16 @@ array_expression = expression;
 variable = expression;
 ```
 
-#### Sending Data Streams with `send`
+#### Streaming Data with `send`
 
-Inside a `task` block, the `send` statement sends data asynchronously to a stream.
+Inside a `task` block, the `send` statement sends data asynchronously through a `channel`.
 
 ```
-completion completion_name = send(local_array, stream_name);
+completion completion_name = send(local_array, channel_name);
 ```
 
 The `local_array` must be allocated for each PE in the subgrid
-in some `place` block. Similarly, the `stream_name` must be declared in a `dataflow` block
+in some `place` block. Similarly, the `channel_name` must be declared in a `dataflow` block
 for each PE in the subgrid.
 
 The `completion_name` is a completion handle that may be used to wait for the completion of the send task.
@@ -336,30 +354,31 @@ Note that the completion is triggered when the data has been sent, not when it i
 The completion merely indicates that the data in `local_array` may be safely overwritten
 without affecting the result of the computation.
 
-*Data Races*. Performing multiple sends to the same stream concurrently is considered a data race on the stream.
+*Data Races*. Performing multiple sends to the same channel concurrently is considered a data race on the channel.
 You must synchronize the sends using completions. Two sends are considered concurrent if they are not ordered by `after`.
 
-#### Receiving Data Streams with `receive`
+#### Receiving Streaming Data with `receive`
 
-Inside a `task` block, the `receive` operation wraps a stream to receive data from it.
+Inside a `task` block, the `receive` operation wraps a channel to receive a stream of data from it.
 
 ```
-receive(stream_name)
+receive(channel_name)
 ```
 
-Send and receive calls must be compatible with the definitions of the streams in the dataflow blocks
+Send and receive calls must be compatible with the definitions of the channels in the dataflow blocks
 and must be matched across PEs. In particular, if there is a send from PE `A` to PE `B`, there must be one or more corresponding receives from PE `B` to PE `A`.
 Similarly, if there is a receive at PE `B`, there must be one or more corresponding sends with destination `B`.
-Such a pair of matched send and receive's for a stream is called a *stream edge* from `A` to `B`.
+Such a pair of matched send and receive's for a channel is called a *stream edge* from `A` to `B`.
 
-Note that a receive operation does not imply that any data is actually received,
-it merely declares the existence of a receiving virtual communication channel.
+[TODO: Discuss - should we allow a receive that is never consumed? -- I think not]
+Note that a `receive` operation does not imply that any data is actually received,
+it merely declares the existence of a stream edge.
 
 *Deadlocks*. Failure to construct proper stream edges may result in a *deadlock*. The compiler
 will check these constraints and report potential deadlocks on a best-effort basis.
 
 *Data Races*.
-Receiving from the same stream multiple times concurrently is considered a data race on the stream.
+Receiving from the same channel multiple times concurrently is considered a data race on the channel.
 Two receives are considered concurrent if they are not ordered by `after`.
 
 #### Managing Concurrency with `after`
@@ -376,13 +395,13 @@ after (completion_name) {
 
 The statements within the `after` block are executed after the completion `completion_name` has triggered.
 
-For example, the following code sends data to `stream_1`
-and then sends data to `stream_2` after the completion of the first send and after rewriting the data array.
+For example, the following code sends data to `channel_1`
+and then sends data to `channel_2` after the completion of the first send and after rewriting the data array.
 ```
-completion comp_1 = send(local_array, stream_name);
+completion comp_1 = send(local_array, channel_name);
 after (comp_1) {
     after (comp_2) {
-        send(local_array, stream_name);
+        send(local_array, channel_name);
     }
 }
 ```
@@ -400,12 +419,12 @@ One may either provide the number of elements to receive[, or receive until the 
 // Receive until the sender is done
 // Discuss: I am not sure we even want to allow for this!
 // I would for now, leave it out
-completion completion_name = foreach iteration_variable_name in [receive(stream_name)] {
+completion completion_name = foreach iteration_variable_name in [receive(channel_name)] {
   // Assignment statements
 }
 
 // Receive a fixed number of elements
-completion completion_name = foreach iteration_variable_names, data_variable_name in [parameter_expressions, receive(stream_name)] {
+completion completion_name = foreach iteration_variable_names, data_variable_name in [parameter_expressions, receive(channel_name)] {
   // Assignment statements
 }
 ```
@@ -417,10 +436,10 @@ interpreted as a multi-dimensional array in *row-major* order.
 If the number of elements received is known, it is always preferable to specify it explicitly in order
 to allow for performance optimizations.
 
-For example, the following code receives data from `stream_1` for `K` elements
+For example, the following code receives data from `channel_1` for `K` elements
 and assigns the received data to the array `a`.
 ```
-completion completion_name = foreach k, x in [0:K, receive(stream_1)] {
+completion completion_name = foreach k, x in [0:K, receive(channel_1)] {
     a[k] = x;
 }
 ```
@@ -430,10 +449,10 @@ The `completion_name` is a completion handle that may be used to wait for the co
 *Deadlocks*:
 The sizes sent and received must match:
 
-* This means that for each `send` statement on a given stream, there can be at most one `foreach` loop that does not specify the number of elements to receive.
+* This means that for each `send` statement on a given channel, there can be at most one `foreach` loop that does not specify the number of elements to receive.
 
-* If there are multiple `foreach` loops iterating over the same stream that *do* specify the number of elements to receive,
-the total sizes must match the total sizes of the arrays that are sent through the stream.
+* If there are multiple `foreach` loops iterating over the same channel that *do* specify the number of elements to receive,
+the total sizes must match the total sizes of the arrays that are sent through the channel.
 
 *Failure to correctly match the sizes sent and received may result in a deadlock.*
 
@@ -533,10 +552,10 @@ kernel vadv<I,J,K>(f32[I, J, K] utens_stage,
   ////
   // Communication
   
-  // Set up communication streams
+  // Set up communication channels
   // The only communication is for wcon, which is sent to the west  
   dataflow i, j in [0:I, 0:J] {
-    stream westwards = relative_stream(-1, 0);
+    channel<fp32> westwards = affine_channel(i-1, j);
   }
 
   ////
@@ -629,14 +648,14 @@ kernel laplacian<I,J,K> (f32[I+2, J+2, K] readonly in_field,
   // Computation and communication
   
   
-  // Set up communication streams
-  // Communication streams as a first-class concept
+  // Set up communication channels
+  // Communication channels as a first-class concept
   
   dataflow i, j in [0:I+1, 0:J+1] {
-     stream eastwards = relative_stream(1, 0);
-     stream westwards = relative_stream(-1, 0);
-     stream northwards = relative_stream(0, -1);
-     stream southwards = relative_stream(0, 1);
+     channel<fp32> eastwards = affine_channel(i+1, j);
+     channel<fp32> westwards = affine_channel(i-1, j);
+     channel<fp32> northwards = affine_channel(i, j-1);
+     channel<fp32> southwards = affine_channel(i, j+1);
   }
   
   // Edge senders
@@ -667,7 +686,7 @@ kernel laplacian<I,J,K> (f32[I+2, J+2, K] readonly in_field,
         completion w = foreach k, x in [0:K, receive(westwards)] {
             local_result[k] -= x;
         }
-        // Writing to the same array from multiple streams concurrently
+        // Writing to the same array from multiple foreach blocks concurrently
         // is considered a data race.
         // Hence, we need to run one after the other.
         after (w) {
@@ -685,4 +704,87 @@ kernel laplacian<I,J,K> (f32[I+2, J+2, K] readonly in_field,
 }
 ```
 
+### Streaming 1D Convolution
 
+Performs the convolution of a 1D kernel with a streaming K-D input array that changes over time.
+That is in each time step, we receive an array of K elements, and we convolve it with the kernel.
+
+The kernel is of size 3.
+While the data is being streamed, it is convolved with the kernel and streamed to the output.
+
+[TODO: Discuss: This is a sketch]
+[I am not yet sure how to represent streaming inputs and outputs adequately
+and this is NOT consistent with the rest of the document yet.]
+
+```
+kernel conv<K, J>(channel<fp32[K]> input,
+                  channel<fp32[K]> output,
+                  f32[3] readonly kernel) {
+
+    // Data placement
+    place i, 0 in [0:J, 0] {
+       fp32 y;
+       // TODO: How to describe the mapping from input to local PE memory?
+    }
+
+    // Communication
+    dataflow i, j in [0:J, 0] {
+        channel<fp32> eastwards = affine_channel(i+1);
+        channel<fp32> westwards = affine_channel(i-1);
+    }
+
+    // Computation
+    task i, j in [1:J-1, 0] {
+    
+        // Streaming receive
+        // Each PE receives a single scalar per time step
+        foreach x in streaming_copy_in(input) {
+            
+            // Send the data to the right
+            send(x, eastwards);
+            // Send the data to the left
+            send(x, westwards);
+ 
+            y = x * kernel[1];
+ 
+            completion east = foreach x, y in [0:1, receive(eastwards)] {
+                y = y + x * kernel[0];
+            }
+
+            after (east) {
+                completion west = foreach x, y in [0:1, receive(westwards)] {
+                    y = y + x * kernel[2];
+                }
+
+                after (west) {
+                    // Send the result to the output
+                    streaming_copy_out(y, output);
+                }
+            }
+            
+        }
+        
+        // Left corner
+        task i, 0 in [0, 0] {
+            // Streaming receive
+            foreach x in streaming_copy_in(input) {
+                // Send the data to the right
+                send(x, eastwards);
+                
+                y = x * kernel[1];
+
+                completion west = foreach x, y in [0:1, receive(westwards)] {
+                    y = y + x * kernel[2];
+                }
+                  
+                after (west) {
+                   // Send the result to the output
+                   streaming_copy_out(y, output);
+                }
+            }
+        }
+        
+        // Right corner
+        // ...
+
+    }
