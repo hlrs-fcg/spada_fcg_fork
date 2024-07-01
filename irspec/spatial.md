@@ -717,8 +717,8 @@ While the data is being streamed, it is convolved with the kernel and streamed t
 and this is NOT consistent with the rest of the document yet.]
 
 ```
-kernel conv<K, J>(channel<fp32[K]> input,
-                  channel<fp32[K]> output,
+kernel conv<J>(channel<fp32, J, ?> input,
+                  channel<fp32, J, ?> output,
                   f32[3] readonly kernel) {
 
     // Data placement
@@ -731,6 +731,7 @@ kernel conv<K, J>(channel<fp32[K]> input,
     dataflow i, j in [0:J, 0] {
         channel<fp32> eastwards = affine_channel(i+1);
         channel<fp32> westwards = affine_channel(i-1);
+        channel<fp32> input_local = input[i];
     }
 
     // Computation
