@@ -162,13 +162,15 @@ where parameters is a list of parameter literals, and arguments is a list of arg
 
 An argument is a named and typed array or scalar variable that is passed to a kernel.
 ```
-argument ::= T variable_name | T readonly variable_name | T writeonly variable_name
+argument ::= T variable_name | T readonly variable_name | T writeonly variable_name | T compiletime variable_name
 ```
 where `T` is a type name and `variable_name` is a variable name.
 
 If an argument may be *only* read from or written to, it is marked as `readonly` or `writeonly`, respectively.
 
 For example, `f32[I, J] readonly arg1`, `f32[I, J] writeonly arg2`, `f32[1024] arg3` are arguments.
+
+Constant values that are "baked into" the PE code are `compiletime` annotated.
 
 #### Kernel semantics
 
@@ -301,33 +303,34 @@ task variables in subgrid_expression {
 The subgrid of the task block is given by the PEs
 that lie in the `subgrid_expression`.
 
-Tasks blocks *must* define **disjoint subgrids**.
-Not every PE must lie in a task block.
-
 Task blocks may contain the following statements:
 ```
-// Send
+// Send (nonblocking)
 completion_name = send(local_array, channel_name);
 // After completion
 after (completion_name) {
   // Statements
 }
-// Foreach loop over a receive() stream until the sender is done
+// Foreach loop over a receive() stream until the sender is done (nonblocking)
 completion completion_name = foreach iteration_variable_name in [receive(channel_name)] {
   // Assignment statements
 }
 
-// Foreach loop over a receive() stream of defined size
+// Foreach loop over a receive() stream of defined size (nonblocking)
 completion completion_name = foreach iteration_variable_names, data_variable_name in [parameter_expressions, receive(channel_name)] {
   // Assignment statements
 }
-// Parallel map
+// Parallel map (nonblocking)
 completion completion_name = map variable_names in [range_expression] {
   // Assignment statements
 }
 // Sequential for loop
 for variable_name in [range_expression] {
   // Assignment statements or nested for-loops
+}
+// Asynchronous block (nonblocking)
+completion completion_name = async {
+  // Statements
 }
 ```
 An assignment statement is of the form 
@@ -336,6 +339,13 @@ array_expression = expression;
 // or
 variable = expression;
 ```
+
+#### Overlapping task blocks
+
+Not every PE must lie in a task block.
+
+Multiple tasks assigned to the same PE run in order of appearance in the code.
+
 
 #### Streaming Data with `send`
 
@@ -465,7 +475,7 @@ Doing so is considered a data race.
 
 Inside a `task` block, the `map` statement is used to apply a computation to each element of an array.
 
-```
+```rust
 completion comp = map variable_names in [range_expression] {
   // Assignment statements
 }
@@ -480,7 +490,7 @@ Doing so is considered a data race.
 
 Inside a `task` block, the `for` statement is used to apply a computation to each element of an array in a sequential order.
 
-```
+```rust
 for variable_name in [range_expression] {
   // Assignment statements or nested for-loops
 }
@@ -488,6 +498,16 @@ for variable_name in [range_expression] {
 
 A `for` loop does not return completions, as it executes sequentially
 and in-order.
+
+#### Computing asynchronously with `async`
+
+Sometimes it may be beneficial to run computations asynchronously.
+
+```rust
+completion comp = async {
+  // Sequential computations
+}
+```
 
 #### Data Races
 
@@ -507,16 +527,16 @@ writing to it is considered a data race.
 ### Vertical Advection
 
 
-```
+```rust
 kernel vadv<I,J,K>(f32[I, J, K] utens_stage,
                   f32[I, J, K] readonly u_stage,
                   f32[I, J, K] readonly wcon,
                   f32[I, J, K] readonly u_pos,
                   f32[I, J, K] readonly utens,
                   f32[I, J, K] writeonly datacol,       
-                  f32 readonly DTR_STAGE,
-                  f32 readonly BET_M,
-                  f32 readonly BET_P) {
+                  f32 readonly DTR_STAGE, // Kept as readonly for the sake of the example
+                  f32 compiletime bet_m,
+                  f32 compiletime bet_p) {
   
   ////
   // Data placement (I/O)
@@ -530,9 +550,7 @@ kernel vadv<I,J,K>(f32[I, J, K] utens_stage,
       f32[K] u_pos_l <- u_pos[i, j, 0:K];
       f32[K] utens_l <- utens[i, j, 0:K];
       f32[K] datacol_l -> datacol[i, j, 0:K];
-      bet_m <- BET_M;
-      bet_p <- BET_P;
-      dtr_stage <- DTR_STAGE;
+      f32 dtr_stage <- DTR_STAGE;
       
       # Local variables
       f32[K] gav;
@@ -628,7 +646,7 @@ kernel vadv<I,J,K>(f32[I, J, K] utens_stage,
 
 ### 2D Laplacian
 
-```
+```rust
 kernel laplacian<I,J,K> (f32[I+2, J+2, K] readonly in_field,
                          f32[I, J, K] writeonly lap_field) {
     
@@ -652,33 +670,32 @@ kernel laplacian<I,J,K> (f32[I+2, J+2, K] readonly in_field,
   // Communication channels as a first-class concept
   
   dataflow i, j in [0:I+1, 0:J+1] {
-     channel<fp32> eastwards = affine_channel(i+1, j);
-     channel<fp32> westwards = affine_channel(i-1, j);
-     channel<fp32> northwards = affine_channel(i, j-1);
-     channel<fp32> southwards = affine_channel(i, j+1);
+     channel<f32> eastwards = affine_channel(i+1, j);
+     channel<f32> westwards = affine_channel(i-1, j);
+     channel<f32> northwards = affine_channel(i, j-1);
+     channel<f32> southwards = affine_channel(i, j+1);
   }
   
   // Edge senders
-  task i, j in [0, 0:J] {
+  task i, j in [0, 1:J] {
       // Streaming send to the right
       send(local_input, eastwards);
       // We receive nothing
   }
   
-  task i, j in [I+1, 0:J] {
+  task i, j in [I+1, 1:J] {
       // Streaming send to the left
       send(tosend, westwards);
       // We receive nothing
   }
   // ...
-  
+
   task i, j in [1:I+1, 1:J+1] {
-   
       // Streaming parallel computation (map)
       completion f = map k in [0:K] {
           local_result[k] = local_input[k] * 4;
       }
-  
+
       // No data race, both map and send are reading from local_input
       send(local_input, westwards);
       after (f) {
@@ -716,38 +733,39 @@ While the data is being streamed, it is convolved with the kernel and streamed t
 [I am not yet sure how to represent streaming inputs and outputs adequately
 and this is NOT consistent with the rest of the document yet.]
 
-```
-kernel conv<J>(channel<fp32, J, ?> input,
-                  channel<fp32, J, ?> output,
-                  f32[3] readonly kernel) {
+```rust
+kernel conv<J>(channel<f32>[J] readonly input,
+               channel<f32>[J] writeonly output,
+               f32[3] readonly KERNEL) {
 
     // Data placement
     place i, 0 in [0:J, 0] {
-       fp32 y;
-       // TODO: How to describe the mapping from input to local PE memory?
+        f32 y;
+        f32[3] kernel <- KERNEL;
     }
 
     // Communication
     dataflow i, j in [0:J, 0] {
-        channel<fp32> eastwards = affine_channel(i+1);
-        channel<fp32> westwards = affine_channel(i-1);
-        channel<fp32> input_local = input[i];
+        channel<f32> eastwards = affine_channel(i+1);
+        channel<f32> westwards = affine_channel(i-1);
+        channel<f32> input_local <- input[i];
+        channel<f32> output_local -> output[i];
     }
 
     // Computation
     task i, j in [1:J-1, 0] {
-    
+
         // Streaming receive
         // Each PE receives a single scalar per time step
-        foreach x in streaming_copy_in(input) {
-            
+        foreach x in receive(input_local) {
+
             // Send the data to the right
             send(x, eastwards);
             // Send the data to the left
             send(x, westwards);
- 
+
             y = x * kernel[1];
- 
+
             completion east = foreach x, y in [0:1, receive(eastwards)] {
                 y = y + x * kernel[0];
             }
@@ -759,33 +777,34 @@ kernel conv<J>(channel<fp32, J, ?> input,
 
                 after (west) {
                     // Send the result to the output
-                    streaming_copy_out(y, output);
-                }
-            }
-            
-        }
-        
-        // Left corner
-        task i, 0 in [0, 0] {
-            // Streaming receive
-            foreach x in streaming_copy_in(input) {
-                // Send the data to the right
-                send(x, eastwards);
-                
-                y = x * kernel[1];
-
-                completion west = foreach x, y in [0:1, receive(westwards)] {
-                    y = y + x * kernel[2];
-                }
-                  
-                after (west) {
-                   // Send the result to the output
-                   streaming_copy_out(y, output);
+                    send(y, output_local);
                 }
             }
         }
-        
-        // Right corner
-        // ...
-
     }
+
+    // Left corner
+    task i, 0 in [0, 0] {
+        // Streaming receive
+        foreach x in receive(input_local) {
+            // Send the data to the right
+            send(x, eastwards);
+            
+            y = x * kernel[1];
+
+            completion west = foreach x, y in [0:1, receive(westwards)] {
+                y = y + x * kernel[2];
+            }
+                
+            after (west) {
+                // Send the result to the output
+                send(y, output_local);
+            }
+        }
+    }
+
+    // Right corner
+    // ...
+
+}
+```
