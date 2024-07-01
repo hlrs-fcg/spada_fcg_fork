@@ -53,18 +53,22 @@ Constant integer literals are `i64` and constant floating-point literals are `f3
 Any scalar type `T` and one or more parameter expressions `S_1`, `S_2`, ... `S_d` may be used to create an array type `T[S_1, S_2, ... S_d]`.
 It represents a d-dimensional array of type `T`, where the i-th dimension contains `S_i` elements.
 
-For example, `f32[10]`, `i32[I+2, J+2]` are array types. 
+For example, `f32[10]`, `i32[I+2, J+2]` are array types.
 
 #### Parameters
 
 Parameter literals are placeholders for an actual value that will be substituted with an integer 
 value at compile time. They are denoted by capital letters or capital letters followed by a number string.
-For example, `I`, `J`, `K`, `I001` denote parameter types.
+For example, `I`, `J`, `K`, `I001` denote parameters.
 
 #### Variables
 
 A variable starts with a lower case letter and may contain letters, numbers, and underscores.
-For example, `x`, `y`, `my_variable`, `my_variable_2` are valid variable names.
+For example, `x`, `y`, `my_variable`, `my_Variable_2` are valid variable names.
+
+```
+variable ::= [a-z][a-zA-Z0-9_]*
+```
 
 A variable is in scope if it is declared in the current block or any enclosing block.
 
@@ -82,15 +86,30 @@ For example, `f32[I, J] readonly arg1`, `f32[I, J] writeonly arg2`, `f32[1024] a
 
 #### Parameter Expressions
 
-A parameter expression is an expression that may depend on parameters and constant literals. 
- 
-For example, `I`, `J+2`, `10`, `I+J` are parameter expressions.
+A parameter expression is an expression that may depend on parameters and constant integer literals. 
+
+```
+parameter_expression ::= constant_literal | parameter_literal | parameter_expression + parameter_expression | parameter_expression - parameter_expression | parameter_expression * parameter_expression | parameter_expression // parameter_expression | parameter_expression % parameter_expression | (parameter_expression)
+```
+where // denotes integer division and % denotes modulo.
+
+For example, `I`, `J+2`, `10`, `(I+J) // 2` are parameter expressions.
 
 #### Expressions
 
-An expression may depend on parameters, constants, in-scope variables, and arguments.
+An expression may depend on parameters, constants, and in-scope variables.
 
-For example, `I`, `J+2`, `i`, `I+i` are integer expressions.
+```
+array_expression ::= variable[int_expression]
+int_expression ::= constant_literal | parameter_literal | variable | expression + expression | expression - expression | expression * expression | expression // expression | expression % expression | (expression)
+expression ::= constant_literal | parameter_literal | variable | array_expression | expression + expression | expression - expression | expression * expression | expression / expression | expression // expression | expression % expression | (expression) 
+```
+where // denotes integer division and % denotes modulo.
+
+For example, `I`, `J+2`, `i`, `I+i` are integer expressions and `a[k+1]` is an array expression.
+
+`int` expressions must be of type `i64` and `array` expressions must be of type `T[S_1, S_2, ... S_d]`
+for some scalar type `T` and parameter expressions `S_1`, `S_2`, ... `S_d`.
 
 #### Range expressions
 
@@ -158,7 +177,7 @@ place var_1, var_2 in subgrid_expression {
    // Statements
 }
 ```
-Where `var_2`, `var_2` are variables that are bound to the coordinates of the PEs in the subgrid.
+Where `var_1`, `var_2` are variables that are bound to the coordinates of the PEs in the subgrid.
 
 For example:
 ```
@@ -179,13 +198,14 @@ Within the place block, the following statements are supported:
 
 When using `<-` or `->` the number of dimensions of the local array must match the number of dimensions of size `>1` of the argument array.
 Any dimensions of size `1` are squeezed out or unsqueezed unless the number of dimensions match exactly.
+Recall that array types are only defined for sizes that are parameter expressions.
 
 For example:
 ```
 place i, j in [0:I, 0:J] {
     f32[K] local_name1 <- arg1[i, j, 0:K];
     f32[K] local_name2 -> arg2[0:K];
-    f32[J/2, K] local_name3 <- arg3[0:J:2, 0:K];
+    f32[J//2, K] local_name3 <- arg3[0:J:2, 0:K];
     f32[1, 1, K] local_name4 <- arg1[i, j, 0:K];
 }
 ```
@@ -193,7 +213,7 @@ place i, j in [0:I, 0:J] {
 In copy mode, inputs are read from before any tasks execute and outputs are copied to the host once all tasks have executed.
 (Note that this is a bit restrictive, it does not yet allow streaming of data, and sending back partial results)
 
-#### Restrctions
+#### Restrictions
 
 The subgrid of the `place` block is given by the PEs that lie in the `subgrid_expression`. An array may be placed using multiple `place` blocks.
 However, each `local_name` may appear at most once for any given PE over all `place` blocks.
@@ -216,11 +236,12 @@ The subgrid of the dataflow block is given by the PEs
 that lie in the `subgrid_expression`.
 The subgrids of the dataflow blocks must be disjoint.
 
-Within the dataflow block, the following statements are supported:
+The dataflow block can be set up to support various types of streams.
+Currently, only *relative streams* are supported:
 
 #### Relative Stream Declaration
 
-A relative stream is declared as follows:
+Inside a `dataflow block`, a relative stream is declared as follows:
 ```
 stream stream_name = relative_stream(dx, dy);
 ```
@@ -270,9 +291,37 @@ that lie in the `subgrid_expression`.
 Tasks blocks *must* define **disjoint subgrids**.
 Not every PE must lie in a task block.
 
+Task blocks may contain the following statements:
+```
+// Send
+completion_name = send(local_array, stream_name);
+// After completion
+after (completion_name) {
+  // Statements
+}
+// Foreach loop over a receive() stream
+completion completion_name = foreach iteration_variable_names, data_variable_name in [parameter_expressions, receive(stream_name)] {
+  // Assignment statements
+}
+// Parallel map
+completion completion_name = map variable_names in [range_expression] {
+  // Assignment statements
+}
+// Sequential for loop
+for variable_name in [range_expression] {
+  // Assignment statements or nested for-loops
+}
+```
+An assignment statement is of the form 
+```
+array_expression = expression;
+// or
+variable = expression;
+```
+
 #### Sending Data Streams with `send`
 
-The `send` statement sends data to a stream.
+Inside a `task` block, the `send` statement sends data asynchronously to a stream.
 
 ```
 completion completion_name = send(local_array, stream_name);
@@ -292,7 +341,7 @@ You must synchronize the sends using completions. Two sends are considered concu
 
 #### Receiving Data Streams with `receive`
 
-The `receive` statement wraps a stream to receive data from it.
+Inside a `task` block, the `receive` operation wraps a stream to receive data from it.
 
 ```
 receive(stream_name)
@@ -301,17 +350,21 @@ receive(stream_name)
 Send and receive calls must be compatible with the definitions of the streams in the dataflow blocks
 and must be matched across PEs. In particular, if there is a send from PE `A` to PE `B`, there must be one or more corresponding receives from PE `B` to PE `A`.
 Similarly, if there is a receive at PE `B`, there must be one or more corresponding sends with destination `B`.
-Such a pair of matched send and receive statements for a stream is called a *stream edge* from `A` to `B`.
+Such a pair of matched send and receive's for a stream is called a *stream edge* from `A` to `B`.
+
+Note that a receive operation does not imply that any data is actually received,
+it merely declares the existence of a receiving virtual communication channel.
 
 *Deadlocks*. Failure to construct proper stream edges may result in a *deadlock*. The compiler
-will check these constraints and report potential deadlocks on a best-effort basis [Discuss].
+will check these constraints and report potential deadlocks on a best-effort basis.
 
 *Data Races*.
 Receiving from the same stream multiple times concurrently is considered a data race on the stream.
+Two receives are considered concurrent if they are not ordered by `after`.
 
 #### Managing Concurrency with `after`
 
-The `after` statement is used to trigger a computation after a completion has been received,
+Inside a `task` block, the `after` statement is used to trigger a computation after a completion has been received,
 and introduce ordering constraints between tasks. These can be used to avoid data races on strams
 and arrays.
 
@@ -338,7 +391,7 @@ after (comp_1) {
 
 #### Processing Data Streams with `foreach`
 
-A `foreach` loop can be used to apply a computation to a stream of data.
+Inside a `task` block, a `foreach` loop can be used to apply a computation to a stream of data.
 For each element in the stream, the computation is executed.
 The elements are processed in the order they are received.
 
@@ -352,10 +405,15 @@ completion completion_name = foreach iteration_variable_name in [receive(stream_
 }
 
 // Receive a fixed number of elements
-completion completion_name = foreach iteration_variable_name, data_variable_name in [parameter_expression, receive(stream_name)] {
+completion completion_name = foreach iteration_variable_names, data_variable_name in [parameter_expressions, receive(stream_name)] {
   // Assignment statements
 }
 ```
+One may specify multiple iteration variables, but only a single data variable in the `foreach` loop.
+The data variable is bound to the received data.
+The iteration variables are bound to the indices of the received data, which is
+interpreted as a multi-dimensional array in *row-major* order.
+
 If the number of elements received is known, it is always preferable to specify it explicitly in order
 to allow for performance optimizations.
 
@@ -386,11 +444,11 @@ Doing so is considered a data race.
 
 #### Processing arrays in parallel with `map`
 
-The `map` statement is used to apply a computation to each element of an array.
+Inside a `task` block, the `map` statement is used to apply a computation to each element of an array.
 
 ```
 completion comp = map variable_names in [range_expression] {
-  // Scalar assignment statements
+  // Assignment statements
 }
 ```
 There is no guarantee on the order in which the map is executed.
@@ -401,11 +459,11 @@ Doing so is considered a data race.
 
 #### Processing arrays sequentially with `for`
 
-The `for` statement is used to apply a computation to each element of an array in a sequential order.
+Inside a `task` block, the `for` statement is used to apply a computation to each element of an array in a sequential order.
 
 ```
 for variable_name in [range_expression] {
-  // Scalar assignment statements
+  // Assignment statements or nested for-loops
 }
 ```
 
@@ -437,7 +495,7 @@ kernel vadv<I,J,K>(f32[I, J, K] utens_stage,
                   f32[I, J, K] readonly u_pos,
                   f32[I, J, K] readonly utens,
                   f32[I, J, K] writeonly datacol,       
-                  f32 readonly dtr_stage,
+                  f32 readonly DTR_STAGE,
                   f32 readonly BET_M,
                   f32 readonly BET_P) {
   
@@ -453,6 +511,9 @@ kernel vadv<I,J,K>(f32[I, J, K] utens_stage,
       f32[K] u_pos_l <- u_pos[i, j, 0:K];
       f32[K] utens_l <- utens[i, j, 0:K];
       f32[K] datacol_l -> datacol[i, j, 0:K];
+      bet_m <- BET_M;
+      bet_p <- BET_P;
+      dtr_stage <- DTR_STAGE;
       
       # Local variables
       f32[K] gav;
@@ -502,7 +563,6 @@ kernel vadv<I,J,K>(f32[I, J, K] utens_stage,
   
       after (wcon_interval_1) {
         completion wcon_interval_2 = foreach k, x in [1:K, receive(westwards)] {
-            // TODO: Question: do we allow multiple statements here? Would be nice to have.
             gav[k] = -0.25 * x * wcon_l[k];
             gcv[k-1] = 0.25 * x * wcon_l[k];
         }
@@ -511,10 +571,10 @@ kernel vadv<I,J,K>(f32[I, J, K] utens_stage,
             // Rest of the forward pass
             // Cannot be in the foreach block because of a data race on gav and gcv ??
             for k in [1:K] {
-              as_[k] = gav[k] * BET_M;
-              cs[k] = gcv[k] * BET_M;
-              acol[k] = gav[k] * BET_P;
-              ccol[k] = gcv[k] * BET_P;
+              as_[k] = gav[k] * bet_m;
+              cs[k] = gcv[k] * bet_m;
+              acol[k] = gav[k] * bet_p;
+              ccol[k] = gcv[k] * bet_p;
               bcol[k] = dtr_stage - acol[k] - ccol[k];
     
               correction_term[k] = -as_[k] * (u_stage_l[k-1] - u_stage_l[k]) - cs[k] * (u_stage_l[k+1] - u_stage_l[k]);
@@ -531,7 +591,7 @@ kernel vadv<I,J,K>(f32[I, J, K] utens_stage,
                 /// Boundary condition ...
             }
             // Main backwards loop          
-            for k in [K-2:0] {
+            for k in [K-2:0:-1] {
               datacol_l[k] = dcol_2[k] - ccol_2[k] * datacol_l[k+1];
               utens_stage_l[k] = dtr_stage * (datacol_l[k] - u_pos_l[k]);
             }
