@@ -281,7 +281,7 @@ dataflow i, j in [0:I, 0:J] {
     channel<f32> two_north = affine_channel(0, j-2);
 }
 ```
-describes a communication channel that sends `fp32` data to the east-most PEs, two PEs to the north. 
+describes a communication channel that sends `f32` data to the east-most PEs, two PEs to the north. 
 
 Note that the channel declaration does not imply that any data is ever sent over the channel.
 It merely declares the existence of a virtual communication channel.
@@ -304,7 +304,7 @@ The subgrid of the task block is given by the PEs
 that lie in the `subgrid_expression`.
 
 Task blocks may contain the following statements:
-```
+```rust
 // Send (nonblocking)
 completion_name = send(local_array, channel_name);
 // After completion
@@ -334,7 +334,7 @@ completion completion_name = async {
 }
 ```
 An assignment statement is of the form 
-```
+```rust
 array_expression = expression;
 // or
 variable = expression;
@@ -371,7 +371,7 @@ You must synchronize the sends using completions. Two sends are considered concu
 
 Inside a `task` block, the `receive` operation wraps a channel to receive a stream of data from it.
 
-```
+```rust
 receive(channel_name)
 ```
 
@@ -397,7 +397,7 @@ Inside a `task` block, the `after` statement is used to trigger a computation af
 and introduce ordering constraints between tasks. These can be used to avoid data races on strams
 and arrays.
 
-```
+```rust
 after (completion_name) {
   // Statements
 }
@@ -407,7 +407,7 @@ The statements within the `after` block are executed after the completion `compl
 
 For example, the following code sends data to `channel_1`
 and then sends data to `channel_2` after the completion of the first send and after rewriting the data array.
-```
+```rust
 completion comp_1 = send(local_array, channel_name);
 after (comp_1) {
     after (comp_2) {
@@ -425,7 +425,7 @@ For each element in the stream, the computation is executed.
 The elements are processed in the order they are received.
 
 One may either provide the number of elements to receive[, or receive until the sender is done].
-```
+```rust
 // Receive until the sender is done
 // Discuss: I am not sure we even want to allow for this!
 // I would for now, leave it out
@@ -573,7 +573,7 @@ kernel vadv<I,J,K>(f32[I, J, K] utens_stage,
   // Set up communication channels
   // The only communication is for wcon, which is sent to the west  
   dataflow i, j in [0:I, 0:J] {
-    channel<fp32> westwards = affine_channel(i-1, j);
+    channel<f32> westwards = affine_channel(i-1, j);
   }
 
   ////
