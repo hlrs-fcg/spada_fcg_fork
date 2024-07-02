@@ -160,25 +160,29 @@ where parameters is a list of parameter literals, and arguments is a list of arg
 
 #### Arguments
 
-An argument is a named and typed array or scalar variable that is passed to a kernel.
+An argument is a named and typed channel array or scalar variable that is passed to a kernel.
 ```
 argument ::= T variable_name | T readonly variable_name | T writeonly variable_name | T compiletime variable_name
 ```
-where `T` is a type name and `variable_name` is a variable name.
+where `T` is a scalar type, channel type, or channel array type and `variable_name` is a variable name.
+Notable, it is not possible to pass scalar arrays as arguments, instead,
+arrays must be read through channels.
+[TODO: Discuss the rationale for this, we can always pass a channel array and read the scalar array from it.]
 
 If an argument may be *only* read from or written to, it is marked as `readonly` or `writeonly`, respectively.
 
-For example, `f32[I, J] readonly arg1`, `f32[I, J] writeonly arg2`, `f32[1024] arg3` are arguments.
+For example, `channel<f32>[I, J] readonly arg1`, `channel<f32>[I, J] writeonly arg2`, `f32 arg3` are arguments.
 
-Constant values that are "baked into" the PE code are `compiletime` annotated.
+If an argument is known at compiletime it may be annotated with `compiletime`.
+It must be provided at compilation time together with the parameters.
 
 #### Kernel semantics
 
-A kernel gets the memory of its arguments from a host device,
+A kernel gets the memory of its arguments from a host device or other kernel,
 runs the computation, and returns the results to the host device.
-The returns values are specified as arguments to the kernel.
+This is done through communication channels, which are explicitly defined in the kernel arguments.
 Inputs and outputs may be sent and received in a streaming fashion.
-If an argument may be only read from or written to, it is marked as `readonly` or `writeonly`, respectively.
+If an argument channel may be only read from or written to, it is marked as `readonly` or `writeonly`, respectively.
 
 ### Place block
 
@@ -204,37 +208,14 @@ Semantically, the place block iterates over every value in subgrid_expression an
 allocates the memory as described in the block. The variables become bound to the coordinates of the PEs in the subgrid.
 They can be used by statements in the place block.
 
-Within the place block, the following statements are supported:
+Within the place block, the following statement is supported:
 
 - Allocate a local array: `T[S_0, ...] local_name;`
-- Read from an input array as a copy: `T[S_0, ...] local_name <- argument_name[range_expression, ...];`
-- Write to an output array as a copy: `T[S_0, ...] local_name -> argument_name[range_expression, ...];`
-
-When using `<-` or `->` the number of dimensions of the local array must match the number of dimensions of size `>1` of the argument array.
-Any dimensions of size `1` are squeezed out or unsqueezed unless the number of dimensions match exactly.
-Recall that array types are only defined for sizes that are parameter expressions.
-
-For example:
-```rust
-place i, j in [0:I, 0:J] {
-    f32[K] local_name1 <- arg1[i, j, 0:K];
-    f32[K] local_name2 -> arg2[0:K];
-    f32[J//2, K] local_name3 <- arg3[0:J:2, 0:K];
-    f32[1, 1, K] local_name4 <- arg1[i, j, 0:K];
-}
-```
-
-In copy mode, inputs are read from before any tasks execute and outputs are copied to the host once all tasks have executed.
-(Note that this is a bit restrictive, it does not yet allow streaming of data, and sending back partial results)
 
 #### Restrictions
 
 The subgrid of the `place` block is given by the PEs that lie in the `subgrid_expression`. An array may be placed using multiple `place` blocks.
 However, each `local_name` may appear at most once for any given PE over all `place` blocks.
-
-If the same memory location of an output array is written to by multiple PEs,
-this constitutes a *race condition* and is undefined behavior. 
-
 
 ### Dataflow block
 
