@@ -48,22 +48,22 @@ We may use constant literals to represent constant compile-time values.
 For example `0`, `1`, `1024`, `-12` are constant literals. 
 Constant integer literals are `i64` and constant floating-point literals are `f32`. 
 
-#### Arrays
-
-Any scalar type `T` and one or more parameter expressions `S_1`, `S_2`, ... `S_d` may be used to create an array type `T[S_1, S_2, ... S_d]`.
-It represents a d-dimensional array of type `T`, where the i-th dimension contains `S_i` elements.
-
-For example, `f32[10]`, `i32[I+2, J+2]` indicate array types.
 
 #### Channels
 
 A channel corresponds to a virtual communication channel between PEs or the host device and the PEs.
-[TODO: Discuss should there be subtype of channels depending on PE-PE or host-PE communication?]
 
 For any scalar type `T`,  `channel<T>` indicates the corresponding element type sent over the channel.
 
 Channels do not send a predetermined number of elements, but the sender and receiver must agree on the number of elements sent and received.
 This can be done explicitly (when the size is known from the parameters) or implicitly (by sending a completion signal with/after the last element).
+
+#### Arrays
+
+Any scalar or channel type `T` and one or more parameter expressions `S_1`, `S_2`, ... `S_d` may be used to create an array type `T[S_1, S_2, ... S_d]`.
+It represents a d-dimensional array of type `T`, where the i-th dimension contains `S_i` elements.
+
+For example, `f32[10]`, `i32[I+2, J+2]` indicate array types.
 
 #### Parameters
 
@@ -251,26 +251,26 @@ that lie in the `subgrid_expression`.
 The subgrids of the dataflow blocks must be disjoint.
 
 The dataflow block can be set up to support various types of channels.
-Currently, only *affine channel* indexing is supported:
+Currently, only *relative channel* indexing is supported:
 
-#### Affine Channel Declaration
-[TODO Discuss what kinds of expressions should we allow -- we must be able to compile it]
+#### Relative Channel Declaration
 
-Inside a `dataflow block`, an affine coomunication channel is declared as follows:
+Inside a `dataflow block`, a relative communication channel is declared as follows:
 ```
-channel<T> channel_name = affine_channel(exp1, exp2);
+channel<T> channel_name = relative_channel(dx, dy);
 ```
-where `T` is a scalar type and `exp1` and `exp2` are **affine** parameter expressions that describe the position of the target PE.
-This describes a streaming communication channel from the current PE at some
-position to the PE at the absolute position `(exp1, exp2)`.
+where `T` is a scalar type and `dx` and `dy` are parameter expressions that describe the relative position of the target PE.
+This describes a streaming communication channel for sending from the current PE at some
+position `(i ,j)` to the PE at the relative position `(i+dx, j+dy)`, and simultaneously
+a channel for receiving from the PE at the relative position `(i-dx, j-dy)` at the current PE at `(i, j)`.
 
 For example,
 ```rust
 dataflow i, j in [0:I, 0:J] {
-    channel<f32> eastwards = affine_channel(i+1, i);
-    channel<f32> westwards = affine_channel(i-1, i);
-    channel<f32> northwards = affine_channel(i, i-1);
-    channel<f32> southwards = affine_channel(i, i+1);
+    channel<f32> eastwards = relative_channel(1, 0);
+    channel<f32> westwards = relative_channel(-1, 0);
+    channel<f32> northwards = relative_channel(0, -1);
+    channel<f32> southwards = relative_channel(0, 1);
 }
 ```
 describes four communication channels to the east, west, north, and south of each PE.
@@ -278,10 +278,10 @@ describes four communication channels to the east, west, north, and south of eac
 For example,
 ```
 dataflow i, j in [0:I, 0:J] {
-    channel<f32> two_north = affine_channel(0, j-2);
+    channel<f32> two_north = relative_channel(0, -2);
 }
 ```
-describes a communication channel that sends `f32` data to the east-most PEs, two PEs to the north. 
+describes a communication channel that sends `f32` data two PEs to the north. 
 
 Note that the channel declaration does not imply that any data is ever sent over the channel.
 It merely declares the existence of a virtual communication channel.
@@ -588,7 +588,7 @@ kernel vadv<I,J,K>(f32[I, J, K] utens_stage,
   // Set up communication channels
   // The only communication is for wcon, which is sent to the west  
   dataflow i, j in [0:I, 0:J] {
-    channel<f32> westwards = affine_channel(i-1, j);
+    channel<f32> westwards = relative_channel(-1, 0);
   }
 
   ////
@@ -685,10 +685,10 @@ kernel laplacian<I,J,K> (f32[I+2, J+2, K] readonly in_field,
   // Communication channels as a first-class concept
   
   dataflow i, j in [0:I+1, 0:J+1] {
-     channel<f32> eastwards = affine_channel(i+1, j);
-     channel<f32> westwards = affine_channel(i-1, j);
-     channel<f32> northwards = affine_channel(i, j-1);
-     channel<f32> southwards = affine_channel(i, j+1);
+     channel<f32> eastwards = relative_channel(+1, 0);
+     channel<f32> westwards = relative_channel(-1, 0);
+     channel<f32> northwards = relative_channel(0, -1);
+     channel<f32> southwards = relative_channel(0, +1);
   }
   
   // Edge senders
@@ -744,10 +744,6 @@ That is in each time step, we receive an array of K elements, and we convolve it
 The kernel is of size 3.
 While the data is being streamed, it is convolved with the kernel and streamed to the output.
 
-[TODO: Discuss: This is a sketch]
-[I am not yet sure how to represent streaming inputs and outputs adequately
-and this is NOT consistent with the rest of the document yet.]
-
 ```rust
 kernel conv<J>(channel<f32>[J] readonly input,
                channel<f32>[J] writeonly output,
@@ -761,8 +757,8 @@ kernel conv<J>(channel<f32>[J] readonly input,
 
     // Communication
     dataflow i, j in [0:J, 0] {
-        channel<f32> eastwards = affine_channel(i+1);
-        channel<f32> westwards = affine_channel(i-1);
+        channel<f32> eastwards = relative_channel(1, 0);
+        channel<f32> westwards = relative_channel(-1, 0);
         channel<f32> input_local <- input[i];
         channel<f32> output_local -> output[i];
     }
