@@ -151,7 +151,7 @@ For example, `[0:I, 0:J]` describes the entire grid of PEs.
 A kernels abstracts a computation that is executed on a grid of processing elements (PEs).
 A kernel is defined using the following syntax:
 
-```
+```rust
 kernel kernel_name<parameters> (arguments) {
   // Kernel definition
 }
@@ -186,7 +186,7 @@ All array data is placed on the PEs using one or more `place` blocks.
 A `place` block is used to describe the placement of data on the PEs.
 
 The syntax of the place block is as follows:
-```
+```rust
 place var_1, var_2 in subgrid_expression {
    // Statements
 }
@@ -194,7 +194,7 @@ place var_1, var_2 in subgrid_expression {
 Where `var_1`, `var_2` are variables that are bound to the coordinates of the PEs in the subgrid.
 
 For example:
-```
+```rust
 place i, j in [0:I:2, 0:J] {
     // Statements
 }
@@ -215,7 +215,7 @@ Any dimensions of size `1` are squeezed out or unsqueezed unless the number of d
 Recall that array types are only defined for sizes that are parameter expressions.
 
 For example:
-```
+```rust
 place i, j in [0:I, 0:J] {
     f32[K] local_name1 <- arg1[i, j, 0:K];
     f32[K] local_name2 -> arg2[0:K];
@@ -241,7 +241,7 @@ this constitutes a *race condition* and is undefined behavior.
 All communication is set up in one or more `dataflow` blocks, which describe the communication channels between PEs.
 
 The syntax of the dataflow block is as follows:
-```
+```rust
 dataflow variables in subgrid_expression {
   //Statements
 }
@@ -265,7 +265,7 @@ This describes a streaming communication channel from the current PE at some
 position to the PE at the absolute position `(exp1, exp2)`.
 
 For example,
-```
+```rust
 dataflow i, j in [0:I, 0:J] {
     channel<f32> eastwards = affine_channel(i+1, i);
     channel<f32> westwards = affine_channel(i-1, i);
@@ -294,7 +294,7 @@ Computations may return completions that may trigger other tasks.
 
 
 The task block is defined as follows:
-```
+```rust
 task variables in subgrid_expression {
   // Statements
 }
@@ -303,7 +303,8 @@ task variables in subgrid_expression {
 The subgrid of the task block is given by the PEs
 that lie in the `subgrid_expression`.
 
-Task blocks may contain the following statements:
+Task blocks may contain the following statements, some of which are
+asynchronous and return completions that may be used to synchronize tasks.
 ```rust
 // Send (nonblocking)
 completion_name = send(local_array, channel_name);
@@ -340,11 +341,14 @@ array_expression = expression;
 variable = expression;
 ```
 
+
 #### Overlapping task blocks
 
-Not every PE must lie in a task block.
-
 Multiple tasks assigned to the same PE run in order of appearance in the code.
+This implies that at the end of each task, 
+we implicitly wait for all completions to be triggered before starting the next task.
+
+Not every PE must lie in a task block.
 
 
 #### Streaming Data with `send`
@@ -380,7 +384,6 @@ and must be matched across PEs. In particular, if there is a send from PE `A` to
 Similarly, if there is a receive at PE `B`, there must be one or more corresponding sends with destination `B`.
 Such a pair of matched send and receive's for a channel is called a *stream edge* from `A` to `B`.
 
-[TODO: Discuss - should we allow a receive that is never consumed? -- I think not]
 Note that a `receive` operation does not imply that any data is actually received,
 it merely declares the existence of a stream edge.
 
@@ -388,8 +391,8 @@ it merely declares the existence of a stream edge.
 will check these constraints and report potential deadlocks on a best-effort basis.
 
 *Data Races*.
+Two receives in the same task block are considered concurrent if they are not ordered by `after`.
 Receiving from the same channel multiple times concurrently is considered a data race on the channel.
-Two receives are considered concurrent if they are not ordered by `after`.
 
 #### Managing Concurrency with `after`
 
@@ -417,18 +420,15 @@ after (comp_1) {
 ```
 
 
-
 #### Processing Data Streams with `foreach`
 
 Inside a `task` block, a `foreach` loop can be used to apply a computation to a stream of data.
 For each element in the stream, the computation is executed.
 The elements are processed in the order they are received.
 
-One may either provide the number of elements to receive[, or receive until the sender is done].
+One may either provide the number of elements to receive, or receive until the sender is done.
 ```rust
 // Receive until the sender is done
-// Discuss: I am not sure we even want to allow for this!
-// I would for now, leave it out
 completion completion_name = foreach iteration_variable_name in [receive(channel_name)] {
   // Assignment statements
 }
@@ -443,7 +443,7 @@ The data variable is bound to the received data.
 The iteration variables are bound to the indices of the received data, which is
 interpreted as a multi-dimensional array in *row-major* order.
 
-If the number of elements received is known, it is always preferable to specify it explicitly in order
+If the number of elements received is known, it is preferable to specify it explicitly in order
 to allow for performance optimizations.
 
 For example, the following code receives data from `channel_1` for `K` elements
@@ -455,6 +455,8 @@ completion completion_name = foreach k, x in [0:K, receive(channel_1)] {
 ```
 
 The `completion_name` is a completion handle that may be used to wait for the completion of the task.
+Note that the completion is triggered when the data has been received, not when it is sent.
+After the completion triggers, the channel may be used for other sends or receives.
 
 *Deadlocks*:
 The sizes sent and received must match:
@@ -466,10 +468,6 @@ the total sizes must match the total sizes of the arrays that are sent through t
 
 *Failure to correctly match the sizes sent and received may result in a deadlock.*
 
-*Data Races*: 
-[TODO Discuss]
-Two statements in the same `foreach` block may also not write to the same array or read and write to the same array.
-Doing so is considered a data race.
 
 #### Processing arrays in parallel with `map`
 
@@ -482,9 +480,6 @@ completion comp = map variable_names in [range_expression] {
 ```
 There is no guarantee on the order in which the map is executed.
 Therefore, the map must not contain loop-carried dependencies.
-
-*Data Races*: Two statements in the same `map` block may also not write to the same array or read and write to the same array.
-Doing so is considered a data race.
 
 #### Processing arrays sequentially with `for`
 
@@ -501,26 +496,46 @@ and in-order.
 
 #### Computing asynchronously with `async`
 
-Sometimes it may be beneficial to run computations asynchronously.
+Inside a `task` block, an `async` block is used to execute a computation asynchronously.
 
 ```rust
 completion comp = async {
-  // Sequential computations
+  // Assignment statements or nested for-loops
 }
 ```
 
-#### Data Races
 
-Two `foreach` blocks, `map` blocks are considered concurrent if
-they are not ordered by an interceding `after`.
-Writing to the same array from multiple such constructs concurrently is considered a *data race*
-and is undefined behavior. You must synchronize the writes using the completions.
+#### Semantics of Asynchronous Statements
 
-A statement is considered concurrent with another statement if they are not ordered by an `after` statement.
-Writing to an array in a statement of a `foreach` or `map` block while concurrently reading from it 
-in another statement anywhere (such as in a `for` loop or `send`) is considered a data race.
+Asynchronous statements may, but do not necessarily run in parallel.
+Instead, they may execute in any order and may be interleaved with other statements.
+An asynchronous statement may be pre-empted at any time, even partially during its execution.
+Hence, it is imperative to avoid **data races**:
+
+Within a task block, a statement inside a `foreach`, `async`, or `map` is considered concurrent with another statement if they are not ordered by an `after` statement.
+Writing to an array in a statement of a `foreach`, `async`, or `map` block while concurrently reading from it 
+or writing to it in another statement anywhere is considered a *data race*
+and is considered undefined behavior. 
 In particular, sending data from an array while concurrently
-writing to it is considered a data race.
+writing to it is considered a data race. Also, writing to the same
+array twice inside the same `foreach`, `async`, or `map` block is
+considered a data race. 
+You must synchronize such statements using the completions.
+The motivation for this strict definition is
+to allow for parallelization, vectorization, and reordering of statements.
+
+Some asynchronous statements cannot make progress until some event occurs.
+It is guaranteed that if there exists a statement that
+can make progress, at least one of them will make progress.
+There is no guarantee of fairness. 
+Failure to guarantee completion regardless of progress order constitutes a **deadlock**.
+
+For example, each iteration of a `foreach` waits for the receival of data.
+An `after` statement waits for the completion of a task.
+A `send` statement requires that the channel has space to carry the data
+and may stall if the receiver is not ready to receive the data.
+A deadlock-free program will ensure that all PEs can make progress
+eventually.
 
 ## Examples
 
