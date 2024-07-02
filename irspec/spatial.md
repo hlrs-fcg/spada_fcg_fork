@@ -342,15 +342,6 @@ variable = expression;
 ```
 
 
-#### Overlapping task blocks
-
-Multiple tasks assigned to the same PE run in order of appearance in the code.
-This implies that at the end of each task, 
-we implicitly wait for all completions to be triggered before starting the next task.
-
-Not every PE must lie in a task block.
-
-
 #### Streaming Data with `send`
 
 Inside a `task` block, the `send` statement sends data asynchronously through a `channel`.
@@ -537,37 +528,149 @@ and may stall if the receiver is not ready to receive the data.
 A deadlock-free program will ensure that all PEs can make progress
 eventually.
 
+## Phases
+
+One may define multiple phases in a kernel.
+Each phase may contain one or more `place`, `dataflow`, and `task` blocks.
+
+
+For a `place` block defined in the outermost scope, the variables defined therein are in-scope for all `task` blocks in all phases.
+For a `place` block within a phase, the variables defined therein are in-scope for the `task` blocks in that phase.
+
+Similarly, for a `dataflow` block defined in the outermost scope, the channels defined therein are in-scope for all `task` blocks in all phases.
+For a `dataflow` block within a phase, the channels defined therein are in-scope for the `task` blocks in that phase.
+
+After each `task` block, there is an implicit barrier that waits for all completions to be triggered before starting the next task.
+Note that this does *not* imply that all PEs have executed the task.
+Within each phase, there can be at most one task block defined per PE.
+
+If one or more phases are defined, no task block may be defined in the outermost scope.
+If no phases are explicitly defined, the task blocks are implicitly put in a single phase.
+For each phase, there can be at most one task defined per PE.
+If multiple tasks are defined per PE per phase, the behavior is undefined.
+
+Phases run in the order they are defined in the code.
+
+For example:
+```rust
+place for i, j in [0:I, 0:J] {
+    f32[K] a <- arg1[i, j, 0:K];
+}
+
+dataflow for i, j in [0:I, 0:J] {
+  channel<f32> output = argument[i, j];
+}
+
+phase {
+  place for i, j in [0:I, 0:J] {
+    f32[K] b <- arg2[i, j, 0:K];
+  }
+   
+  dataflow for i, j in [0:I, 0:J] {
+    channel<f32> eastwards = relative_channel(1, 0);
+  }
+  
+  task for i, j in [0:I, 0:J] {
+     // Within this task block:
+     // b and a are in scope, eastwards is in scope, and output is in scope
+  }
+
+}
+
+phase {
+
+  place for i, j in [1:I-1, 1:J-1] {
+    f32[K] c <- arg3[i, j, 0:K];
+  }
+
+  dataflow for i, j in [1:I-1, 1:J-1] {
+    channel<f32> westwards = relative_channel(-1, 0);
+  }
+  
+  task for i, j in [1:I-1, 1:J-1] {
+    // Within this task block:
+    // c is in scope, westwards, and output is in scope
+  }
+
+}
+```
+
+
+
 ## Examples
 
 ### Vertical Advection
 
 
 ```rust
-kernel vadv<I,J,K>(f32[I, J, K] utens_stage,
-                  f32[I, J, K] readonly u_stage,
-                  f32[I, J, K] readonly wcon,
-                  f32[I, J, K] readonly u_pos,
-                  f32[I, J, K] readonly utens,
-                  f32[I, J, K] writeonly datacol,       
-                  f32 readonly DTR_STAGE, // Kept as readonly for the sake of the example
+kernel vadv<I,J,K>(channel<f32>[I, J] utens_stage,
+                  channel<f32>[I, J] readonly u_stage,
+                  channel<f32>[I, J] readonly wcon,
+                  channel<f32>[I, J] readonly u_pos,
+                  channel<f32>[I, J] readonly utens,
+                  channel<f32>[I, J] writeonly datacol,       
+                  f32 compiletime dtr_stage,
                   f32 compiletime bet_m,
                   f32 compiletime bet_p) {
   
   ////
-  // Data placement (I/O)
+  // Read Inputs
 
+  // A place block on the outer scope carries data between the input phase
+  // and the computation phase.
   place i, j in [0:I, 0:J] {
-      # Inputs & Outputs
-      f32[K] utens_stage_l <- utens_stage[i, j, 0:K];
-      f32[K] utens_stage_l -> utens_stage[i, j, 0:K];
-      f32[K] u_stage_l <- u_stage[i, j, 0:K];
-      f32[K] wcon_l <- wcon[i, j, 0:K];
-      f32[K] u_pos_l <- u_pos[i, j, 0:K];
-      f32[K] utens_l <- utens[i, j, 0:K];
-      f32[K] datacol_l -> datacol[i, j, 0:K];
-      f32 dtr_stage <- DTR_STAGE;
-      
-      # Local variables
+      # Inputs & Outputs arrays
+      f32[K] utens_stage_l;
+      f32[K] utens_stage_l;
+      f32[K] u_stage_l;
+      f32[K] wcon_l;
+      f32[K] u_pos_l;
+      f32[K] utens_l;
+      f32[K] datacol_l;
+  }
+  
+  phase {
+
+    // Set up communication channels
+    // The only PE-PE communication is for wcon, which is sent to the west  
+    // We additionally set up a channel for the inputs and outputs
+    dataflow i, j in [0:I, 0:J] {
+      channel<f32> u_stage_c = u_stage[i, j];
+      channel<f32> wcon_c = wcon[i, j];
+      channel<f32> u_pos_c = u_pos[i, j];
+      channel<f32> utens_c = utens[i, j];
+      channel<f32> utens_stage_c = utens_stage[i, j];
+    }
+    
+    // Copy the data
+    
+    task i, j in [0:I, 0:J] {
+        foreach k, x in [0:K, receive(u_stage_c)] {
+            u_stage_l[k] = x;
+        }
+        foreach k, x in [0:K, receive(wcon_c)] {
+            wcon_l[k] = x;
+        }
+        foreach k, x in [0:K, receive(u_pos_c)] {
+            u_pos_l[k] = x;
+        }
+        foreach k, x in [0:K, receive(utens_c)] {
+            utens_l[k] = x;
+        }
+        foreach k, x in [0:K, receive(utens_stage_c)] {
+            utens_stage_l[k] = x;
+        }
+        // Exploits implicit completions at the end of each phase
+    }
+  }
+  
+  ////
+  // Computation
+
+  phase {
+  
+    place i, j in [0:I, 0:J] {
+      # Local variables live inside the phases scope
       f32[K] gav;
       f32[K] gcv;
       f32[K] as_;
@@ -580,77 +683,80 @@ kernel vadv<I,J,K>(f32[I, J, K] utens_stage,
       f32[K] ccol_2;
       f32[K] dcol_2;
       f32[K] datacol_l;
-  }
-
-  ////
-  // Communication
-  
-  // Set up communication channels
-  // The only communication is for wcon, which is sent to the west  
-  dataflow i, j in [0:I, 0:J] {
-    channel<f32> westwards = relative_channel(-1, 0);
-  }
-
-  ////
-  // Computation tasks
-
-  task i, j in [0, 0:J] {
-    // Boundary condition
-    // ...
-    on_receive(westwards, K) -> k, x {
-      // ...
     }
-  }
-
-  task i, j in [1:I, 0:J] {
-
+  
+    // Set up communication channels
+    // The only PE-PE communication is for wcon, which is sent to the west  
+    // We additionally set up a channel for the outputs
+    dataflow i, j in [0:I, 0:J] {
+      channel<f32> westwards = relative_channel(-1, 0);
       
-      send(wcon_local, westwards);
+      channel<f32> utens_stage_c = utens_stage[i, j];
+      channel<f32> datacol_c = datacol[i, j];
+    }
   
-      completion wcon_interval_1 = foreach k, x in [0:1, receive(westwards)] {
-          gav[k] = -0.25 * x * wcon_l[k];
-          gcv[k] = 0
-          // ...
+    ////
+    // Computation tasks
+  
+    task i, j in [0, 0:J] {
+      // Boundary condition
+      // ...
+      foreach k, x in [0:K, receive(westwards)] {
+        // ...
       }
+    }
   
-      after (wcon_interval_1) {
-        completion wcon_interval_2 = foreach k, x in [1:K, receive(westwards)] {
-            gav[k] = -0.25 * x * wcon_l[k];
-            gcv[k-1] = 0.25 * x * wcon_l[k];
-        }
-   
-        after (wcon_interval_2) {
-            // Rest of the forward pass
-            // Cannot be in the foreach block because of a data race on gav and gcv ??
-            for k in [1:K] {
-              as_[k] = gav[k] * bet_m;
-              cs[k] = gcv[k] * bet_m;
-              acol[k] = gav[k] * bet_p;
-              ccol[k] = gcv[k] * bet_p;
-              bcol[k] = dtr_stage - acol[k] - ccol[k];
-    
-              correction_term[k] = -as_[k] * (u_stage_l[k-1] - u_stage_l[k]) - cs[k] * (u_stage_l[k+1] - u_stage_l[k]);
-              dcol[k] = dtr_stage * u_pos_l[k] + utens_l[k] + utens_stage_l[k] + correction_term[k];
-
-              // Thomas forward
-              f32 divided = 1.0 / (bcol[k] - ccol[k-1] * acol[k]);
-              ccol_2[k] = ccol[k] * divided;
-              dcol_2[k] = (dcol[k] - dcol[k-1] * acol[k]) * divided;
-            }
-
-            // Boundary condition (k=K-1) not shown
-            for k in [K-1] {
-                /// Boundary condition ...
-            }
-            // Main backwards loop          
-            for k in [K-2:0:-1] {
-              datacol_l[k] = dcol_2[k] - ccol_2[k] * datacol_l[k+1];
-              utens_stage_l[k] = dtr_stage * (datacol_l[k] - u_pos_l[k]);
-            }
-
-        }
+    task i, j in [1:I, 0:J] {
         
-      }   
+        send(wcon_local, westwards);
+    
+        completion wcon_interval_1 = foreach k, x in [0:1, receive(westwards)] {
+            gav[k] = -0.25 * x * wcon_l[k];
+            gcv[k] = 0
+            // ...
+        }
+    
+        after (wcon_interval_1) {
+          completion wcon_interval_2 = foreach k, x in [1:K, receive(westwards)] {
+              gav[k] = -0.25 * x * wcon_l[k];
+              gcv[k-1] = 0.25 * x * wcon_l[k];
+          }
+     
+          after (wcon_interval_2) {
+              // Rest of the forward pass
+              // Cannot be in the foreach block because of a data race on gav and gcv
+              for k in [1:K] {
+                as_[k] = gav[k] * bet_m;
+                cs[k] = gcv[k] * bet_m;
+                acol[k] = gav[k] * bet_p;
+                ccol[k] = gcv[k] * bet_p;
+                bcol[k] = dtr_stage - acol[k] - ccol[k];
+      
+                correction_term[k] = -as_[k] * (u_stage_l[k-1] - u_stage_l[k]) - cs[k] * (u_stage_l[k+1] - u_stage_l[k]);
+                dcol[k] = dtr_stage * u_pos_l[k] + utens_l[k] + utens_stage_l[k] + correction_term[k];
+  
+                // Thomas forward
+                f32 divided = 1.0 / (bcol[k] - ccol[k-1] * acol[k]);
+                ccol_2[k] = ccol[k] * divided;
+                dcol_2[k] = (dcol[k] - dcol[k-1] * acol[k]) * divided;
+              }
+  
+              // Boundary condition (k=K-1) not shown
+              for k in [K-1] {
+                  /// Boundary condition ...
+              }
+              // Main backwards loop          
+              for k in [K-2:0:-1] {
+                datacol_l[k] = dcol_2[k] - ccol_2[k] * datacol_l[k+1];
+                utens_stage_l[k] = dtr_stage * (datacol_l[k] - u_pos_l[k]);
+              }
+  
+              // Copy the data to the output
+              send(datacol_l, datacol_c);
+              send(utens_stage_l, utens_stage_c);
+          }
+        }   
+    }
   }
 
 }
@@ -662,76 +768,97 @@ kernel vadv<I,J,K>(f32[I, J, K] utens_stage,
 ### 2D Laplacian
 
 ```rust
-kernel laplacian<I,J,K> (f32[I+2, J+2, K] readonly in_field,
-                         f32[I, J, K] writeonly lap_field) {
+kernel laplacian<I,J,K> (channel<f32>[I+2, J+2] readonly in_field,
+                         channel<f32>[I, J] writeonly lap_field) {
     
   ////////////////////////////////
   // Data placement
   
+
+  
   place i, j in [0:I+2, 0:J+2] {
-      f32[K] local_input <- in_field[i, j, 0:K];
+      f32[K] local_input;
   }
   
   place i, j in [1:I+1, 1:J+1] {
-      f32[K] local_result -> lap_field[i-1, j-1, 0:K];
+      f32[K] local_result;
   }
   
+  /// Copy input data
   
-  ////////////////////////////////
-  // Computation and communication
+  phase {
   
+    dataflow i, j in [0:I+2, 0:J+2] {
+      channel<f32> in_field_l = in_field[i, j];
+    }
   
-  // Set up communication channels
-  // Communication channels as a first-class concept
-  
-  dataflow i, j in [0:I+1, 0:J+1] {
-     channel<f32> eastwards = relative_channel(+1, 0);
-     channel<f32> westwards = relative_channel(-1, 0);
-     channel<f32> northwards = relative_channel(0, -1);
-     channel<f32> southwards = relative_channel(0, +1);
-  }
-  
-  // Edge senders
-  task i, j in [0, 1:J] {
-      // Streaming send to the right
-      send(local_input, eastwards);
-      // We receive nothing
-  }
-  
-  task i, j in [I+1, 1:J] {
-      // Streaming send to the left
-      send(tosend, westwards);
-      // We receive nothing
-  }
-  // ...
-
-  task i, j in [1:I+1, 1:J+1] {
-      // Streaming parallel computation (map)
-      completion f = map k in [0:K] {
-          local_result[k] = local_input[k] * 4;
+    task i, j in [0:I+2, 0:J+2] {
+      foreach k, x in [0:K, receive(in_field_l)] {
+        local_input[k] = x;
       }
+    }
+  }
+  
 
-      // No data race, both map and send are reading from local_input
-      send(local_input, westwards);
-      after (f) {
-        // Writing to local_result form the map would be considered a data race.
-        completion w = foreach k, x in [0:K, receive(westwards)] {
-            local_result[k] -= x;
+  phase {
+    // Set up communication channels
+    dataflow i, j in [0:I+2, 0:J+2] {
+       channel<f32> eastwards = relative_channel(+1, 0);
+       channel<f32> westwards = relative_channel(-1, 0);
+       channel<f32> northwards = relative_channel(0, -1);
+       channel<f32> southwards = relative_channel(0, +1);
+       
+    }
+    
+    dataflow i, i in [1:I+1, 1:J+1] {
+        channel<f32> lap_field_l = lap_field[i, j];
+    }
+  
+    // Edge senders
+    task i, j in [0, 1:J] {
+        // Streaming send to the right
+        send(local_input, eastwards);
+        // We receive nothing
+    }
+    
+    task i, j in [I+1, 1:J] {
+        // Streaming send to the left
+        send(tosend, westwards);
+        // We receive nothing
+    }
+    // ...
+  
+    task i, j in [1:I+1, 1:J+1] {
+        // Streaming parallel computation (map)
+        completion f = map k in [0:K] {
+            local_result[k] = local_input[k] * 4;
         }
-        // Writing to the same array from multiple foreach blocks concurrently
-        // is considered a data race.
-        // Hence, we need to run one after the other.
-        after (w) {
-          send(local_input, eastwards);
-          completion e = foreach k, x in [0:K, receive(eastwards)] {
+  
+        // No data race, both map and send are reading from local_input
+        send(local_input, westwards);
+        after (f) {
+          // Writing to local_result form the map would be considered a data race.
+          completion w = foreach k, x in [0:K, receive(westwards)] {
               local_result[k] -= x;
           }
-          after (e) {
-            // ...         
+          // Writing to the same array from multiple foreach blocks concurrently
+          // is considered a data race.
+          // Hence, we need to run one after the other.
+          after (w) {
+            send(local_input, eastwards);
+            completion e = foreach k, x in [0:K, receive(eastwards)] {
+                local_result[k] -= x;
+            }
+            after (e) {
+              // ...
+              
+              // after all computation has finished:
+              send(local_result, lap_field_l);   
+            }
           }
+  
         }
-
-      }
+    }  
   }
 }
 ```
