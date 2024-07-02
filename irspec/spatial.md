@@ -306,22 +306,22 @@ that lie in the `subgrid_expression`.
 Task blocks may contain the following statements, some of which are
 asynchronous and return completions that may be used to synchronize tasks.
 ```rust
-// Send (nonblocking)
+// Send (asynchronous)
 completion_name = send(local_array, channel_name);
 // After completion
 after (completion_name) {
   // Statements
 }
-// Foreach loop over a receive() stream until the sender is done (nonblocking)
+// Foreach loop over a receive() stream until the sender is done (asynchronous)
 completion completion_name = foreach iteration_variable_name in [receive(channel_name)] {
   // Assignment statements
 }
 
-// Foreach loop over a receive() stream of defined size (nonblocking)
+// Foreach loop over a receive() stream of defined size (asynchronous)
 completion completion_name = foreach iteration_variable_names, data_variable_name in [parameter_expressions, receive(channel_name)] {
   // Assignment statements
 }
-// Parallel map (nonblocking)
+// Parallel map (asynchronous)
 completion completion_name = map variable_names in [range_expression] {
   // Assignment statements
 }
@@ -329,7 +329,7 @@ completion completion_name = map variable_names in [range_expression] {
 for variable_name in [range_expression] {
   // Assignment statements or nested for-loops
 }
-// Asynchronous block (nonblocking)
+// Asynchronous block (asynchronous)
 completion completion_name = async {
   // Statements
 }
