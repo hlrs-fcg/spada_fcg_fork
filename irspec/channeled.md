@@ -9,6 +9,12 @@ Goals:
   * Each PE has a set of virtual channels (limited resource)
   * Each PE has a routing table for each channel
   * The network is a 2D mesh
+  * The network can switch between routing configurations
+    * This can be done locally triggered by a task
+    * This can be done triggered by a message
+    * A small number of configurations can be kept in 'router registers'
+    * Globally blocking reconfiguration can be done using a collective operation
+      * This rewrites the router registers and blocks communication for the duration (on that color?)
 * Represent tasks and their dependencies
   * Tasks have IDs (limited resource)
   * Tasks may trigger on arrival of data
@@ -33,3 +39,21 @@ Goals:
   * If a resource is full, the system should be able to handle this.
     For example, by splitting computation into multiple parts and scheduling them at different times.
     Or by blocking tasks until resources are available.
+
+
+Thoughts about lowering:
+
+
+- Tasks
+  - We create a dependency graph between statements
+    - This graph defines the happens-before partial order
+  - This task-graph can be converted into a list of tasks
+    - and associated blocks/unblocks
+- Routing
+  - We create the parametric graph templates from the dataflow edges,
+  - Then, we construct the conflict graph also using the happens-before relation
+  - A coloring of the conflict graph gives us the channel assignments
+  - The routing table is then constructed from the channel assignments
+  - If the coloring fails to provide a small enough number of colors,
+    - we can split the computation into multiple parts and schedule them at different times
+    - this requires a (global) reconfiguration mechanism
