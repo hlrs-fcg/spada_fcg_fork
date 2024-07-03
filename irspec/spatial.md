@@ -476,6 +476,57 @@ completion comp = async {
 }
 ```
 
+#### Await completions with `await`
+
+[This is an alternative to `after`, should we keep it? It avoids the need to nest `after` statements.]
+Inside a `task` block, an `await` statement is used to wait for a completion to trigger.
+The `await` can be immediately applied to an asynchronous operation or a completion name.
+```rust
+await statatement;
+await completion_name;
+```
+
+For example,
+```rust
+// Execute a map and wait for its completion
+await map i in [0:10] {
+    // Statements
+}
+// Wait for completion of a send
+await send(local_array, channel_name);
+// Wait for completion of a receive
+await foreach k, x in [0:K, receive(channel_name)] {
+  // Statements
+}
+// Wait for a completion
+await comp;
+```
+Semantically, it equivalent to applying an `after` statement with the completion as the argument
+immediately after the statement and then executing the remaining statements inside the `after` block.
+
+For example:
+```rust
+await map i in [0:10] {
+    // Statements
+}
+for i in [0:10] {
+    // Statements
+}
+// Is equivalent to:
+completion comp = map i in [0:10] {
+    // Statements
+}
+after (comp) {
+    for i in [0:10] {
+        // Statements
+    }
+}
+```
+
+Note that statements inside an `await` may still be pre-empted by other asynchronous operations!
+
+[Developer Note: Having statements with immediate awaits means we can put them on the 'main' thread/task, which
+might save task IDs and avoid overhead of creating/launching a new thread/task.]
 
 #### Semantics of Asynchronous Statements
 
