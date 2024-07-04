@@ -267,25 +267,24 @@ describes a communication channel that sends `f32` data two PEs to the north.
 Note that the channel declaration does not imply that any data is ever sent over the channel.
 It merely declares the existence of a virtual communication channel.
 
-### Task block
+### Compute block
 
-The computation is described in one or more `task` blocks.
-Computation is inherently triggered by receiving data from a stream.
-Computations may return completions that may trigger other tasks.
+The computation is described in one or more `compute` blocks.
+Computation is inherently asynchronous, triggered by receiving data from channels.
+Statements in the `compute` block may return completions that may trigger other statements.
 
-
-The task block is defined as follows:
+The compute block is defined as follows:
 ```rust
-task variables in subgrid_expression {
+compute variables in subgrid_expression {
   // Statements
 }
 ```
 
-The subgrid of the task block is given by the PEs
+The subgrid of the `compute` block is given by the PEs
 that lie in the `subgrid_expression`.
 
-Task blocks may contain the following statements, some of which are
-asynchronous and return completions that may be used to synchronize tasks.
+`Compute` blocks may contain the following statements, some of which are
+asynchronous and return completions that may be used to synchronize computations.
 ```rust
 // Send (asynchronous)
 completion_name = send(local_array, channel_name);
@@ -325,7 +324,7 @@ variable = expression;
 
 #### Streaming Data with `send`
 
-Inside a `task` block, the `send` statement sends data asynchronously through a `channel`.
+Inside a `compute` block, the `send` statement sends data asynchronously through a `channel`.
 
 ```
 completion completion_name = send(local_array, channel_name);
@@ -335,7 +334,7 @@ The `local_array` must be allocated for each PE in the subgrid
 in some `place` block. Similarly, the `channel_name` must be declared in a `dataflow` block
 for each PE in the subgrid.
 
-The `completion_name` is a completion handle that may be used to wait for the completion of the send task.
+The `completion_name` is a completion handle that may be used to wait for the completion of the send operation.
 Note that the completion is triggered when the data has been sent, not when it is received.
 The completion merely indicates that the data in `local_array` may be safely overwritten
 without affecting the result of the computation.
@@ -345,7 +344,7 @@ You must synchronize the sends using completions. Two sends are considered concu
 
 #### Receiving Streaming Data with `receive`
 
-Inside a `task` block, the `receive` operation wraps a channel to receive a stream of data from it.
+Inside a `compute` block, the `receive` operation wraps a channel to receive a stream of data from it.
 
 ```rust
 receive(channel_name)
@@ -363,13 +362,13 @@ it merely declares the existence of a stream edge.
 will check these constraints and report potential deadlocks on a best-effort basis.
 
 *Data Races*.
-Two receives in the same task block are considered concurrent if they are not ordered by `after`.
+Two receives in the same `compute` block are considered concurrent if they are not ordered by `after`.
 Receiving from the same channel multiple times concurrently is considered a data race on the channel.
 
 #### Managing Concurrency with `after`
 
-Inside a `task` block, the `after` statement is used to trigger a computation after a completion has been received,
-and introduce ordering constraints between tasks. These can be used to avoid data races on strams
+Inside a `compute` block, the `after` statement is used to trigger a computation after a completion has been received,
+and introduce ordering constraints between statements. These can be used to avoid data races on strams
 and arrays.
 
 ```rust
@@ -394,7 +393,7 @@ after (comp_1) {
 
 #### Processing Data Streams with `foreach`
 
-Inside a `task` block, a `foreach` loop can be used to apply a computation to a stream of data.
+Inside a `compute` block, a `foreach` loop can be used to apply a computation to a stream of data.
 For each element in the stream, the computation is executed.
 The elements are processed in the order they are received.
 
@@ -426,14 +425,14 @@ completion completion_name = foreach k, x in [0:K, receive(channel_1)] {
 }
 ```
 
-The `completion_name` is a completion handle that may be used to wait for the completion of the task.
+The `completion_name` is a completion handle that may be used to wait for the completion of the `foreach` loop.
 Note that the completion is triggered when the data has been received, not when it is sent.
 After the completion triggers, the channel may be used for other sends or receives.
 
 *Deadlocks*:
 The sizes sent and received must match:
 
-* This means that for each `send` statement on a given channel, there can be at most one `foreach` loop that does not specify the number of elements to receive.
+* This means that for each `send` statement on a given channel, there can be at most one corresponding `foreach` loop that does not specify the number of elements to receive.
 
 * If there are multiple `foreach` loops iterating over the same channel that *do* specify the number of elements to receive,
 the total sizes must match the total sizes of the arrays that are sent through the channel.
@@ -443,7 +442,7 @@ the total sizes must match the total sizes of the arrays that are sent through t
 
 #### Processing arrays in parallel with `map`
 
-Inside a `task` block, the `map` statement is used to apply a computation to each element of an array.
+Inside a `compute` block, the `map` statement is used to apply a computation to each element of an array.
 
 ```rust
 completion comp = map variable_names in [range_expression] {
@@ -455,7 +454,7 @@ Therefore, the map must not contain loop-carried dependencies.
 
 #### Processing arrays sequentially with `for`
 
-Inside a `task` block, the `for` statement is used to apply a computation to each element of an array in a sequential order.
+Inside a `compute` block, the `for` loop is used to apply a computation to each element of an array in a sequential order.
 
 ```rust
 for variable_name in [range_expression] {
@@ -468,7 +467,7 @@ and in-order.
 
 #### Computing asynchronously with `async`
 
-Inside a `task` block, an `async` block is used to execute a computation asynchronously.
+Inside a `compute` block, an `async` block is used to execute a computation asynchronously.
 
 ```rust
 completion comp = async {
@@ -479,7 +478,7 @@ completion comp = async {
 #### Await completions with `await`
 
 [This is an alternative to `after`, should we keep it? It avoids the need to nest `after` statements.]
-Inside a `task` block, an `await` statement is used to wait for a completion to trigger.
+Inside a `compute` block, an `await` statement is used to wait for a completion to trigger.
 The `await` can be immediately applied to an asynchronous operation or a completion name.
 ```rust
 await statatement;
@@ -535,7 +534,7 @@ Instead, they may execute in any order and may be interleaved with other stateme
 An asynchronous statement may be pre-empted at any time, even partially during its execution.
 Hence, it is imperative to avoid **data races**:
 
-Within a task block, a statement inside a `foreach`, `async`, or `map` is considered concurrent with another statement if they are not ordered by an `after` statement.
+Within a `compute` block, a statement inside a `foreach`, `async`, or `map` is considered concurrent with another statement if they are not ordered by an `after` statement.
 Writing to an array in a statement of a `foreach`, `async`, or `map` block while concurrently reading from it 
 or writing to it in another statement anywhere is considered a *data race*
 and is considered undefined behavior. 
@@ -553,35 +552,34 @@ can make progress, at least one of them will make progress.
 There is no guarantee of fairness. 
 Failure to guarantee completion regardless of progress order constitutes a **deadlock**.
 
-For example, each iteration of a `foreach` waits for the receival of data.
-An `after` statement waits for the completion of a task.
+For example, each iteration of a `foreach` waits until receiving a data element.
+An `after` statement waits until a completion triggers. 
 A `send` statement requires that the channel has space to carry the data
 and may stall if the receiver is not ready to receive the data.
 A deadlock-free program will ensure that all PEs can make progress
-eventually.
+eventually regardless of the interleaving of statements.
 
 ## Phases
 
 One may define multiple phases in a kernel.
-Each phase may contain one or more `place`, `dataflow`, and `task` blocks.
+Each phase may contain one or more `place`, `dataflow`, and `compute` blocks.
 
 
-For a `place` block defined in the outermost scope, the variables defined therein are in-scope for all `task` blocks in all phases.
-For a `place` block within a phase, the variables defined therein are in-scope for the `task` blocks in that phase.
+For a `place` block defined in the outermost scope, the variables defined therein are in-scope for all `compute` blocks in all phases.
+For a `place` block within a phase, the variables defined therein are in-scope for the `compute` blocks in that phase.
 
-Similarly, for a `dataflow` block defined in the outermost scope, the channels defined therein are in-scope for all `task` blocks in all phases.
-For a `dataflow` block within a phase, the channels defined therein are in-scope for the `task` blocks in that phase.
+Similarly, for a `dataflow` block defined in the outermost scope, the channels defined therein are in-scope for all `compute` blocks in all phases.
+For a `dataflow` block within a phase, the channels defined therein are in-scope for the `compute` blocks in that phase.
 
-After each `task` block, there is an implicit barrier that waits for all completions to be triggered before starting the next task.
-Note that this does *not* imply that all PEs have executed the task.
-Within each phase, there can be at most one task block defined per PE.
+Within each phase, there can be at most one `compute` block defined per PE.
+If multiple `compute` blocks s are defined per PE per phase, the behavior is undefined.
+After each `compute` block, there is an implicit barrier that waits for all completions to be triggered before starting the next `compute` block.
+Note that this does *not* imply that all PEs have executed the `compute` block.
+No `compute` block may be defined in the outermost scope.
 
-If one or more phases are defined, no task block may be defined in the outermost scope.
-If no phases are explicitly defined, the task blocks are implicitly put in a single phase.
-For each phase, there can be at most one task defined per PE.
-If multiple tasks are defined per PE per phase, the behavior is undefined.
-
-Phases run in the order they are defined in the code.
+Phases run in the order they are defined in the code from each PE's point of view.
+That is, a PE goes through its phases in-order.
+A PEs may participate in some phases and not in others.
 
 For example:
 ```rust
@@ -602,8 +600,8 @@ phase {
     channel<f32> eastwards = relative_channel(1, 0);
   }
   
-  task for i, j in [0:I, 0:J] {
-     // Within this task block:
+  compute for i, j in [0:I, 0:J] {
+     // Within this compute block:
      // b and a are in scope, eastwards is in scope, and output is in scope
   }
 
@@ -619,8 +617,8 @@ phase {
     channel<f32> westwards = relative_channel(-1, 0);
   }
   
-  task for i, j in [1:I-1, 1:J-1] {
-    // Within this task block:
+  compute for i, j in [1:I-1, 1:J-1] {
+    // Within this compute block:
     // c is in scope, westwards, and output is in scope
   }
 
@@ -676,7 +674,7 @@ kernel vadv<I,J,K>(channel<f32>[I, J] utens_stage,
     
     // Copy the data
     
-    task i, j in [0:I, 0:J] {
+    compute i, j in [0:I, 0:J] {
         foreach k, x in [0:K, receive(u_stage_c)] {
             u_stage_l[k] = x;
         }
@@ -728,9 +726,9 @@ kernel vadv<I,J,K>(channel<f32>[I, J] utens_stage,
     }
   
     ////
-    // Computation tasks
+    // Computation
   
-    task i, j in [0, 0:J] {
+    compute i, j in [0, 0:J] {
       // Boundary condition
       // ...
       foreach k, x in [0:K, receive(westwards)] {
@@ -738,7 +736,7 @@ kernel vadv<I,J,K>(channel<f32>[I, J] utens_stage,
       }
     }
   
-    task i, j in [1:I, 0:J] {
+    compute i, j in [1:I, 0:J] {
         
         send(wcon_local, westwards);
     
@@ -824,7 +822,7 @@ kernel laplacian<I,J,K> (channel<f32>[I+2, J+2] readonly in_field,
       channel<f32> in_field_l = in_field[i, j];
     }
   
-    task i, j in [0:I+2, 0:J+2] {
+    compute i, j in [0:I+2, 0:J+2] {
       foreach k, x in [0:K, receive(in_field_l)] {
         local_input[k] = x;
       }
@@ -847,20 +845,20 @@ kernel laplacian<I,J,K> (channel<f32>[I+2, J+2] readonly in_field,
     }
   
     // Edge senders
-    task i, j in [0, 1:J] {
+    compute i, j in [0, 1:J] {
         // Streaming send to the right
         send(local_input, eastwards);
         // We receive nothing
     }
     
-    task i, j in [I+1, 1:J] {
+    compute i, j in [I+1, 1:J] {
         // Streaming send to the left
         send(tosend, westwards);
         // We receive nothing
     }
     // ...
   
-    task i, j in [1:I+1, 1:J+1] {
+    compute i, j in [1:I+1, 1:J+1] {
         // Streaming parallel computation (map)
         completion f = map k in [0:K] {
             local_result[k] = local_input[k] * 4;
@@ -923,7 +921,7 @@ kernel conv<J>(channel<f32>[J] readonly input,
     }
 
     // Computation
-    task i, j in [1:J-1, 0] {
+    compute i, j in [1:J-1, 0] {
 
         // Streaming receive
         // Each PE receives a single scalar per time step
@@ -954,7 +952,7 @@ kernel conv<J>(channel<f32>[J] readonly input,
     }
 
     // Left corner
-    task i, 0 in [0, 0] {
+    compute i, 0 in [0, 0] {
         // Streaming receive
         foreach x in receive(input_local) {
             // Send the data to the right
