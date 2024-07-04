@@ -67,7 +67,7 @@ For example, `f32[10]`, `i32[I+2, J+2]` indicate array types.
 
 #### Parameters
 
-Parameter literals are placeholders for an actual value that will be substituted with an integer 
+Parameter literals are placeholders for an actual value that will be substituted with an **integer** 
 value at compile time. They are denoted by capital letters or capital letters followed by a number string.
 For example, `I`, `J`, `K`, `I001` denote parameters.
 
@@ -84,7 +84,7 @@ A variable is in scope if it is declared in the current block or any enclosing b
 
 #### Parameter Expressions
 
-A parameter expression is an expression that may depend on parameters and constant integer literals. 
+A parameter expression is an expression that may depend on parameters and constant **integer** literals. 
 
 ```
 parameter_expression ::= constant_literal | parameter_literal | parameter_expression + parameter_expression | parameter_expression - parameter_expression | parameter_expression * parameter_expression | parameter_expression // parameter_expression | parameter_expression % parameter_expression | (parameter_expression)
@@ -95,7 +95,7 @@ For example, `I`, `J+2`, `10`, `(I+J) // 2` are parameter expressions.
 
 #### Expressions
 
-An expression may depend on parameters, constants, and in-scope variables.
+An expression may depend on parameters, constants, in-scope variables, and fields.
 
 ```
 array_expression ::= variable[int_expression]
@@ -144,7 +144,7 @@ subgrid_expression ::= [parameter_expression, parameter_expression]
 and it describes a subgrid of the PEs.
 
 For example, `[0:I, 0:J]` describes the entire grid of PEs.
-`[0:I:2, 0:J/2]` describes every second PE in the `x` direction and the first half of PEs in the `y` direction.
+`[0:I:2, 0:J//2]` describes every second PE in the `x` direction and the first half of PEs in the `y` direction.
 
 ### Kernel
 
@@ -162,9 +162,10 @@ where parameters is a list of parameter literals, and arguments is a list of arg
 
 An argument is a named and typed channel array or scalar variable that is passed to a kernel.
 ```
-argument ::= T variable_name | T readonly variable_name | T writeonly variable_name | T compiletime variable_name
+argument_name ::= [a-z][a-zA-Z0-9_]*
+argument ::= T argument_name | T readonly argument_name | T writeonly argument_name | T compiletime argument_name
 ```
-where `T` is a scalar type, channel type, or channel array type and `variable_name` is a variable name.
+where `T` is a scalar type, channel type, or channel array type.
 Notable, it is not possible to pass scalar arrays as arguments, instead,
 arrays must be read through channels.
 [TODO: Discuss the rationale for this, we can always pass a channel array and read the scalar array from it.]
@@ -186,10 +187,9 @@ If an argument channel may be only read from or written to, it is marked as `rea
 
 ### Place block
 
-All array data is placed on the PEs using one or more `place` blocks.
-A `place` block is used to describe the placement of data on the PEs.
+All data is placed on the PEs using one or more `place` blocks.
 
-The syntax of the place block is as follows:
+The syntax of a place block is as follows:
 ```rust
 place var_1, var_2 in subgrid_expression {
    // Statements
@@ -204,18 +204,26 @@ place i, j in [0:I:2, 0:J] {
 }
 ```
 
-Semantically, the place block iterates over every value in subgrid_expression and 
-allocates the memory as described in the block. The variables become bound to the coordinates of the PEs in the subgrid.
-They can be used by statements in the place block.
+Semantically, a place block iterates over every value in subgrid_expression and 
+allocates field memory as described in the block.
+The *fields* declared therein become bound to the coordinates of the PEs in the subgrid.
+They can be used by statements in a `compute` block.
 
-Within the place block, the following statement is supported:
+Field names follow the same syntax as variable names:
+```rust
+field_name ::= [a-z][a-zA-Z0-9_]*
+```
 
-- Allocate a local array: `T[S_0, ...] local_name;`
+Within a `place` block, the following statements are supported:
+
+- Allocate a local array field: `T[S_0, ...] field_name;`
+- Allocate a local scalar field: `T field_name;`
+
 
 #### Restrictions
 
 The subgrid of the `place` block is given by the PEs that lie in the `subgrid_expression`. An array may be placed using multiple `place` blocks.
-However, each `local_name` may appear at most once for any given PE over all `place` blocks.
+However, each `field_name` may appear at most once for any given PE over all `place` blocks.
 
 ### Dataflow block
 
@@ -288,10 +296,7 @@ asynchronous and return completions that may be used to synchronize computations
 ```rust
 // Send (asynchronous)
 completion_name = send(local_array, channel_name);
-// After completion
-after (completion_name) {
-  // Statements
-}
+
 // Foreach loop over a receive() stream until the sender is done (asynchronous)
 completion completion_name = foreach iteration_variable_name in [receive(channel_name)] {
   // Assignment statements
@@ -313,6 +318,9 @@ for variable_name in [range_expression] {
 completion completion_name = async {
   // Statements
 }
+
+// Await a completion
+await completion_name;
 ```
 An assignment statement is of the form 
 ```rust
@@ -320,7 +328,6 @@ array_expression = expression;
 // or
 variable = expression;
 ```
-
 
 #### Streaming Data with `send`
 
@@ -340,7 +347,8 @@ The completion merely indicates that the data in `local_array` may be safely ove
 without affecting the result of the computation.
 
 *Data Races*. Performing multiple sends to the same channel concurrently is considered a data race on the channel.
-You must synchronize the sends using completions. Two sends are considered concurrent if they are not ordered by `after`.
+You must synchronize the sends using completions.
+Two sends in the same phase are considered concurrent if they are not ordered by `await`.
 
 #### Receiving Streaming Data with `receive`
 
@@ -362,33 +370,41 @@ it merely declares the existence of a stream edge.
 will check these constraints and report potential deadlocks on a best-effort basis.
 
 *Data Races*.
-Two receives in the same `compute` block are considered concurrent if they are not ordered by `after`.
+Two receives in the same `compute` block are considered concurrent if they are not ordered by `await`.
 Receiving from the same channel multiple times concurrently is considered a data race on the channel.
 
-#### Managing Concurrency with `after`
+#### Await completions with `await`
 
-Inside a `compute` block, the `after` statement is used to trigger a computation after a completion has been received,
-and introduce ordering constraints between statements. These can be used to avoid data races on strams
-and arrays.
-
+Inside a `compute` block, an `await` statement is used to wait for a completion to trigger.
+The await can be applied to a completion name.
 ```rust
-after (completion_name) {
+await completion_name;
+```
+The `await` can be immediately applied to an asynchronous operation as a shorthand:
+```
+await operation;
+// Is semantically equivalent to:
+completion c = operation;
+await c;
+```
+
+For example,
+```rust
+// Execute a map and wait for its completion
+await map i in [0:10] {
+    // Statements
+}
+// Wait for completion of a send
+await send(local_array, channel_name);
+// Wait for completion of a receive
+await foreach k, x in [0:K, receive(channel_name)] {
   // Statements
 }
+// Wait for a completion
+await comp;
 ```
 
-The statements within the `after` block are executed after the completion `completion_name` has triggered.
-
-For example, the following code sends data to `channel_1`
-and then sends data to `channel_2` after the completion of the first send and after rewriting the data array.
-```rust
-completion comp_1 = send(local_array, channel_name);
-after (comp_1) {
-    after (comp_2) {
-        send(local_array, channel_name);
-    }
-}
-```
+Note that statements inside an `await` may still be preempted by other asynchronous operations!
 
 
 #### Processing Data Streams with `foreach`
@@ -475,57 +491,6 @@ completion comp = async {
 }
 ```
 
-#### Await completions with `await`
-
-[This is an alternative to `after`, should we keep it? It avoids the need to nest `after` statements.]
-Inside a `compute` block, an `await` statement is used to wait for a completion to trigger.
-The `await` can be immediately applied to an asynchronous operation or a completion name.
-```rust
-await statatement;
-await completion_name;
-```
-
-For example,
-```rust
-// Execute a map and wait for its completion
-await map i in [0:10] {
-    // Statements
-}
-// Wait for completion of a send
-await send(local_array, channel_name);
-// Wait for completion of a receive
-await foreach k, x in [0:K, receive(channel_name)] {
-  // Statements
-}
-// Wait for a completion
-await comp;
-```
-Semantically, it equivalent to applying an `after` statement with the completion as the argument
-immediately after the statement and then executing the remaining statements inside the `after` block.
-
-For example:
-```rust
-await map i in [0:10] {
-    // Statements
-}
-for i in [0:10] {
-    // Statements
-}
-// Is equivalent to:
-completion comp = map i in [0:10] {
-    // Statements
-}
-after (comp) {
-    for i in [0:10] {
-        // Statements
-    }
-}
-```
-
-Note that statements inside an `await` may still be pre-empted by other asynchronous operations!
-
-[Developer Note: Having statements with immediate awaits means we can put them on the 'main' thread/task, which
-might save task IDs and avoid overhead of creating/launching a new thread/task.]
 
 #### Semantics of Asynchronous Statements
 
@@ -534,17 +499,21 @@ Instead, they may execute in any order and may be interleaved with other stateme
 An asynchronous statement may be pre-empted at any time, even partially during its execution.
 Hence, it is imperative to avoid **data races**:
 
-Within a `compute` block, a statement inside a `foreach`, `async`, or `map` is considered concurrent with another statement if they are not ordered by an `after` statement.
+Within a `compute` block, two statements `S_1` and `S_2` are considered concurrent with
+each other if all the following hold:
+* At least one of them is in a `foreach`, `async`, or `map` scope.
+* The two statements are not ordered by `await`. 
+That is, there is a statement `await c` between all possible paths from `S_1` to `S_2`.
+* They are not both in the same `foreach`, `async` or `map` scope.
+
 Writing to an array in a statement of a `foreach`, `async`, or `map` block while concurrently reading from it 
-or writing to it in another statement anywhere is considered a *data race*
+or writing to it in another statement is considered a *data race*
 and is considered undefined behavior. 
 In particular, sending data from an array while concurrently
-writing to it is considered a data race. Also, writing to the same
-array twice inside the same `foreach`, `async`, or `map` block is
-considered a data race. 
-You must synchronize such statements using the completions.
+writing to it is considered a data race.
+You must synchronize such statements using `await`.
 The motivation for this strict definition is
-to allow for parallelization, vectorization, and reordering of statements.
+to simplify vectorization and reordering of statements.
 
 Some asynchronous statements cannot make progress until some event occurs.
 It is guaranteed that if there exists a statement that
@@ -553,7 +522,7 @@ There is no guarantee of fairness.
 Failure to guarantee completion regardless of progress order constitutes a **deadlock**.
 
 For example, each iteration of a `foreach` waits until receiving a data element.
-An `after` statement waits until a completion triggers. 
+An `await` statement waits until a completion triggers. 
 A `send` statement requires that the channel has space to carry the data
 and may stall if the receiver is not ready to receive the data.
 A deadlock-free program will ensure that all PEs can make progress
@@ -740,52 +709,46 @@ kernel vadv<I,J,K>(channel<f32>[I, J] utens_stage,
         
         send(wcon_local, westwards);
     
-        completion wcon_interval_1 = foreach k, x in [0:1, receive(westwards)] {
+        // base of the forward
+        await foreach k, x in [0:1, receive(westwards)] {
             gav[k] = -0.25 * x * wcon_l[k];
             gcv[k] = 0
             // ...
         }
-    
-        after (wcon_interval_1) {
-          completion wcon_interval_2 = foreach k, x in [1:K, receive(westwards)] {
-              gav[k] = -0.25 * x * wcon_l[k];
-              gcv[k-1] = 0.25 * x * wcon_l[k];
-          }
-     
-          after (wcon_interval_2) {
-              // Rest of the forward pass
-              // Cannot be in the foreach block because of a data race on gav and gcv
-              for k in [1:K] {
-                as_[k] = gav[k] * bet_m;
-                cs[k] = gcv[k] * bet_m;
-                acol[k] = gav[k] * bet_p;
-                ccol[k] = gcv[k] * bet_p;
-                bcol[k] = dtr_stage - acol[k] - ccol[k];
-      
-                correction_term[k] = -as_[k] * (u_stage_l[k-1] - u_stage_l[k]) - cs[k] * (u_stage_l[k+1] - u_stage_l[k]);
-                dcol[k] = dtr_stage * u_pos_l[k] + utens_l[k] + utens_stage_l[k] + correction_term[k];
+
+        // Forward pass: data movement
+        await foreach k, x in [1:K, receive(westwards)] {
+          gav[k] = -0.25 * x * wcon_l[k];
+          gcv[k-1] = 0.25 * x * wcon_l[k];
+
+          as_[k] = gav[k] * bet_m;
+          cs[k] = gcv[k] * bet_m;
+          acol[k] = gav[k] * bet_p;
+          ccol[k] = gcv[k] * bet_p;
+          bcol[k] = dtr_stage - acol[k] - ccol[k];
+
+          correction_term[k] = -as_[k] * (u_stage_l[k-1] - u_stage_l[k]) - cs[k] * (u_stage_l[k+1] - u_stage_l[k]);
+          dcol[k] = dtr_stage * u_pos_l[k] + utens_l[k] + utens_stage_l[k] + correction_term[k];
+
+          // Thomas forward
+          f32 divided = 1.0 / (bcol[k] - ccol[k-1] * acol[k]);
+          ccol_2[k] = ccol[k] * divided;
+          dcol_2[k] = (dcol[k] - dcol[k-1] * acol[k]) * divided;
+        }
   
-                // Thomas forward
-                f32 divided = 1.0 / (bcol[k] - ccol[k-1] * acol[k]);
-                ccol_2[k] = ccol[k] * divided;
-                dcol_2[k] = (dcol[k] - dcol[k-1] * acol[k]) * divided;
-              }
+        // Boundary condition (k=K-1) not shown
+        for k in [K-1] {
+          /// Boundary condition ...
+        }
+        // Main backwards loop          
+        for k in [K-2:0:-1] {
+          datacol_l[k] = dcol_2[k] - ccol_2[k] * datacol_l[k+1];
+          utens_stage_l[k] = dtr_stage * (datacol_l[k] - u_pos_l[k]);
+        }
   
-              // Boundary condition (k=K-1) not shown
-              for k in [K-1] {
-                  /// Boundary condition ...
-              }
-              // Main backwards loop          
-              for k in [K-2:0:-1] {
-                datacol_l[k] = dcol_2[k] - ccol_2[k] * datacol_l[k+1];
-                utens_stage_l[k] = dtr_stage * (datacol_l[k] - u_pos_l[k]);
-              }
-  
-              // Copy the data to the output
-              send(datacol_l, datacol_c);
-              send(utens_stage_l, utens_stage_c);
-          }
-        }   
+        // Copy the data to the output
+        send(datacol_l, datacol_c);
+        send(utens_stage_l, utens_stage_c);
     }
   }
 
@@ -839,7 +802,7 @@ kernel laplacian<I,J,K> (channel<f32>[I+2, J+2] readonly in_field,
        channel<f32> southwards = relative_channel(0, +1);
        
     }
-    
+
     dataflow i, i in [1:I+1, 1:J+1] {
         channel<f32> lap_field_l = lap_field[i, j];
     }
@@ -866,28 +829,26 @@ kernel laplacian<I,J,K> (channel<f32>[I+2, J+2] readonly in_field,
   
         // No data race, both map and send are reading from local_input
         send(local_input, westwards);
-        after (f) {
-          // Writing to local_result form the map would be considered a data race.
-          completion w = foreach k, x in [0:K, receive(westwards)] {
-              local_result[k] -= x;
-          }
-          // Writing to the same array from multiple foreach blocks concurrently
-          // is considered a data race.
-          // Hence, we need to run one after the other.
-          after (w) {
-            send(local_input, eastwards);
-            completion e = foreach k, x in [0:K, receive(eastwards)] {
-                local_result[k] -= x;
-            }
-            after (e) {
-              // ...
-              
-              // after all computation has finished:
-              send(local_result, lap_field_l);   
-            }
-          }
-  
+
+        // Example of an await for a completion.
+        await f;
+        
+        // Writing to local_result form the map would be considered a data race.
+        await foreach k, x in [0:K, receive(westwards)] {
+          local_result[k] -= x;
         }
+
+        // Writing to the same array from multiple foreach blocks concurrently
+        // is considered a data race.
+        // Hence, we need to run one after the other.
+        send(local_input, eastwards);
+        await foreach k, x in [0:K, receive(eastwards)] {
+          local_result[k] -= x;
+        }
+        // ...
+
+        // after all computation has finished:
+        await send(local_result, lap_field_l);   
     }  
   }
 }
@@ -927,27 +888,28 @@ kernel conv<J>(channel<f32>[J] readonly input,
         // Each PE receives a single scalar per time step
         foreach x in receive(input_local) {
 
-            // Send the data to the right
-            send(x, eastwards);
-            // Send the data to the left
-            send(x, westwards);
-
             y = x * kernel[1];
 
-            completion east = foreach x, y in [0:1, receive(eastwards)] {
-                y = y + x * kernel[0];
+            // Send the data to the right
+            comp_east = send(x, eastwards);
+
+            await foreach k, x2 in [0:1, receive(eastwards)] {
+              y = y + x2 * kernel[0];
             }
 
-            after (east) {
-                completion west = foreach x, y in [0:1, receive(westwards)] {
-                    y = y + x * kernel[2];
-                }
+            await comp_east;
 
-                after (west) {
-                    // Send the result to the output
-                    send(y, output_local);
-                }
+            // Send the data to the left
+            comp_west = send(x, westwards);
+
+            await foreach k, x3 in [0:1, receive(westwards)] {
+               y = y + x3 * kernel[2];
             }
+
+            await comp_west;
+
+            // Send the result to the output
+            await send(y, output_local);
         }
     }
 
@@ -956,18 +918,18 @@ kernel conv<J>(channel<f32>[J] readonly input,
         // Streaming receive
         foreach x in receive(input_local) {
             // Send the data to the right
-            send(x, eastwards);
-            
+            comp_east = send(x, eastwards);
+
             y = x * kernel[1];
 
-            completion west = foreach x, y in [0:1, receive(westwards)] {
+            await foreach x, y in [0:1, receive(westwards)] {
                 y = y + x * kernel[2];
             }
-                
-            after (west) {
-                // Send the result to the output
-                send(y, output_local);
-            }
+
+            await comp_east;
+            
+            // Send the result to the output
+            send(y, output_local);
         }
     }
 
