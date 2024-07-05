@@ -73,11 +73,13 @@ For example, `I`, `J`, `K`, `I001` denote parameters.
 
 #### Variables
 
-A variable starts with a lower case letter and may contain letters, numbers, and underscores.
+A variable name starts with a lower case letter and may contain letters, numbers, and underscores.
 For example, `x`, `y`, `my_variable`, `my_Variable_2` are valid variable names.
 
+A variable declaration contains a type `T` and a variable name.
 ```
 variable ::= [a-z][a-zA-Z0-9_]*
+variable_declaration ::= T variable_name
 ```
 
 A variable is in scope if it is declared in the current block or any enclosing block.
@@ -160,7 +162,7 @@ where parameters is a list of parameter literals, and arguments is a list of arg
 
 #### Arguments
 
-An argument is a named and typed channel array or scalar variable that is passed to a kernel.
+An argument is a named and typed channel array or scalar that is passed to a kernel.
 ```
 argument_name ::= [a-z][a-zA-Z0-9_]*
 argument ::= T argument_name | T readonly argument_name | T writeonly argument_name | T compiletime argument_name
@@ -191,18 +193,17 @@ All data is placed on the PEs using one or more `place` blocks.
 
 The syntax of a place block is as follows:
 ```rust
-place var_1, var_2 in subgrid_expression {
+place i32 variable, i32 variable in subgrid_expression {
    // Statements
 }
 ```
-Where `var_1`, `var_2` are variables that are bound to the coordinates of the PEs in the subgrid.
-
 For example:
 ```rust
-place i, j in [0:I:2, 0:J] {
+place i32 i, i32 j in [0:I:2, 0:J] {
     // Statements
 }
 ```
+Where `i`, `j` are `i32` variables that are bound to the coordinates of the PEs in the subgrid.
 
 Semantically, a place block iterates over every value in subgrid_expression and 
 allocates field memory as described in the block.
@@ -220,9 +221,8 @@ Within a `place` block, the following statements are supported:
 - Allocate a local scalar field: `T field_name;`
 
 
-#### Restrictions
-
-The subgrid of the `place` block is given by the PEs that lie in the `subgrid_expression`. An array may be placed using multiple `place` blocks.
+The subgrid of the `place` block is given by the PEs that lie in the `subgrid_expression`.
+An array may be placed using multiple `place` blocks.
 However, each `field_name` may appear at most once for any given PE over all `place` blocks.
 
 ### Dataflow block
@@ -231,7 +231,7 @@ All communication is set up in one or more `dataflow` blocks, which describe the
 
 The syntax of the dataflow block is as follows:
 ```rust
-dataflow variables in subgrid_expression {
+dataflow i32 variable, i32 variable in subgrid_expression {
   //Statements
 }
 ```
@@ -283,10 +283,17 @@ Statements in the `compute` block may return completions that may trigger other 
 
 The compute block is defined as follows:
 ```rust
-compute variables in subgrid_expression {
+compute i32 variable, i32 variable in subgrid_expression {
   // Statements
 }
 ```
+For example,
+```rust
+compute i32 i, i32 j in [0:I, 0:J] {
+    // Statements
+}
+```
+where `i`, `j` are `i32` variables that are bound to the coordinates of the PEs in the subgrid.
 
 The subgrid of the `compute` block is given by the PEs
 that lie in the `subgrid_expression`.
@@ -298,21 +305,21 @@ asynchronous and return completions that may be used to synchronize computations
 completion_name = send(local_array, channel_name);
 
 // Foreach loop over a receive() stream until the sender is done (asynchronous)
-completion completion_name = foreach iteration_variable_name in [receive(channel_name)] {
-  // Assignment statements
+completion completion_name = foreach variables in [receive(channel_name)] {
+  // Statements
 }
 
 // Foreach loop over a receive() stream of defined size (asynchronous)
-completion completion_name = foreach iteration_variable_names, data_variable_name in [parameter_expressions, receive(channel_name)] {
-  // Assignment statements
+completion completion_name = foreach variables in [parameter_expressions, receive(channel_name)] {
+  // Statements
 }
 // Parallel map (asynchronous)
-completion completion_name = map variable_names in [range_expression] {
+completion completion_name = map variables in [range_expression] {
   // Assignment statements
 }
 // Sequential for loop
-for variable_name in [range_expression] {
-  // Assignment statements or nested for-loops
+for variables in [range_expression] {
+  // Statements
 }
 // Asynchronous block (asynchronous)
 completion completion_name = async {
@@ -326,7 +333,7 @@ An assignment statement is of the form
 ```rust
 array_expression = expression;
 // or
-variable = expression;
+field_name = expression;
 ```
 
 #### Streaming Data with `send`
@@ -373,39 +380,6 @@ will check these constraints and report potential deadlocks on a best-effort bas
 Two receives in the same `compute` block are considered concurrent if they are not ordered by `await`.
 Receiving from the same channel multiple times concurrently is considered a data race on the channel.
 
-#### Await completions with `await`
-
-Inside a `compute` block, an `await` statement is used to wait for a completion to trigger.
-The await can be applied to a completion name.
-```rust
-await completion_name;
-```
-The `await` can be immediately applied to an asynchronous operation as a shorthand:
-```
-await operation;
-// Is semantically equivalent to:
-completion c = operation;
-await c;
-```
-
-For example,
-```rust
-// Execute a map and wait for its completion
-await map i in [0:10] {
-    // Statements
-}
-// Wait for completion of a send
-await send(local_array, channel_name);
-// Wait for completion of a receive
-await foreach k, x in [0:K, receive(channel_name)] {
-  // Statements
-}
-// Wait for a completion
-await comp;
-```
-
-Note that statements inside an `await` may still be preempted by other asynchronous operations!
-
 
 #### Processing Data Streams with `foreach`
 
@@ -416,17 +390,19 @@ The elements are processed in the order they are received.
 One may either provide the number of elements to receive, or receive until the sender is done.
 ```rust
 // Receive until the sender is done
-completion completion_name = foreach iteration_variable_name in [receive(channel_name)] {
+completion completion_name = foreach variables in [receive(channel_name)] {
   // Assignment statements
 }
 
 // Receive a fixed number of elements
-completion completion_name = foreach iteration_variable_names, data_variable_name in [parameter_expressions, receive(channel_name)] {
+completion completion_name = foreach variables in [parameter_rage_expressions, receive(channel_name)] {
   // Assignment statements
 }
 ```
-One may specify multiple iteration variables, but only a single data variable in the `foreach` loop.
-The data variable is bound to the received data.
+The last variable is the data variable. The data variable is bound to the received data. Its type must match the type of the channel.
+
+The other variables are iteration variables. They must be of type `i32`.
+One may specify multiple parameter range expressions. 
 The iteration variables are bound to the indices of the received data, which is
 interpreted as a multi-dimensional array in *row-major* order.
 
@@ -436,7 +412,7 @@ to allow for performance optimizations.
 For example, the following code receives data from `channel_1` for `K` elements
 and assigns the received data to the array `a`.
 ```
-completion completion_name = foreach k, x in [0:K, receive(channel_1)] {
+completion completion_name = foreach i32 k, f32 x in [0:K, receive(channel_1)] {
     a[k] = x;
 }
 ```
@@ -456,30 +432,94 @@ the total sizes must match the total sizes of the arrays that are sent through t
 *Failure to correctly match the sizes sent and received may result in a deadlock.*
 
 
-#### Processing arrays in parallel with `map`
+#### Processing arrays asynchronously with `map`
 
 Inside a `compute` block, the `map` statement is used to apply a computation to each element of an array.
-
 ```rust
-completion comp = map variable_names in [range_expression] {
-  // Assignment statements
+completion comp = map variables in [parameter_range_expression] {
+  // Affine assignment statements
 }
 ```
+Every assignment statement must use an *affine expression* of the variables in the range expression.
+The motivation for this is to ensure that the map can be efficiently vectorized.
+
 There is no guarantee on the order in which the map is executed.
-Therefore, the map must not contain loop-carried dependencies.
+Hence, the map must not contain loop-carried dependencies.
+
+For example,
+```rust
+completion comp = map i32 i, i32 j in [0:10, J] {
+    a[i + 2 * j + 1] = i;
+}
+```
+
+If you need to perform non-affine operations or exploit loop-carried dependencies, use a `for` loop instead.
+
+
+#### Await completions with `await`
+
+Inside a `compute` block, an `await` statement is used to wait for a completion to trigger.
+The `await` can be applied to a completion name.
+```rust
+await completion_name;
+```
+The `await` can be immediately applied to an asynchronous operation as a shorthand:
+```
+await operation;
+// Is semantically equivalent to:
+completion c = operation;
+await c;
+```
+
+For example,
+```rust
+// Execute a map and wait for its completion
+await map i32 i in [0:10] {
+    // Statements
+}
+// Wait for completion of a send
+await send(local_array, channel_name);
+// Wait for completion of a receive
+await foreach i32 k, f32 x in [0:K, receive(channel_name)] {
+  // Statements
+}
+// Wait for a completion
+await comp;
+```
+
+Note that statements inside an `await` may still be preempted by other asynchronous operations!
+Awaiting the same completion twice is considered undefined behavior.
+
 
 #### Processing arrays sequentially with `for`
 
 Inside a `compute` block, the `for` loop is used to apply a computation to each element of an array in a sequential order.
 
 ```rust
-for variable_name in [range_expression] {
-  // Assignment statements or nested for-loops
+for variables in [parameter_range_expression] {
+  // Statement
 }
 ```
+The range expression must be a parameter range expression.
 
-A `for` loop does not return completions, as it executes sequentially
-and in-order.
+The number of variables must match the number of dimensions in the parameter range expression.
+The variables are bound to the indices given by the range expression.
+The variables must be of type `i32`.
+
+A `for` loop does not return completions, it executes sequentially and in-order.
+
+For example, a `for` loop can exploit loop-carried dependencies:
+```rust
+for i32 i, i32 j in [0:I, 0:J] {
+    a[i, j] = a[i-1, j] + a[i, j-1];
+}
+```
+It can also use non-affine indexing:
+```rust
+for i32 i, i32 j in [0:I, 0:2] {
+    a[i*j] = a[i] + a[j];
+}
+```
 
 #### Computing asynchronously with `async`
 
@@ -492,50 +532,13 @@ completion comp = async {
 ```
 
 
-#### Semantics of Asynchronous Statements
-
-Asynchronous statements may, but do not necessarily run in parallel.
-Instead, they may execute in any order and may be interleaved with other statements.
-An asynchronous statement may be pre-empted at any time, even partially during its execution.
-Hence, it is imperative to avoid **data races**:
-
-Within a `compute` block, two statements `S_1` and `S_2` are considered concurrent with
-each other if all the following hold:
-* At least one of them is in a `foreach`, `async`, or `map` scope.
-* The two statements are not ordered by `await`. 
-That is, there is a statement `await c` between all possible paths from `S_1` to `S_2`.
-* They are not both in the same `foreach`, `async` or `map` scope.
-
-Writing to an array in a statement of a `foreach`, `async`, or `map` block while concurrently reading from it 
-or writing to it in another statement is considered a *data race*
-and is considered undefined behavior. 
-In particular, sending data from an array while concurrently
-writing to it is considered a data race.
-You must synchronize such statements using `await`.
-The motivation for this strict definition is
-to simplify vectorization and reordering of statements.
-
-Some asynchronous statements cannot make progress until some event occurs.
-It is guaranteed that if there exists a statement that
-can make progress, at least one of them will make progress.
-There is no guarantee of fairness. 
-Failure to guarantee completion regardless of progress order constitutes a **deadlock**.
-
-For example, each iteration of a `foreach` waits until receiving a data element.
-An `await` statement waits until a completion triggers. 
-A `send` statement requires that the channel has space to carry the data
-and may stall if the receiver is not ready to receive the data.
-A deadlock-free program will ensure that all PEs can make progress
-eventually regardless of the interleaving of statements.
-
-## Phases
+### Phases
 
 One may define multiple phases in a kernel.
 Each phase may contain one or more `place`, `dataflow`, and `compute` blocks.
 
-
-For a `place` block defined in the outermost scope, the variables defined therein are in-scope for all `compute` blocks in all phases.
-For a `place` block within a phase, the variables defined therein are in-scope for the `compute` blocks in that phase.
+For a `place` block defined in the outermost scope, the fields defined therein are in-scope for all `compute` blocks in all phases.
+For a `place` block within a phase, the fields defined therein are in-scope for the `compute` blocks in that phase.
 
 Similarly, for a `dataflow` block defined in the outermost scope, the channels defined therein are in-scope for all `compute` blocks in all phases.
 For a `dataflow` block within a phase, the channels defined therein are in-scope for the `compute` blocks in that phase.
@@ -594,6 +597,86 @@ phase {
 }
 ```
 
+##  Semantics of Asynchronous Statements
+
+Asynchronous statements may, but do not necessarily run in parallel.
+Instead, they may execute in any order and may be interleaved with other statements.
+An asynchronous statement may be pre-empted at any time, even partially during its execution.
+Hence, it is imperative to properly define their semantics to avoid problems, such as *data races*
+and properly define how the representation can be lowered to a task-based model.
+
+### The Happens-Before Graph
+
+The asynchronous semantics can be defined in terms of a *happens-before* graph. 
+For each statement `S` in a `compute` block, we define a *happens-before* relation `->` between statements.
+Intuitively, `S1 -> S2` means that `S1` must complete before `S2` can start.
+
+We define the order in terms of the `await` statements in the code.
+Let `c` be the completion returned by `S1`. We have that `S1 -> S2` if *any* of the following hold:
+- `S2` is in a phase that follows the phase of `S1`.
+- `S1` and `S2` are in the same `for`, `foreach`, `map`, `async` scope, or top-level `task` scope and `S2`
+follows `S1` in all execution paths.
+- There is a statement `await c` between all possible execution paths from `S1` to `S2` or `S1` includes an `await`.
+
+Statements that are not ordered by `->` are considered concurrent.
+
+The happens-before graph is used to define data races and deadlocks.
+Moreover, it can be used for lowering, specifically it can be used to
+- determine which channels are used concurrently and which are not.
+- how the code can be mapped to a task-based model
+
+
+### Data Races
+
+Writing to an array in a statement while concurrently reading from it 
+or writing to it in another statement is considered a *data race*
+and is considered undefined behavior. 
+In particular, sending data from an array while concurrently
+writing to it is considered a data race.
+You must synchronize such statements using `await`.
+The motivation for this strict definition is to ensure correctness regardless
+of the interleaving of concurrent operations.
+
+```rust
+// For example, this is a data race:
+// Concurrently writing to and sending from the same array
+// We forbid this because the result of the send would be non-deterministic
+completion c1 = send(a, channel);
+for k in [0:K] {
+    // Data Race!!
+    a[k] = k; 
+}
+await c1;
+
+// Correctly synchronized, we would get
+completion c1 = send(a, channel);
+await c1;
+for k in [0:K] {
+    a[k] = 1;
+}
+
+// Correctly synchronized with short-hand await syntax
+await send(a, channel);
+for k in [0:K] {
+    a[k] = 1;
+}
+
+```
+
+### Deadlocks
+
+Some asynchronous statements cannot make progress until some event occurs.
+It is guaranteed that if there exists a statement that
+can make progress, at least one of them will make progress.
+There is no guarantee of fairness. 
+Failure to guarantee completion regardless of progress order constitutes a **deadlock**.
+
+For example, each iteration of a `foreach` waits until receiving a data element.
+An `await` statement waits until a completion triggers. 
+A `send` statement requires that the channel has space to carry the data
+and may stall if the receiver is not ready to receive the data.
+A deadlock-free program will ensure that all PEs can make progress
+eventually regardless of the interleaving of statements.
 
 
 ## Examples
@@ -669,7 +752,7 @@ kernel vadv<I,J,K>(channel<f32>[I, J] utens_stage,
   phase {
   
     place i, j in [0:I, 0:J] {
-      # Local variables live inside the phases scope
+      # Local fields live inside the phases scope
       f32[K] gav;
       f32[K] gcv;
       f32[K] as_;
@@ -682,6 +765,7 @@ kernel vadv<I,J,K>(channel<f32>[I, J] utens_stage,
       f32[K] ccol_2;
       f32[K] dcol_2;
       f32[K] datacol_l;
+      f32 divided;
     }
   
     // Set up communication channels
@@ -710,14 +794,14 @@ kernel vadv<I,J,K>(channel<f32>[I, J] utens_stage,
         send(wcon_local, westwards);
     
         // base of the forward
-        await foreach k, x in [0:1, receive(westwards)] {
+        await foreach i32 k, f32 x in [0:1, receive(westwards)] {
             gav[k] = -0.25 * x * wcon_l[k];
             gcv[k] = 0
             // ...
         }
 
         // Forward pass: data movement
-        await foreach k, x in [1:K, receive(westwards)] {
+        await foreach i32 k, f32 x in [1:K, receive(westwards)] {
           gav[k] = -0.25 * x * wcon_l[k];
           gcv[k-1] = 0.25 * x * wcon_l[k];
 
@@ -731,17 +815,17 @@ kernel vadv<I,J,K>(channel<f32>[I, J] utens_stage,
           dcol[k] = dtr_stage * u_pos_l[k] + utens_l[k] + utens_stage_l[k] + correction_term[k];
 
           // Thomas forward
-          f32 divided = 1.0 / (bcol[k] - ccol[k-1] * acol[k]);
+          divided = 1.0 / (bcol[k] - ccol[k-1] * acol[k]);
           ccol_2[k] = ccol[k] * divided;
           dcol_2[k] = (dcol[k] - dcol[k-1] * acol[k]) * divided;
         }
   
         // Boundary condition (k=K-1) not shown
-        for k in [K-1] {
+        for i32 k in [K-1] {
           /// Boundary condition ...
         }
         // Main backwards loop          
-        for k in [K-2:0:-1] {
+        for i32 k in [K-2:0:-1] {
           datacol_l[k] = dcol_2[k] - ccol_2[k] * datacol_l[k+1];
           utens_stage_l[k] = dtr_stage * (datacol_l[k] - u_pos_l[k]);
         }
@@ -823,7 +907,7 @@ kernel laplacian<I,J,K> (channel<f32>[I+2, J+2] readonly in_field,
   
     compute i, j in [1:I+1, 1:J+1] {
         // Streaming parallel computation (map)
-        completion f = map k in [0:K] {
+        completion f = map i32 k in [0:K] {
             local_result[k] = local_input[k] * 4;
         }
   
@@ -834,7 +918,7 @@ kernel laplacian<I,J,K> (channel<f32>[I+2, J+2] readonly in_field,
         await f;
         
         // Writing to local_result form the map would be considered a data race.
-        await foreach k, x in [0:K, receive(westwards)] {
+        await foreach i32 k, f32 x in [0:K, receive(westwards)] {
           local_result[k] -= x;
         }
 
@@ -842,7 +926,7 @@ kernel laplacian<I,J,K> (channel<f32>[I+2, J+2] readonly in_field,
         // is considered a data race.
         // Hence, we need to run one after the other.
         send(local_input, eastwards);
-        await foreach k, x in [0:K, receive(eastwards)] {
+        await foreach i32 k, f32 x in [0:K, receive(eastwards)] {
           local_result[k] -= x;
         }
         // ...
