@@ -286,7 +286,7 @@ The routing configuration is set up as follows:
 ```
 channel<T> channel_name = relative_channel(dx, dy) {
     // Optional routing declaration
-    hops = [dx_1, dy_1], [dx_2, dy_2], ... [dx_n, dy_n];
+    hops = [(dx_1, dy_1), (dx_2, dy_2), ... , (dx_n, dy_n)];
     lane = lane_id;
 };
 ```
@@ -628,7 +628,7 @@ Asynchronous statements may, but do not necessarily run in parallel.
 Instead, they may execute in any order and may be interleaved with other statements.
 An asynchronous statement may be pre-empted at any time, even partially during its execution.
 Hence, it is imperative to properly define their semantics to avoid problems, such as *data races*
-and properly define how the representation can be lowered to a task-based model.
+and properly define how the representation can be lowered to a task or thread model.
 
 ### The Happens-Before Graph
 
@@ -648,7 +648,7 @@ Statements that are not ordered by `->` are considered concurrent.
 The happens-before graph is used to define data races and deadlocks.
 Moreover, it can be used for lowering, specifically it can be used to
 - determine which channels are used concurrently and which are not.
-- how the code can be mapped to a task-based model
+- how the code can be mapped to a task-based or thread-based model
 
 
 ### Data Races
@@ -703,6 +703,97 @@ and may stall if the receiver is not ready to receive the data.
 A deadlock-free program will ensure that all PEs can make progress
 eventually regardless of the interleaving of statements.
 
+## Semantics of Routing Declarations
+
+Routing declarations must respect the limitations on how `lane`s are used.
+Specifically, it must be avoided that two messages are routed through the same `lane` 
+at the same PE simultaneously.
+
+### The Routing Graph
+
+The routing graph of a phase is a directed graph that describes how data is routed between PEs.
+For each lane *L*, we define a routing graph of the phase that describes how data is routed between PEs.
+Recall that stream edges are pairs of send and receive operations that are matched across PEs.
+Stream edges must not cross phases.
+
+The routing graph contains the following nodes *V*, edges *E*, and paths *P*:
+- Each PE is a node in the graph.
+- Consider each stream edge from PE `(x_1, y_1)` to PE `(x_2, x_2)` going through lane *L* through PE `hops = [(dx_1, dy_1), (dx_2, dy_2), ..., (dx_n, dy_n)]`.
+We add an edge from `(x_1+dx_i, y_1+dy_i)` to `(x_1+dx_{i+1}, y_1+dy_{i+1})` for each *i* in *0, ..., n*.
+where we use the convention that `dx_0 = dy_0 = 0`.
+- Moreover, we add the resulting path `(x_1, y_1), ..., (x_1+dx_i, y_1+dy_i), ..., (x_2, y_2)` to the list of paths *P*.
+
+Note that the routing graph is defined in terms of the PE coordinates, so
+its size grows with the size of the PE grid. It serves as a formal model for defining
+the semantics, but should not be constructed explicitly.
+
+
+For example, the following code correctly sets up
+a routing declaration for a 1D 2-phase reduce for 4 PEs:
+It can use a single lane for both phases, as the channels
+are properly sequenced in different phases.
+```rust
+// 1D 2-phase reduce for 4 PEs
+place i, j in [0:4, 0] {
+    f32[K] a;
+}
+
+phase {
+  dataflow i32 i, i32 j in [0:4, 0] {
+    channel<f32> hop1 = relative_channel(-1, 0) {
+      hops = [(-1, 0)];
+      lane = 0;
+    };
+  }
+  compute i32 i, i32 j in [1:4:2] {
+    send(a, hop1);
+  }
+  compute i32 i, i32 j in [0:4:2] {
+    foreach i32 k, i32 x in [0:K, receive(hop1)] {
+      a[k] += x
+    }
+  }
+}
+
+phase {
+  dataflow i32 i, i32 j in [0:4, 0] {
+    channel<f32> hop2 = relative_channel(-2, 0) {
+      hops = [(-1, 0), (-1, 0)];
+      lane = 0;
+    };
+  }
+
+  compute i32 i, i32 j in [2, 0] {
+    send(a, hop2);
+  }
+
+  compute i32 i, i32 j in [0, 0] {
+    foreach i32 k, i32 x in [0:K, receive(hop2)] {
+      a[k] += x
+    }
+  }
+
+}
+```
+
+
+### Undefined Behavior
+
+**If for a routing graph of a lane there are two paths *P1* and *P2* that share a PE `(x, y)`,
+then the behavior is undefined.**
+This is because the two messages may interfere with each other
+and the order in which they are processed may become nondeterministic.
+
+Keep in mind that PEs transition between phases asynchronously,
+that is, a PE may advance to the next phase before another PE has completed the current phase.
+We exploit here implicitly that routers back-pressure when
+they receive data from a lane on which they are not configured
+to receive. 
+[A Note regarding potential extensions]
+The current definition is tailored to the case
+where all channels are point-to-point paths.
+If multicasting is used, the correctness conditions become more challenging
+to specify.
 
 ## Examples
 
