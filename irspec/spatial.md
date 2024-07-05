@@ -646,9 +646,8 @@ follows `S1` in all execution paths.
 Statements that are not ordered by `->` are considered concurrent.
 
 The happens-before graph is used to define data races and deadlocks.
-Moreover, it can be used for lowering, specifically it can be used to
-- determine which channels are used concurrently and which are not.
-- how the code can be mapped to a task-based or thread-based model
+Moreover, it can be used for lowering, specifically it can be used to 
+determine how the code can be mapped to a task-based or thread-based model
 
 
 ### Data Races
@@ -693,8 +692,9 @@ for k in [0:K] {
 Some asynchronous statements cannot make progress until some event occurs.
 It is guaranteed that if there exists a statement that
 can make progress, at least one of them will make progress.
-There is no guarantee of fairness. 
-Failure to guarantee completion regardless of progress order constitutes a **deadlock**.
+There is no guarantee of fairness, that is, concurrents statements may be
+executed in any respective order and may be preempted at any time.
+Failure to guarantee completion regardless of progress order of concurrent operations constitutes a **deadlock**.
 
 For example, each iteration of a `foreach` waits until receiving a data element.
 An `await` statement waits until a completion triggers. 
@@ -712,21 +712,20 @@ at the same PE simultaneously.
 ### The Routing Graph
 
 The routing graph of a phase is a directed graph that describes how data is routed between PEs.
-For each lane *L*, we define a routing graph of the phase that describes how data is routed between PEs.
 Recall that stream edges are pairs of send and receive operations that are matched across PEs.
 Stream edges must not cross phases.
 
 The routing graph contains the following nodes *V*, edges *E*, and paths *P*:
 - Each PE is a node in the graph.
-- Consider each stream edge from PE `(x_1, y_1)` to PE `(x_2, x_2)` going through lane *L* through PE `hops = [(dx_1, dy_1), (dx_2, dy_2), ..., (dx_n, dy_n)]`.
+- Consider each stream edge from PE `(x_1, y_1)` to PE `(x_2, x_2)` going through channel *C* on lane *L* through PE `hops = [(dx_1, dy_1), (dx_2, dy_2), ..., (dx_n, dy_n)]`.
 We add an edge from `(x_1+dx_i, y_1+dy_i)` to `(x_1+dx_{i+1}, y_1+dy_{i+1})` for each *i* in *0, ..., n*.
 where we use the convention that `dx_0 = dy_0 = 0`.
-- Moreover, we add the resulting path `(x_1, y_1), ..., (x_1+dx_i, y_1+dy_i), ..., (x_2, y_2)` to the list of paths *P*.
+- Moreover, we add the resulting path `(x_1, y_1), ..., (x_1+dx_i, y_1+dy_i), ..., (x_2, y_2)` to the list of paths *P*
+and record the channel *C* and lane *L*.
 
 Note that the routing graph is defined in terms of the PE coordinates, so
 its size grows with the size of the PE grid. It serves as a formal model for defining
 the semantics, but should not be constructed explicitly.
-
 
 For example, the following code correctly sets up
 a routing declaration for a 1D 2-phase reduce for 4 PEs:
@@ -775,14 +774,19 @@ phase {
 
 }
 ```
+[TODO: Explain how the routing graph would look like for this example]
 
 
 ### Undefined Behavior
 
-**If for a routing graph of a lane there are two paths *P1* and *P2* that share a PE `(x, y)`,
-then the behavior is undefined.**
+Next, we describe the condition under which the routing behavior is undefined:
+**If for a routing graph of a lane there are two paths *P1* and *P2* that share a PE `(x, y)`
+on different channels but on the same lane, then the behavior is undefined.**
 This is because the two messages may interfere with each other
 and the order in which they are processed may become nondeterministic.
+Recall that sending onto the same channel must be synchronized using completions
+to avoid data races. Hence, sending through the same channel multiple times
+in the same phases is ok as long as the sends are correctly synchronized.
 
 Keep in mind that PEs transition between phases asynchronously,
 that is, a PE may advance to the next phase before another PE has completed the current phase.
@@ -794,6 +798,50 @@ The current definition is tailored to the case
 where all channels are point-to-point paths.
 If multicasting is used, the correctness conditions become more challenging
 to specify.
+
+### Parametric Routing Graph
+
+As the routing graph has a size that grows with the size of the PE grid,
+we will not construct it explicitly.
+Instead, we describe a *parametric* routing graph that describes the routing
+graph in terms of predicated edges.
+
+We again consider a particular phase.
+The parametric routing graph of a phase is defined as follows:
+
+There is a node for each compute block in the phase.
+The node is identified with the `variable, variable in subgrid_expression` that describes the PE coordinates of the compute block
+and the two variables are bound to the PE coordinates in the compute block.
+For example, `i, j in [0:I, 0:J]` is a node in the routing graph.
+
+The edges of the parametric routing graph is defined as follows:
+For each `send` statement with `hops = [(dx_1, dy_1), ..., (dx_n, dy_n)]`
+in a compute block associated with the node `v`, we iteratively add edges as follows.
+Consider the current vertex `[I1:I2:I3, J1:J2:J3]` (initially `v`) and the next hop `(dx_k, dy_l)`.
+
+If the stride is `I3 = J3 = 1`:
+Add an edge to
+- `[I1:I2:1, J1:J2:1]` with predicate (the cases are mutually exclusive by definition):
+  - `i + dx_k < I1 - 1` if `dx_k > 0`
+  - `i + dx_k > I1` if `dx_k < 0`
+  - `j + dy_l < J1 - 1` if `dy_l > 0`
+  - `j + dy_l > J1` if `dy_l < 0`
+
+- If `dx_k != 0`, to all blocks `[I4:I5:I6, J4:J5:J6]` for which `I4 <= I1+dx_k < I5` and `J4 < J2` and `J5 >= J1`
+  - with the predicate `i = I2 && J4 <= j < J6` if `dx_k > 0`
+  - with the predicate `i = I1 && J4 <= j < J6` if `dx_k < 0`
+Note that the ranges `J4:J5` of all such blocks must together cover the range `J1:J2`.
+Failure to do so constitutes an incorrect declaration of stream edges.
+
+- Similarly, if `dy_l != 0`, to all blocks `[I4:I5:I6, J4:J5:J6]` for which `J4 <= J1+dy_l < J5` and `I4 < I2` and `I5 >= I1`
+  - with the predicate `j = J2 && I4 <= i < I6` if `dy_l > 0`
+  - with the predicate `j = J1 && I4 <= i < I6` if `dy_l < 0`
+Note that the ranges `I4:I5` of all such blocks must together cover the range `I1:I2`.
+Failure to do so constitutes an incorrect declaration of stream edges.
+
+The construction of the routing graph also validates the correctness of stream edges.
+If at any point the target vertex does not exist, the program is considered incorrect.
+
 
 ## Examples
 
