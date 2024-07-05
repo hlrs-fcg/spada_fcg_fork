@@ -275,6 +275,31 @@ describes a communication channel that sends `f32` data two PEs to the north.
 Note that the channel declaration does not imply that any data is ever sent over the channel.
 It merely declares the existence of a virtual communication channel.
 
+#### Routing Declarations
+
+Optionally, a routing declaration may be set up for each channel.
+This declaration describes how the data is routed between the PEs.
+In particular, for each channel, the configuration may specify the intermediate hops that the data takes.
+Moreover, it may specify a `lane`, which is a limited hardware resource that is used to route the data.
+
+The routing configuration is set up as follows:
+```
+channel<T> channel_name = relative_channel(dx, dy) {
+    // Optional routing declaration
+    hops = [dx_1, dy_1], [dx_2, dy_2], ... [dx_n, dy_n];
+    lane = lane_id;
+};
+```
+where `hops` is a list of relative hops that the data takes between the sender and receiver.
+Each hop is given by a pair of constant literals, the sum of their absolute value must be 1.
+The sum of all the hops must be equal to the relative position of the channel.
+
+If two messages (elements of a `send`) are routed through a PE simultaneously,
+it must be ensured that they do not share a `lane`.
+Note that the start and end PEs also count as hops implicitly.
+
+If no routing declaration is provided, it is up to the compiler to determine the routing.
+
 ### Compute block
 
 The computation is described in one or more `compute` blocks.
