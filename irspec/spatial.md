@@ -851,34 +851,61 @@ The node is identified with the `i, j in subgrid_expression` that describes the 
 and the two variables are bound to the PE coordinates in the compute block.
 For example, `i, j in [0:I, 0:J]` could be a node in the routing graph.
 
-The edges of the parametric routing graph is defined as follows:
-For each `send` statement with `hops = [(dx_1, dy_1), ..., (dx_n, dy_n)]`
+The edges of the parametric routing graph are defined as follows:
+Initialize a stack of vertex-index pairs to visit and a set of visited vertex-index pairs.
+Add the node-index pair `(v, 1)` to the stack.
+For each `send` statement with `hops = [(dx_1, dy_1), ..., (dx_h, dy_h)]`
 in a compute block associated with the node `v`, we iteratively add edges as follows.
-Consider the current vertex `[I1:I2:I3, J1:J2:J3]` (initially `v`) and the next hop `(dx_k, dy_l)`.
 
-If the stride is `I3 = J3 = 1`:
-Add an edge to
-- `[I1:I2:1, J1:J2:1]` with predicate (the cases are mutually exclusive by definition):
-  - `i + dx_k < I1 - 1` if `dx_k > 0`
-  - `i + dx_k > I1` if `dx_k < 0`
-  - `j + dy_l < J1 - 1` if `dy_l > 0`
-  - `j + dy_l > J1` if `dy_l < 0`
+Until the stack is empty:
+Pop the top vertex-index pair `(u, k)` from the stack.
+Consider the current vertex `u=[I1:I2:I3, J1:J2:J3]` and the next hop `(dx_k, dy_k)` at index `k`.
+Add an edge `(u, w)` to the following vertices `w` and 
+if `(w, k+1)` is not in the visited set add `(w, k+1)` to the stack:
 
-- If `dx_k != 0`, to all blocks `[I4:I5:I6, J4:J5:J6]` for which `I4 <= I1+dx_k < I5` and `J4 < J2` and `J5 >= J1`
-  - with the predicate `i = I2 && J4 <= j < J6` if `dx_k > 0`
-  - with the predicate `i = I1 && J4 <= j < J6` if `dx_k < 0`
-Note that the ranges `J4:J5` of all such blocks must together cover the range `J1:J2`.
-Failure to do so constitutes an incorrect declaration of stream edges.
+**Case: The stride is `I3 = J3 = 1`:**
 
-- Similarly, if `dy_l != 0`, to all blocks `[I4:I5:I6, J4:J5:J6]` for which `J4 <= J1+dy_l < J5` and `I4 < I2` and `I5 >= I1`
-  - with the predicate `j = J2 && I4 <= i < I6` if `dy_l > 0`
-  - with the predicate `j = J1 && I4 <= i < I6` if `dy_l < 0`
-Note that the ranges `I4:I5` of all such blocks must together cover the range `I1:I2`.
-Failure to do so constitutes an incorrect declaration of stream edges.
+- `[I1:I2:1, J1:J2:1]` with predicate (the cases are mutually exclusive by definition because `|dx_k|+|dy_k|==1`):
+  - `i + 1 < I1 - 1` if `dx_k = 1`
+  - `i - 1 > I1` if `dx_k = -1`
+  - `j + 1 < J1 - 1` if `dy_k = 1`
+  - `j - 1 > J1` if `dy_k = -1`
 
-The construction of the routing graph also validates the correctness of stream edges.
-If at any point the target vertex does not exist, the program is considered incorrect.
+- If `dx_k != 0`, to all blocks `[I4:I5:1, J4:J5:1]` for which `J4 < J2`, `J5 >= J1`, and
+  - for which `I4 = I2 + 1` with the predicate `i = I2 && J4 <= j < J6` if `dx_k == 1`
+  - for which `I5 = I1 - 1` with the predicate `i = I1 && J4 <= j < J6` if `dx_k == -1`
+  - Note that the ranges `J4:J5` of all such blocks must together cover the range `J1:J2`.
+Failure to do so constitutes an incorrect declaration of stream edges (deadlock).
 
+- Proceed symmetrically for `dy_k != 0`.
+
+
+**Case: The stride is > 1, but the compute blocks connected by a stream edge
+have the same strides as each other:**
+
+- If `dx_k != 0`, to all blocks `[I4:I5:I3, J4:J5:J3]` for which `J4 < J2`, `J5 >= J1`, and 
+for which `I4 = I2 + dx_k (mod I3)` with the predicate `I4 <= i + 1 < I5 && J4 <= j < J6`.
+  - Note that the ranges `J4:J5` of all such blocks must together cover the range `J1:J2`, and similarly, 
+the ranges `I4:I5` must together cover the range `I1+dx_k:I2+dx_k`.
+Failure to do so constitutes an incorrect declaration of stream edges (deadlock).
+
+- Proceed symmetrically for the case `dy_k != 0`.
+
+**Case: The strides are either 1 or the same value.
+
+TODO (Needed? maybe convenient for larger boundary conditions)
+
+Note that blocks with a single element can be interpreted as having any arbitrary stride.
+This is useful for implementing boundary conditions.
+
+Runtime: Note that each vertex is added to the stack at most `h` times, where `h` is the number of hops.
+Adding all edges for a given vertex takes at most `n` time,
+where `n` is the number of vertices in the parametric routing graph.
+Hence, the overall runtime is `O(n^2 * h)`.
+
+The construction of the parametric routing graph also validates the correctness of stream edges.
+If at any point the target vertex does not exist, the program is incorrect due to a deadlock,
+which is raised as an error by the compiler.
 
 ## Examples
 
