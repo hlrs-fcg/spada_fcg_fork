@@ -49,18 +49,18 @@ For example `0`, `1`, `1024`, `-12` are constant literals.
 Constant integer literals are `i64` and constant floating-point literals are `f32`. 
 
 
-#### Channels
+#### Streams
 
-A channel corresponds to a virtual communication channel between PEs or the host device and the PEs.
+A stream corresponds to an abstract way to communicate between PEs or the host device and the PEs.
 
-For any scalar type `T`,  `channel<T>` indicates the corresponding element type sent over the channel.
+For any scalar type `T`,  `stream<T>` indicates the corresponding element type sent over the stream.
 
-Channels do not send a predetermined number of elements, but the sender and receiver must agree on the number of elements sent and received.
+Streams do not send a predetermined number of elements, but the sender and receiver must agree on the number of elements sent and received.
 This can be done explicitly (when the size is known from the parameters) or implicitly (by sending a completion signal with/after the last element).
 
 #### Arrays
 
-Any scalar or channel type `T` and one or more parameter expressions `S_1`, `S_2`, ... `S_d` may be used to create an array type `T[S_1, S_2, ... S_d]`.
+Any scalar or stream type `T` and one or more parameter expressions `S_1`, `S_2`, ... `S_d` may be used to create an array type `T[S_1, S_2, ... S_d]`.
 It represents a d-dimensional array of type `T`, where the i-th dimension contains `S_i` elements.
 
 For example, `f32[10]`, `i32[I+2, J+2]` indicate array types.
@@ -162,19 +162,19 @@ where parameters is a list of parameter literals, and arguments is a list of arg
 
 #### Arguments
 
-An argument is a named and typed channel array or scalar that is passed to a kernel.
+An argument is a named and typed stream array or scalar that is passed to a kernel.
 ```
 argument_name ::= [a-z][a-zA-Z0-9_]*
 argument ::= T argument_name | T readonly argument_name | T writeonly argument_name | T compiletime argument_name
 ```
-where `T` is a scalar type, channel type, or channel array type.
+where `T` is a scalar type, stream type, or stream array type.
 Notable, it is not possible to pass scalar arrays as arguments, instead,
-arrays must be read through channels.
-[TODO: Discuss the rationale for this, we can always pass a channel array and read the scalar array from it.]
+arrays must be read through streams.
+[TODO: Discuss the rationale for this, we can always pass a stream array and read the scalar array from it.]
 
 If an argument may be *only* read from or written to, it is marked as `readonly` or `writeonly`, respectively.
 
-For example, `channel<f32>[I, J] readonly arg1`, `channel<f32>[I, J] writeonly arg2`, `f32 arg3` are arguments.
+For example, `stream<f32>[I, J] readonly arg1`, `stream<f32>[I, J] writeonly arg2`, `f32 arg3` are arguments.
 
 If an argument is known at compiletime it may be annotated with `compiletime`.
 It must be provided at compilation time together with the parameters.
@@ -183,9 +183,9 @@ It must be provided at compilation time together with the parameters.
 
 A kernel gets the memory of its arguments from a host device or other kernel,
 runs the computation, and returns the results to the host device.
-This is done through communication channels, which are explicitly defined in the kernel arguments.
+This is done through communication streams, which are explicitly defined in the kernel arguments.
 Inputs and outputs may be sent and received in a streaming fashion.
-If an argument channel may be only read from or written to, it is marked as `readonly` or `writeonly`, respectively.
+If an argument stream may be only read from or written to, it is marked as `readonly` or `writeonly`, respectively.
 
 ### Place block
 
@@ -227,7 +227,7 @@ However, each `field_name` may appear at most once for any given PE over all `pl
 
 ### Dataflow block
 
-All communication is set up in one or more `dataflow` blocks, which describe the communication channels between PEs.
+All communication is set up in one or more `dataflow` blocks, which describe the communication streams between PEs.
 
 The syntax of the dataflow block is as follows:
 ```rust
@@ -239,86 +239,87 @@ The subgrid of the dataflow block is given by the PEs
 that lie in the `subgrid_expression`.
 The subgrids of the dataflow blocks must be disjoint.
 
-The dataflow block can be set up to support various types of channels.
-Currently, only *relative channel* indexing is supported:
+The dataflow block can be set up to support various types of streams.
+Currently, only *relative stream* indexing is supported:
 
-#### Relative Channel Declaration
+#### Relative Stream Declaration
 
-Inside a `dataflow block`, a relative communication channel is declared as follows:
+Inside a `dataflow block`, a relative communication stream is declared as follows:
 ```
-channel<T> channel_name = relative_channel(dx, dy);
+stream<T> stream_name = relative_stream(dx, dy);
 ```
 where `T` is a scalar type and `dx` and `dy` are parameter expressions that describe the relative position of the target PE.
-This describes a streaming communication channel for sending from the current PE at some
+This describes a streaming communication stream for sending from the current PE at some
 position `(i ,j)` to the PE at the relative position `(i+dx, j+dy)`, and simultaneously
-a channel for receiving from the PE at the relative position `(i-dx, j-dy)` at the current PE at `(i, j)`.
+a stream for receiving from the PE at the relative position `(i-dx, j-dy)` at the current PE at `(i, j)`.
 
 For example,
 ```rust
 dataflow i, j in [0:I, 0:J] {
-    channel<f32> eastwards = relative_channel(1, 0);
-    channel<f32> westwards = relative_channel(-1, 0);
-    channel<f32> northwards = relative_channel(0, -1);
-    channel<f32> southwards = relative_channel(0, 1);
+    stream<f32> eastwards = relative_stream(1, 0);
+    stream<f32> westwards = relative_stream(-1, 0);
+    stream<f32> northwards = relative_stream(0, -1);
+    stream<f32> southwards = relative_stream(0, 1);
 }
 ```
-describes four communication channels to the east, west, north, and south of each PE.
+describes four communication streams to the east, west, north, and south of each PE.
 
 For example,
 ```
 dataflow i, j in [0:I, 0:J] {
-    channel<f32> two_north = relative_channel(0, -2);
+    stream<f32> two_north = relative_stream(0, -2);
 }
 ```
-describes a communication channel that sends `f32` data two PEs to the north. 
+describes a communication stream that sends `f32` data two PEs to the north. 
 
-Note that the channel declaration does not imply that any data is ever sent over the channel.
-It merely declares the existence of a virtual communication channel.
+Note that the stream declaration does not imply that any data is ever sent over the stream.
+It merely declares the existence of a virtual communication stream.
 
 #### Routing Declarations
 
-Optionally, a routing declaration may be set up for each channel.
+Optionally, a routing declaration may be set up for each stream.
 This declaration describes how the data is routed between the PEs.
-In particular, for each channel, the configuration may specify the intermediate hops that the data takes.
-Moreover, it may specify a `lane`, which is a limited hardware resource that is used to route the data.
+In particular, for each stream, the configuration may specify the intermediate hops that the data takes.
+Moreover, it may specify a `channel`, which is a limited hardware resource
+(a virtual or hardware channel) that is used to route the data.
 
 The routing configuration is set up as follows:
 ```
-channel<T> channel_name = relative_channel(dx, dy) {
+stream<T> stream_name = relative_stream(dx, dy) {
     // Optional routing declaration
     hops = [(dx_1, dy_1), (dx_2, dy_2), ... , (dx_n, dy_n)];
-    lane = lane_id;
+    channel = channel_id;
 };
 ```
 where `hops` is a list of relative hops that the data takes between the sender and receiver.
 Each hop is given by a pair of constant literals, the sum of their absolute value must be 1.
-The sum of all the hops must be equal to the relative position of the channel.
+The sum of all the hops must be equal to the relative position of the stream.
 
 If two messages (elements of a `send`) are routed through a PE simultaneously,
-it must be ensured that they do not share a `lane`.
+it must be ensured that they do not share a `channel`.
 Note that the start and end PEs also count as hops implicitly.
 
 For example,
 ```rust
 dataflow i, j in [0:I, 0:J] {
-    channel<f32> eastwards = relative_channel(1, 0) {
+    stream<f32> eastwards = relative_stream(1, 0) {
         hops = [(1, 0)];
-        lane = 0;
+        channel = 0;
     };
 }
 ```
 
 
 If no routing declaration is provided, it is up to the compiler to determine the routing.
-This is equivalent to setting `hops = auto` and `lane = auto`.
-One may also provide `hops` explicitly, but leave `lane = auto`, which allows the compiler to determine the lane.
+This is equivalent to setting `hops = auto` and `channel = auto`.
+One may also provide `hops` explicitly, but leave `channel = auto`, which allows the compiler to determine the channel.
 ```rust
-// Example use of lane=auto
+// Example use of channel=auto
 
 dataflow i, j in [0:I, 0:J] {
-    channel<f32> eastwards = relative_channel(1, 0) {
+    stream<f32> eastwards = relative_stream(1, 0) {
         hops = auto;
-        lane = auto;
+        channel = auto;
     };
 }
 
@@ -330,7 +331,7 @@ checks if routing declarations are correct and how it resolves auto-routing.
 ### Compute block
 
 The computation is described in one or more `compute` blocks.
-Computation is inherently asynchronous, triggered by receiving data from channels.
+Computation is inherently asynchronous, triggered by receiving data from streams.
 Statements in the `compute` block may return completions that may trigger other statements.
 
 The compute block is defined as follows:
@@ -354,15 +355,15 @@ that lie in the `subgrid_expression`.
 asynchronous and return completions that may be used to synchronize computations.
 ```rust
 // Send (asynchronous)
-completion_name = send(local_array, channel_name);
+completion_name = send(local_array, stream_name);
 
 // Foreach loop over a receive() stream until the sender is done (asynchronous)
-completion completion_name = foreach variables in [receive(channel_name)] {
+completion completion_name = foreach variables in [receive(stream_name)] {
   // Statements
 }
 
 // Foreach loop over a receive() stream of defined size (asynchronous)
-completion completion_name = foreach variables in [parameter_expressions, receive(channel_name)] {
+completion completion_name = foreach variables in [parameter_expressions, receive(stream_name)] {
   // Statements
 }
 // Parallel map (asynchronous)
@@ -390,14 +391,14 @@ field_name = expression;
 
 #### Streaming Data with `send`
 
-Inside a `compute` block, the `send` statement sends data asynchronously through a `channel`.
+Inside a `compute` block, the `send` statement sends data asynchronously through a `stream`.
 
 ```
-completion completion_name = send(local_array, channel_name);
+completion completion_name = send(local_array, stream_name);
 ```
 
 The `local_array` must be allocated for each PE in the subgrid
-in some `place` block. Similarly, the `channel_name` must be declared in a `dataflow` block
+in some `place` block. Similarly, the `stream_name` must be declared in a `dataflow` block
 for each PE in the subgrid.
 
 The `completion_name` is a completion handle that may be used to wait for the completion of the send operation.
@@ -405,22 +406,22 @@ Note that the completion is triggered when the data has been sent, not when it i
 The completion merely indicates that the data in `local_array` may be safely overwritten
 without affecting the result of the computation.
 
-*Data Races*. Performing multiple sends to the same channel concurrently is considered a data race on the channel.
+*Data Races*. Performing multiple sends to the same stream concurrently is considered a data race on the stream.
 You must synchronize the sends using completions.
 Two sends in the same phase are considered concurrent if they are not ordered by `await`.
 
 #### Receiving Streaming Data with `receive`
 
-Inside a `compute` block, the `receive` operation wraps a channel to receive a stream of data from it.
+Inside a `compute` block, the `receive` operation wraps a stream to receive a stream of data from it.
 
 ```rust
-receive(channel_name)
+receive(stream_name)
 ```
 
-Send and receive calls must be compatible with the definitions of the channels in the dataflow blocks
+Send and receive calls must be compatible with the definitions of the streams in the dataflow blocks
 and must be matched across PEs. In particular, if there is a send from PE `A` to PE `B`, there must be one or more corresponding receives from PE `B` to PE `A`.
 Similarly, if there is a receive at PE `B`, there must be one or more corresponding sends with destination `B`.
-Such a pair of matched send and receive's for a channel is called a *stream edge* from `A` to `B`.
+Such a pair of matched send and receive's for a stream is called a *stream edge* from `A` to `B`.
 
 Note that a `receive` operation does not imply that any data is actually received,
 it merely declares the existence of a stream edge.
@@ -430,7 +431,7 @@ will check these constraints and report potential deadlocks on a best-effort bas
 
 *Data Races*.
 Two receives in the same `compute` block are considered concurrent if they are not ordered by `await`.
-Receiving from the same channel multiple times concurrently is considered a data race on the channel.
+Receiving from the same stream multiple times concurrently is considered a data race on the stream.
 
 
 #### Processing Data Streams with `foreach`
@@ -442,16 +443,16 @@ The elements are processed in the order they are received.
 One may either provide the number of elements to receive, or receive until the sender is done.
 ```rust
 // Receive until the sender is done
-completion completion_name = foreach variables in [receive(channel_name)] {
+completion completion_name = foreach variables in [receive(stream_name)] {
   // Assignment statements
 }
 
 // Receive a fixed number of elements
-completion completion_name = foreach variables in [parameter_rage_expressions, receive(channel_name)] {
+completion completion_name = foreach variables in [parameter_rage_expressions, receive(stream_name)] {
   // Assignment statements
 }
 ```
-The last variable is the data variable. The data variable is bound to the received data. Its type must match the type of the channel.
+The last variable is the data variable. The data variable is bound to the received data. Its type must match the type of the stream.
 
 The other variables are iteration variables. They must be of type `i32`.
 One may specify multiple parameter range expressions. 
@@ -461,25 +462,25 @@ interpreted as a multi-dimensional array in *row-major* order.
 If the number of elements received is known, it is preferable to specify it explicitly in order
 to allow for performance optimizations.
 
-For example, the following code receives data from `channel_1` for `K` elements
+For example, the following code receives data from `stream_1` for `K` elements
 and assigns the received data to the array `a`.
 ```
-completion completion_name = foreach i32 k, f32 x in [0:K, receive(channel_1)] {
+completion completion_name = foreach i32 k, f32 x in [0:K, receive(stream_1)] {
     a[k] = x;
 }
 ```
 
 The `completion_name` is a completion handle that may be used to wait for the completion of the `foreach` loop.
 Note that the completion is triggered when the data has been received, not when it is sent.
-After the completion triggers, the channel may be used for other sends or receives.
+After the completion triggers, the stream may be used for other sends or receives.
 
 *Deadlocks*:
 The sizes sent and received must match:
 
-* This means that for each `send` statement on a given channel, there can be at most one corresponding `foreach` loop that does not specify the number of elements to receive.
+* This means that for each `send` statement on a given stream, there can be at most one corresponding `foreach` loop that does not specify the number of elements to receive.
 
-* If there are multiple `foreach` loops iterating over the same channel that *do* specify the number of elements to receive,
-the total sizes must match the total sizes of the arrays that are sent through the channel.
+* If there are multiple `foreach` loops iterating over the same stream that *do* specify the number of elements to receive,
+the total sizes must match the total sizes of the arrays that are sent through the stream.
 
 *Failure to correctly match the sizes sent and received may result in a deadlock.*
 
@@ -530,9 +531,9 @@ await map i32 i in [0:10] {
     // Statements
 }
 // Wait for completion of a send
-await send(local_array, channel_name);
+await send(local_array, stream_name);
 // Wait for completion of a receive
-await foreach i32 k, f32 x in [0:K, receive(channel_name)] {
+await foreach i32 k, f32 x in [0:K, receive(stream_name)] {
   // Statements
 }
 // Wait for a completion
@@ -594,8 +595,8 @@ Each phase may contain one or more `place`, `dataflow`, and `compute` blocks.
 For a `place` block defined in the outermost scope, the fields defined therein are in-scope for all `compute` blocks in all phases.
 For a `place` block within a phase, the fields defined therein are in-scope for the `compute` blocks in that phase.
 
-Similarly, for a `dataflow` block defined in the outermost scope, the channels defined therein are in-scope for all `compute` blocks in all phases.
-For a `dataflow` block within a phase, the channels defined therein are in-scope for the `compute` blocks in that phase.
+Similarly, for a `dataflow` block defined in the outermost scope, the streams defined therein are in-scope for all `compute` blocks in all phases.
+For a `dataflow` block within a phase, the streams defined therein are in-scope for the `compute` blocks in that phase.
 
 Within each phase, there can be at most one `compute` block defined per PE.
 If multiple `compute` blocks are defined per PE per phase, the behavior is undefined.
@@ -615,7 +616,7 @@ place for i, j in [0:I, 0:J] {
 }
 
 dataflow for i, j in [0:I, 0:J] {
-  channel<f32> output = argument[i, j];
+  stream<f32> output = argument[i, j];
 }
 
 phase {
@@ -624,7 +625,7 @@ phase {
   }
    
   dataflow for i, j in [0:I, 0:J] {
-    channel<f32> eastwards = relative_channel(1, 0);
+    stream<f32> eastwards = relative_stream(1, 0);
   }
   
   compute for i, j in [0:I, 0:J] {
@@ -642,7 +643,7 @@ phase {
 
   dataflow for i, j in [1:I-1, 1:J-1] {
     // The communication pattern switches direction in this phase
-    channel<f32> westwards = relative_channel(-1, 0);
+    stream<f32> westwards = relative_stream(-1, 0);
   }
   
   compute for i, j in [1:I-1, 1:J-1] {
@@ -696,7 +697,7 @@ of the interleaving of concurrent operations.
 // For example, this is a data race:
 // Concurrently writing to and sending from the same array
 // We forbid this because the result of the send would be non-deterministic
-completion c1 = send(a, channel);
+completion c1 = send(a, stream);
 for k in [0:K] {
     // Data Race!!
     a[k] = k; 
@@ -704,14 +705,14 @@ for k in [0:K] {
 await c1;
 
 // Correctly synchronized, we would get
-completion c1 = send(a, channel);
+completion c1 = send(a, stream);
 await c1;
 for k in [0:K] {
     a[k] = 1;
 }
 
 // Correctly synchronized with short-hand await syntax
-await send(a, channel);
+await send(a, stream);
 for k in [0:K] {
     a[k] = 1;
 }
@@ -729,15 +730,15 @@ Failure to guarantee completion regardless of progress order of concurrent opera
 
 For example, each iteration of a `foreach` waits until receiving a data element.
 An `await` statement waits until a completion triggers. 
-A `send` statement requires that the channel has space to carry the data
+A `send` statement requires that the stream has space to carry the data
 and may stall if the receiver is not ready to receive the data.
 A deadlock-free program will ensure that all PEs can make progress
 eventually regardless of the interleaving of statements.
 
 ## Semantics of Routing Declarations
 
-Routing declarations must respect the limitations on how `lane`s are used.
-Specifically, it must be avoided that two messages are routed through the same `lane` 
+Routing declarations must respect the limitations on how `channel`s are used.
+Specifically, it must be avoided that two messages are routed through the same `channel` 
 at the same PE simultaneously.
 
 ### The Routing Graph
@@ -753,18 +754,18 @@ Stream edges must not cross [phases](#phases), that is, a stream edge must be en
 
 The routing graph contains the following nodes *V*, edges *E*, and paths *P*:
 - Each PE is a node in the graph.
-- Consider each stream edge from PE `(x_1, y_1)` to PE `(x_2, x_2)` going through channel *C* on lane *L* through PE `hops = [(dx_1, dy_1), (dx_2, dy_2), ..., (dx_n, dy_n)]`.
+- Consider each stream edge from PE `(x_1, y_1)` to PE `(x_2, x_2)` going through stream *C* on channel *L* through PE `hops = [(dx_1, dy_1), (dx_2, dy_2), ..., (dx_n, dy_n)]`.
 We add an edge from `(x_1+dx_i, y_1+dy_i)` to `(x_1+dx_{i+1}, y_1+dy_{i+1})` for each *i* in *0, ..., n*.
 where we use the convention that `dx_0 = dy_0 = 0`.
 - Moreover, we add the resulting path `(x_1, y_1), ..., (x_1+dx_i, y_1+dy_i), ..., (x_2, y_2)` to the list of paths *P*
-and record the channel *C* and lane *L*. 
-Importantly, if two paths are identical and share the same channel, they are considered the same path and only one is recorded.
-This can occur the same PE-pair uses the same channel multiple times in the same phase.
+and record the stream *C* and channel *L*. 
+Importantly, if two paths are identical and share the same stream, they are considered the same path and only one is recorded.
+This can occur the same PE-pair uses the same stream multiple times in the same phase.
 Such uses are already synchronized correctly using completions.
 
 For example, the following code correctly sets up
 a routing declaration for a 1D 2-phase reduce for 4 PEs:
-It can use a single lane for both phases, as the channels
+It can use a single channel for both phases, as the streams
 are properly sequenced in different phases.
 ```rust
 // 1D 2-phase reduce for 4 PEs
@@ -774,9 +775,9 @@ place i, j in [0:4, 0] {
 
 phase {
   dataflow i32 i, i32 j in [0:4, 0] {
-    channel<f32> hop1 = relative_channel(-1, 0) {
+    stream<f32> hop1 = relative_stream(-1, 0) {
       hops = [(-1, 0)];
-      lane = 0;
+      channel = 0;
     };
   }
   compute i32 i, i32 j in [1:4:2] {
@@ -791,9 +792,9 @@ phase {
 
 phase {
   dataflow i32 i, i32 j in [0:4, 0] {
-    channel<f32> hop2 = relative_channel(-2, 0) {
+    stream<f32> hop2 = relative_stream(-2, 0) {
       hops = [(-1, 0), (-1, 0)];
-      lane = 0;
+      channel = 0;
     };
   }
 
@@ -823,24 +824,24 @@ Next, we describe the condition under which the routing behavior is undefined:
 We say that *P1* happens-before *P2* and write *P1 -> P2* if
 the receive of *P1* happens-before the send of *P2*.
 
-**If for a routing graph of a lane there are two paths *P1* and *P2* that share a PE `(x, y)`
+**If for a routing graph of a channel there are two paths *P1* and *P2* that share a PE `(x, y)`
 and *P1* and P2 are not ordered by happens-before,
 then the behavior is undefined.**
 
 This is because the two messages may interfere with each other
 and the order in which they are processed may become nondeterministic.
-Recall that sending onto the same channel [must be synchronized using completions
-to avoid data races](#streaming-data-with-send). Hence, sending through the same channel multiple times
+Recall that sending onto the same stream [must be synchronized using completions
+to avoid data races](#streaming-data-with-send). Hence, sending through the same stream multiple times
 in the same phases is ok as long as the sends (and receives) are correctly synchronized.
 
 Keep in mind that PEs transition between phases asynchronously,
 that is, a PE may advance to the next phase before another PE has completed the current phase.
 We exploit here implicitly that routers back-pressure when
-they receive data from a lane on which they are not configured
+they receive data from a channel on which they are not configured
 to receive. 
 [A Note regarding potential extensions]
 The current definition is tailored to the case
-where all channels are point-to-point paths.
+where all streams are point-to-point paths.
 If multicasting is used, the correctness conditions become more challenging
 to specify.
 
@@ -923,8 +924,8 @@ which is raised as an error by the compiler.
 
 The conflict graph can be used to determine if a routing declaration is correct,
 and resolve the `auto` routing declarations.
-The conflict graph is a directed graph that describes the conflicts between channels.
-Two channels conflict if they are routed through the same lane at the same PE.
+The conflict graph is a directed graph that describes the conflicts between streams.
+Two streams conflict if they are routed through the same channel at the same PE.
 
 We use the parametric routing graph to construct the conflict graph.
 
@@ -936,12 +937,12 @@ We use the parametric routing graph to construct the conflict graph.
 
 
 ```rust
-kernel vadv<I,J,K>(channel<f32>[I, J] utens_stage,
-                  channel<f32>[I, J] readonly u_stage,
-                  channel<f32>[I, J] readonly wcon,
-                  channel<f32>[I, J] readonly u_pos,
-                  channel<f32>[I, J] readonly utens,
-                  channel<f32>[I, J] writeonly datacol,       
+kernel vadv<I,J,K>(stream<f32>[I, J] utens_stage,
+                  stream<f32>[I, J] readonly u_stage,
+                  stream<f32>[I, J] readonly wcon,
+                  stream<f32>[I, J] readonly u_pos,
+                  stream<f32>[I, J] readonly utens,
+                  stream<f32>[I, J] writeonly datacol,       
                   f32 compiletime dtr_stage,
                   f32 compiletime bet_m,
                   f32 compiletime bet_p) {
@@ -964,15 +965,15 @@ kernel vadv<I,J,K>(channel<f32>[I, J] utens_stage,
   
   phase {
 
-    // Set up communication channels
+    // Set up communication streams
     // The only PE-PE communication is for wcon, which is sent to the west  
-    // We additionally set up a channel for the inputs and outputs
+    // We additionally set up a stream for the inputs and outputs
     dataflow i, j in [0:I, 0:J] {
-      channel<f32> u_stage_c = u_stage[i, j];
-      channel<f32> wcon_c = wcon[i, j];
-      channel<f32> u_pos_c = u_pos[i, j];
-      channel<f32> utens_c = utens[i, j];
-      channel<f32> utens_stage_c = utens_stage[i, j];
+      stream<f32> u_stage_c = u_stage[i, j];
+      stream<f32> wcon_c = wcon[i, j];
+      stream<f32> u_pos_c = u_pos[i, j];
+      stream<f32> utens_c = utens[i, j];
+      stream<f32> utens_stage_c = utens_stage[i, j];
     }
     
     // Copy the data
@@ -1019,14 +1020,14 @@ kernel vadv<I,J,K>(channel<f32>[I, J] utens_stage,
       f32 divided;
     }
   
-    // Set up communication channels
+    // Set up communication streams
     // The only PE-PE communication is for wcon, which is sent to the west  
-    // We additionally set up a channel for the outputs
+    // We additionally set up a stream for the outputs
     dataflow i, j in [0:I, 0:J] {
-      channel<f32> westwards = relative_channel(-1, 0);
+      stream<f32> westwards = relative_stream(-1, 0);
       
-      channel<f32> utens_stage_c = utens_stage[i, j];
-      channel<f32> datacol_c = datacol[i, j];
+      stream<f32> utens_stage_c = utens_stage[i, j];
+      stream<f32> datacol_c = datacol[i, j];
     }
   
     ////
@@ -1096,8 +1097,8 @@ kernel vadv<I,J,K>(channel<f32>[I, J] utens_stage,
 ### 2D Laplacian
 
 ```rust
-kernel laplacian<I,J,K> (channel<f32>[I+2, J+2] readonly in_field,
-                         channel<f32>[I, J] writeonly lap_field) {
+kernel laplacian<I,J,K> (stream<f32>[I+2, J+2] readonly in_field,
+                         stream<f32>[I, J] writeonly lap_field) {
     
   ////////////////////////////////
   // Data placement
@@ -1117,7 +1118,7 @@ kernel laplacian<I,J,K> (channel<f32>[I+2, J+2] readonly in_field,
   phase {
   
     dataflow i, j in [0:I+2, 0:J+2] {
-      channel<f32> in_field_l = in_field[i, j];
+      stream<f32> in_field_l = in_field[i, j];
     }
   
     compute i, j in [0:I+2, 0:J+2] {
@@ -1129,17 +1130,17 @@ kernel laplacian<I,J,K> (channel<f32>[I+2, J+2] readonly in_field,
   
 
   phase {
-    // Set up communication channels
+    // Set up communication streams
     dataflow i, j in [0:I+2, 0:J+2] {
-       channel<f32> eastwards = relative_channel(+1, 0);
-       channel<f32> westwards = relative_channel(-1, 0);
-       channel<f32> northwards = relative_channel(0, -1);
-       channel<f32> southwards = relative_channel(0, +1);
+       stream<f32> eastwards = relative_stream(+1, 0);
+       stream<f32> westwards = relative_stream(-1, 0);
+       stream<f32> northwards = relative_stream(0, -1);
+       stream<f32> southwards = relative_stream(0, +1);
        
     }
 
     dataflow i, i in [1:I+1, 1:J+1] {
-        channel<f32> lap_field_l = lap_field[i, j];
+        stream<f32> lap_field_l = lap_field[i, j];
     }
   
     // Edge senders
@@ -1198,8 +1199,8 @@ The kernel is of size 3.
 While the data is being streamed, it is convolved with the kernel and streamed to the output.
 
 ```rust
-kernel conv<J>(channel<f32>[J] readonly input,
-               channel<f32>[J] writeonly output,
+kernel conv<J>(stream<f32>[J] readonly input,
+               stream<f32>[J] writeonly output,
                f32[3] readonly KERNEL) {
 
     // Data placement
@@ -1210,10 +1211,10 @@ kernel conv<J>(channel<f32>[J] readonly input,
 
     // Communication
     dataflow i, j in [0:J, 0] {
-        channel<f32> eastwards = relative_channel(1, 0);
-        channel<f32> westwards = relative_channel(-1, 0);
-        channel<f32> input_local <- input[i];
-        channel<f32> output_local -> output[i];
+        stream<f32> eastwards = relative_stream(1, 0);
+        stream<f32> westwards = relative_stream(-1, 0);
+        stream<f32> input_local <- input[i];
+        stream<f32> output_local -> output[i];
     }
 
     // Computation
