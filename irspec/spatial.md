@@ -298,7 +298,34 @@ If two messages (elements of a `send`) are routed through a PE simultaneously,
 it must be ensured that they do not share a `lane`.
 Note that the start and end PEs also count as hops implicitly.
 
+For example,
+```rust
+dataflow i, j in [0:I, 0:J] {
+    channel<f32> eastwards = relative_channel(1, 0) {
+        hops = [(1, 0)];
+        lane = 0;
+    };
+}
+```
+
+
 If no routing declaration is provided, it is up to the compiler to determine the routing.
+This is equivalent to setting `hops = auto` and `lane = auto`.
+One may also provide `hops` explicitly, but leave `lane = auto`, which allows the compiler to determine the lane.
+```rust
+// Example use of lane=auto
+
+dataflow i, j in [0:I, 0:J] {
+    channel<f32> eastwards = relative_channel(1, 0) {
+        hops = auto;
+        lane = auto;
+    };
+}
+
+```
+See the [Semantics of Routing Declarations](#semantics-of-routing-declarations) for how the compiler
+checks if routing declarations are correct and how it resolves auto-routing.
+
 
 ### Compute block
 
@@ -323,7 +350,7 @@ where `i`, `j` are `i32` variables that are bound to the coordinates of the PEs 
 The subgrid of the `compute` block is given by the PEs
 that lie in the `subgrid_expression`.
 
-`Compute` blocks may contain the following statements, some of which are
+`compute` blocks may contain the following statements, some of which are
 asynchronous and return completions that may be used to synchronize computations.
 ```rust
 // Send (asynchronous)
@@ -515,6 +542,8 @@ await comp;
 Note that statements inside an `await` may still be preempted by other asynchronous operations!
 Awaiting the same completion twice is considered undefined behavior.
 
+See the [Semantics of Asynchronous Statements](#semantics-of-asynchronous-statements) for more details.
+
 
 #### Processing arrays sequentially with `for`
 
@@ -569,8 +598,9 @@ Similarly, for a `dataflow` block defined in the outermost scope, the channels d
 For a `dataflow` block within a phase, the channels defined therein are in-scope for the `compute` blocks in that phase.
 
 Within each phase, there can be at most one `compute` block defined per PE.
-If multiple `compute` blocks s are defined per PE per phase, the behavior is undefined.
-After each `compute` block, there is an implicit barrier that waits for all completions to be triggered before starting the next `compute` block.
+If multiple `compute` blocks are defined per PE per phase, the behavior is undefined.
+After each `compute` block, there is a set of implicit `await` statements
+that wait for all completions to be triggered before starting the next `compute` block.
 Note that this does *not* imply that all PEs have executed the `compute` block.
 No `compute` block may be defined in the outermost scope.
 
@@ -611,6 +641,7 @@ phase {
   }
 
   dataflow for i, j in [1:I-1, 1:J-1] {
+    // The communication pattern switches direction in this phase
     channel<f32> westwards = relative_channel(-1, 0);
   }
   
@@ -712,8 +743,13 @@ at the same PE simultaneously.
 ### The Routing Graph
 
 The routing graph of a phase is a directed graph that describes how data is routed between PEs.
-Recall that stream edges are pairs of send and receive operations that are matched across PEs.
-Stream edges must not cross phases.
+Note that the routing graph is defined in terms of the PE coordinates, so
+its size grows with the size of the PE grid. It serves as a formal model for defining
+the semantics, but should not be constructed explicitly.
+
+Recall that stream edges are pairs of [send](#streaming-data-with-send) 
+and [receive](#receiving-streaming-data-with-receive) operations that are matched across PEs.
+Stream edges must not cross [phases](#phases), that is, a stream edge must be entirely contained within a phase.
 
 The routing graph contains the following nodes *V*, edges *E*, and paths *P*:
 - Each PE is a node in the graph.
@@ -722,10 +758,6 @@ We add an edge from `(x_1+dx_i, y_1+dy_i)` to `(x_1+dx_{i+1}, y_1+dy_{i+1})` for
 where we use the convention that `dx_0 = dy_0 = 0`.
 - Moreover, we add the resulting path `(x_1, y_1), ..., (x_1+dx_i, y_1+dy_i), ..., (x_2, y_2)` to the list of paths *P*
 and record the channel *C* and lane *L*.
-
-Note that the routing graph is defined in terms of the PE coordinates, so
-its size grows with the size of the PE grid. It serves as a formal model for defining
-the semantics, but should not be constructed explicitly.
 
 For example, the following code correctly sets up
 a routing declaration for a 1D 2-phase reduce for 4 PEs:
@@ -774,8 +806,12 @@ phase {
 
 }
 ```
-[TODO: Explain how the routing graph would look like for this example]
 
+The routing graphs for this example contains 4 nodes, one for each PE.
+In the routing graph for the first phase,
+there are two edges from PE (1, 0) to PE (0, 0) and PE (3, 0) to PE (2, 0).
+In the second phase,
+There is a single edge from PE (2, 0) to PE (0, 0).
 
 ### Undefined Behavior
 
@@ -784,9 +820,9 @@ Next, we describe the condition under which the routing behavior is undefined:
 on different channels but on the same lane, then the behavior is undefined.**
 This is because the two messages may interfere with each other
 and the order in which they are processed may become nondeterministic.
-Recall that sending onto the same channel must be synchronized using completions
-to avoid data races. Hence, sending through the same channel multiple times
-in the same phases is ok as long as the sends are correctly synchronized.
+Recall that sending onto the same channel [must be synchronized using completions
+to avoid data races](#streaming-data-with-send). Hence, sending through the same channel multiple times
+in the same phases is ok as long as the sends (and receives) are correctly synchronized.
 
 Keep in mind that PEs transition between phases asynchronously,
 that is, a PE may advance to the next phase before another PE has completed the current phase.
@@ -810,9 +846,10 @@ We again consider a particular phase.
 The parametric routing graph of a phase is defined as follows:
 
 There is a node for each compute block in the phase.
-The node is identified with the `variable, variable in subgrid_expression` that describes the PE coordinates of the compute block
+We rename all variables in the `task` and `dataflow` subgrid expressions to `i` and `j` for simplicity.
+The node is identified with the `i, j in subgrid_expression` that describes the PE coordinates of the compute block
 and the two variables are bound to the PE coordinates in the compute block.
-For example, `i, j in [0:I, 0:J]` is a node in the routing graph.
+For example, `i, j in [0:I, 0:J]` could be a node in the routing graph.
 
 The edges of the parametric routing graph is defined as follows:
 For each `send` statement with `hops = [(dx_1, dy_1), ..., (dx_n, dy_n)]`
