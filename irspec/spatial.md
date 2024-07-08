@@ -757,7 +757,10 @@ The routing graph contains the following nodes *V*, edges *E*, and paths *P*:
 We add an edge from `(x_1+dx_i, y_1+dy_i)` to `(x_1+dx_{i+1}, y_1+dy_{i+1})` for each *i* in *0, ..., n*.
 where we use the convention that `dx_0 = dy_0 = 0`.
 - Moreover, we add the resulting path `(x_1, y_1), ..., (x_1+dx_i, y_1+dy_i), ..., (x_2, y_2)` to the list of paths *P*
-and record the channel *C* and lane *L*.
+and record the channel *C* and lane *L*. 
+Importantly, if two paths are identical and share the same channel, they are considered the same path and only one is recorded.
+This can occur the same PE-pair uses the same channel multiple times in the same phase.
+Such uses are already synchronized correctly using completions.
 
 For example, the following code correctly sets up
 a routing declaration for a 1D 2-phase reduce for 4 PEs:
@@ -816,8 +819,14 @@ There is a single edge from PE (2, 0) to PE (0, 0).
 ### Undefined Behavior
 
 Next, we describe the condition under which the routing behavior is undefined:
+
+We say that *P1* happens-before *P2* and write *P1 -> P2* if
+the receive of *P1* happens-before the send of *P2*.
+
 **If for a routing graph of a lane there are two paths *P1* and *P2* that share a PE `(x, y)`
-on different channels but on the same lane, then the behavior is undefined.**
+and *P1* and P2 are not ordered by happens-before,
+then the behavior is undefined.**
+
 This is because the two messages may interfere with each other
 and the order in which they are processed may become nondeterministic.
 Recall that sending onto the same channel [must be synchronized using completions
@@ -891,9 +900,11 @@ Failure to do so constitutes an incorrect declaration of stream edges (deadlock)
 
 - Proceed symmetrically for the case `dy_k != 0`.
 
-**Case: The strides are either 1 or the same value.
+**Case: The strides are either 1 or the same value.**
 
 TODO (Needed? maybe convenient for larger boundary conditions)
+
+#### Analysis
 
 Note that blocks with a single element can be interpreted as having any arbitrary stride.
 This is useful for implementing boundary conditions.
@@ -906,6 +917,18 @@ Hence, the overall runtime is `O(n^2 * h)`.
 The construction of the parametric routing graph also validates the correctness of stream edges.
 If at any point the target vertex does not exist, the program is incorrect due to a deadlock,
 which is raised as an error by the compiler.
+
+
+### The Conflict Graph
+
+The conflict graph can be used to determine if a routing declaration is correct,
+and resolve the `auto` routing declarations.
+The conflict graph is a directed graph that describes the conflicts between channels.
+Two channels conflict if they are routed through the same lane at the same PE.
+
+We use the parametric routing graph to construct the conflict graph.
+
+
 
 ## Examples
 
