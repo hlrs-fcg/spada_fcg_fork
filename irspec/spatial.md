@@ -626,16 +626,16 @@ A PEs may participate in some phases and not in others.
 For example:
 ```rust
 place for i, j in [0:I, 0:J] {
-    f32[K] a <- arg1[i, j, 0:K];
+    f32[K] a;
 }
 
 dataflow for i, j in [0:I, 0:J] {
-  stream<f32> output = argument[i, j];
+  stream<f32> input = arg1[i, j, 0:K];
 }
 
 phase {
   place for i, j in [0:I, 0:J] {
-    f32[K] b <- arg2[i, j, 0:K];
+    f32[K] b;
   }
    
   dataflow for i, j in [0:I, 0:J] {
@@ -644,7 +644,7 @@ phase {
   
   compute for i, j in [0:I, 0:J] {
      // Within this compute block:
-     // b and a are in scope, eastwards is in scope, and output is in scope
+     // b and a are in scope, eastwards is in scope, input are in scope
   }
 
 }
@@ -652,7 +652,8 @@ phase {
 phase {
 
   place for i, j in [1:I-1, 1:J-1] {
-    f32[K] c <- arg3[i, j, 0:K];
+    f32[K] c;
+    stream<f32> output = arg2[i, j];
   }
 
   dataflow for i, j in [1:I-1, 1:J-1] {
@@ -662,7 +663,7 @@ phase {
   
   compute for i, j in [1:I-1, 1:J-1] {
     // Within this compute block:
-    // c is in scope, westwards, and output is in scope
+    // c is in scope, westwards, input and output are in scope
   }
 
 }
