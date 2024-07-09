@@ -794,52 +794,6 @@ Hence, the statement `S7` is correctly synchronized with `S4`.
 However, the access at `S5` is concurrent with the `send` at `S4`.
 This is a data race.
 
-#### Example: Incorrect Ping-Pong
-```rust
-phase {
-  // Ping-pong pattern to synchronize two compute blocks
-  // This is a correct way to synchronize two compute blocks
-  // that write to the same array
-  
-  // Send from 1 to 0
-  // Concurrently update array a
-  // at 0, wait for receival, then send to 1
-  // at 1, wait for receival
-  // Then, update array a at 1
-  
-  plase i, j in [0:2, 0] {
-    f32[K] a;
-  }
-
-  dataflow i, j in [0:2, 0] {
-      stream<f32> eastwards = relative_stream(1, 0);
-      stream<f32> westwards = relative_stream(-1, 0);
-  }
-  compute i, j in [0, 0] {
-     // S1
-     completion c1 = foreach x, k in [receive(eastwards)] {
-        a[k] = 2 * x
-     }
-     // S2
-     await c1;
-     // S3
-     completion c2 = send(a, westwards);
-  }
-
-  compute i, j in [1, 0] {
-     // S4
-     completion c1 = send(a, eastwards);
-     // S5
-     a[0] = 0;
-     // S6
-     completion c2 = foreach x, k in [receive(westwards)] {
-        // S7
-        a[k] = x;
-     } 
-     
-  }
-}
-```
 
 ### Deadlocks
 
