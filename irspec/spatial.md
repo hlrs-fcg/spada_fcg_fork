@@ -668,24 +668,36 @@ The asynchronous semantics can be defined in terms of a *happens-before* graph.
 For each statement `S` in a `compute` block, we define a *happens-before* relation `->` between statements.
 Intuitively, `S1 -> S2` means that `S1` must complete before `S2` can start.
 
-We define the order in terms of the `await` statements in the code.
-Let `c` be the completion returned by `S1`. We have that `S1 -> S2` if *any* of the following hold:
-- `S2` is in a phase that follows the phase of `S1`.
-- `S1` and `S2` are in the same `for`, `foreach`, `map`, `async` scope, or top-level `task` scope and `S2`
-follows `S1` in all execution paths.
-- There is a statement `await c` between all possible execution paths from `S1` to `S2` or `S1` includes an `await`.
+A blocking statement is a statement that must complete before
+any following statement can start. In particular:
+- `await` statements are blocking.
+- assignments to fields are blocking.
 
-Statements that are not ordered by `->` are considered concurrent.
+We define the order in terms of the `await` statements in the code.
+If `S1` is a non-blocking statement, let `c` be its completion.
+We have that `S1 -> S2` if *any* of the following hold:
+1. `S1` and `S2` are in the same compute block and one of the following hold:
+   - (a) `S1` is a blocking statement and `S2` follows `S1` in all execution paths.
+   - (b) `S1` is a non-blocking statement, and there is a statement `await c` between all possible execution paths from `S1` to `S2`.
+2. `S1` is a `send` statement, and `S2` is the `await` statement of the corresponding `receive` forming the stream edge.
+3. There exists a stream edge from some statement `S3` to `S4` and `S1 -> S3` and `S2` follows `S4` on all execution paths.
+4. There is a statement `S3` where `S1 -> S3` and `S3 -> S2`.
+
+Note that we handle phases by implicitly adding `await` statements for all outstanding 
+completions at the end of each `compute` block.
+
+Statements that are not ordered by happens-before are considered **concurrent**.
 
 The happens-before graph is used to define data races and deadlocks.
 Moreover, it can be used for lowering, specifically it can be used to 
 determine how the code can be mapped to a task-based or thread-based model
-
+and how to resolve `auto` routing declarations.
 
 ### Data Races
 
 Writing to an array in a statement while concurrently reading from it 
-or writing to it in another statement is considered a *data race*
+or writing to it in another statement in the same 
+compute block is considered a *data race*
 and is considered undefined behavior. 
 In particular, sending data from an array while concurrently
 writing to it is considered a data race.
@@ -717,6 +729,116 @@ for k in [0:K] {
     a[k] = 1;
 }
 
+```
+
+#### Example: Ping-Pong
+
+Here is an example that synchronized through multiple compute
+blocks using a ping-pong pattern:
+It also includes one statement that demonstrates a data race.
+
+```rust
+phase {
+  // Example: 'Ping-Pong'
+  // Ping-pong pattern to synchronize two compute blocks
+  // This is a correct way to synchronize two compute blocks
+  // that write to the same array
+  
+  // Send from 1 to 0
+  // Concurrently update array a
+  // at 0, wait for receival, then send to 1
+  // at 1, wait for receival
+  // Then, update array a at 1
+  
+  place i, j in [0:2, 0] {
+    f32[K] a;
+  }
+
+  dataflow i, j in [0:2, 0] {
+      stream<f32> eastwards = relative_stream(1, 0);
+      stream<f32> westwards = relative_stream(-1, 0);
+  }
+
+  compute i, j in [0, 0] {
+     // S1
+     completion c1 = foreach x, k in [receive(eastwards)] {
+        a[k] = 2 * x
+     }
+     // S2
+     await c1;
+     // S3
+     completion c2 = send(a, westwards);
+  }
+
+  compute i, j in [1, 0] {
+     // S4
+     completion c3 = send(a, eastwards);
+     // S5 (data race)
+     a[0] = 0;
+     // S6
+     completion c4 = foreach x, k in [receive(westwards)] {
+        // S7 (correctly synchronized)
+        a[k] = x;
+     }
+  }
+}
+```
+Analysis of the Ping-Pong example above:
+We have that `S4 -> S2` because of `await c1` statement `S2`.
+We have `S2 -> S3` because an `await` blocks until it completes.  
+We have that `S2 -> S7` because there is a stream edge from `S3` to `S6`
+and all execution paths to `S7` go through `S6`.
+Hence, we have `S4 -> S7` by transitivity.
+Hence, the statement `S7` is correctly synchronized with `S4`.
+
+However, the access at `S5` is concurrent with the `send` at `S4`.
+This is a data race.
+
+#### Example: Incorrect Ping-Pong
+```rust
+phase {
+  // Ping-pong pattern to synchronize two compute blocks
+  // This is a correct way to synchronize two compute blocks
+  // that write to the same array
+  
+  // Send from 1 to 0
+  // Concurrently update array a
+  // at 0, wait for receival, then send to 1
+  // at 1, wait for receival
+  // Then, update array a at 1
+  
+  plase i, j in [0:2, 0] {
+    f32[K] a;
+  }
+
+  dataflow i, j in [0:2, 0] {
+      stream<f32> eastwards = relative_stream(1, 0);
+      stream<f32> westwards = relative_stream(-1, 0);
+  }
+  compute i, j in [0, 0] {
+     // S1
+     completion c1 = foreach x, k in [receive(eastwards)] {
+        a[k] = 2 * x
+     }
+     // S2
+     await c1;
+     // S3
+     completion c2 = send(a, westwards);
+  }
+
+  compute i, j in [1, 0] {
+     // S4
+     completion c1 = send(a, eastwards);
+     // S5
+     a[0] = 0;
+     // S6
+     completion c2 = foreach x, k in [receive(westwards)] {
+        // S7
+        a[k] = x;
+     } 
+     
+  }
+}
 ```
 
 ### Deadlocks
@@ -856,7 +978,7 @@ We again consider a particular phase.
 The parametric routing graph of a phase is defined as follows:
 
 There is a node for each compute block in the phase.
-We rename all variables in the `task` and `dataflow` subgrid expressions to `i` and `j` for simplicity.
+We rename all variables in the `compute` and `dataflow` subgrid expressions to `i` and `j` for simplicity.
 The node is identified with the `i, j in subgrid_expression` that describes the PE coordinates of the compute block
 and the two variables are bound to the PE coordinates in the compute block.
 For example, `i, j in [0:I, 0:J]` could be a node in the routing graph.
