@@ -394,9 +394,13 @@ field_name = expression;
 Inside a `compute` block, the `send` statement sends data asynchronously through a `stream`.
 
 ```
+// Send the whole array
 completion completion_name = send(local_array, stream_name);
-```
 
+// Send part of an array
+completion completion_name = send(local_array[parameter_range_expression], stream_name);
+
+```
 The `local_array` must be allocated for each PE in the subgrid
 in some `place` block. Similarly, the `stream_name` must be declared in a `dataflow` block
 for each PE in the subgrid.
@@ -406,9 +410,21 @@ Note that the completion is triggered when the data has been sent, not when it i
 The completion merely indicates that the data in `local_array` may be safely overwritten
 without affecting the result of the computation.
 
+
+
+
 *Data Races*. Performing multiple sends to the same stream concurrently is considered a data race on the stream.
 You must synchronize the sends using completions.
-Two sends in the same phase are considered concurrent if they are not ordered by `await`.
+Two sends in the same phase are concurrent if they are not ordered by [`await`](#await-completions-with-await).
+
+For example,
+```rust
+// Send the first half of the array
+completion c1 = send(a[0:K//2], stream_name);
+await c1;
+// Send the rest of the array
+completion c2 = send(a[K//2:K], stream_name);
+```
 
 #### Receiving Streaming Data with `receive`
 
@@ -419,10 +435,10 @@ receive(stream_name)
 ```
 
 Send and receive calls must be compatible with the definitions of the streams in the dataflow blocks
-and must be matched across PEs. In particular, if there is a send from PE `A` to PE `B`, there must be one or more corresponding receives from PE `B` to PE `A`.
-Similarly, if there is a receive at PE `B`, there must be one or more corresponding sends with destination `B`.
-Such a pair of matched send and receive's for a stream is called a *stream edge* from `A` to `B`.
-
+and must be matched across PEs. In particular, if there is a `send` from PE `A` to PE `B`, there must be 
+one corresponding `receive` from PE `B` to PE `A`.
+Similarly, if there is a `receive` at PE `B`, there must be one corresponding `send` with destination `B`.
+Such a pair of matched `send` and `receive`'s for a stream is called a *stream edge* from `A` to `B`.
 Note that a `receive` operation does not imply that any data is actually received,
 it merely declares the existence of a stream edge.
 
@@ -477,10 +493,8 @@ After the completion triggers, the stream may be used for other sends or receive
 *Deadlocks*:
 The sizes sent and received must match:
 
-* This means that for each `send` statement on a given stream, there can be at most one corresponding `foreach` loop that does not specify the number of elements to receive.
-
-* If there are multiple `foreach` loops iterating over the same stream that *do* specify the number of elements to receive,
-the total sizes must match the total sizes of the arrays that are sent through the stream.
+* Each `foreach` loops iterating over a stream that specifies the number of elements to receive,
+must match the number of elements sent over the corresponding [`send`](#streaming-data-with-send) statement.
 
 *Failure to correctly match the sizes sent and received may result in a deadlock.*
 
@@ -506,8 +520,8 @@ completion comp = map i32 i, i32 j in [0:10, J] {
 }
 ```
 
-If you need to perform non-affine operations or exploit loop-carried dependencies, use a `for` loop instead.
-
+If you need to perform non-affine operations or exploit loop-carried dependencies, 
+use a [`for`](#processing-arrays-sequentially-with-for) loop instead.
 
 #### Await completions with `await`
 
@@ -1119,8 +1133,9 @@ kernel vadv<I,J,K>(stream<f32>[I, J] utens_stage,
   
     compute i, j in [1:I, 0:J] {
         
-        send(wcon_local, westwards);
-    
+        send(wcon_local[0:1], westwards);
+        send(wcon_local[1:K], westwards);
+
         // base of the forward
         await foreach i32 k, f32 x in [0:1, receive(westwards)] {
             gav[k] = -0.25 * x * wcon_l[k];
