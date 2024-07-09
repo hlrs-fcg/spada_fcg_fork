@@ -819,10 +819,9 @@ There is no guarantee of fairness, that is, concurrents statements may be
 executed in any respective order and may be preempted at any time.
 Failure to guarantee completion regardless of progress order of concurrent operations constitutes a **deadlock**.
 
-For example, each iteration of a `foreach` waits until receiving a data element.
-An `await` statement waits until a completion triggers. 
-A `send` statement requires that the stream has space to carry the data
-and may stall if the receiver is not ready to receive the data.
+In particular, each iteration of a [`foreach`](#processing-data-streams-with-foreach) stalls until receiving a data element.
+An [`await`](#await-completions-with-await) statement stalls until a completion triggers. 
+A [`send`](#streaming-data-with-send) statement may stall while the receiver is not ready to receive the data.
 A deadlock-free program will ensure that all PEs can make progress
 eventually regardless of the interleaving of statements.
 
