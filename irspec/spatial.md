@@ -382,10 +382,12 @@ completion completion_name = async {
 // Await a completion
 await completion_name;
 ```
+
 An assignment statement is of the form 
 ```rust
+// Assign to an array field
 array_expression = expression;
-// or
+// Assign to a scalar field
 field_name = expression;
 ```
 
@@ -396,10 +398,10 @@ Inside a `compute` block, the `send` statement sends data asynchronously through
 ```
 // Send the whole array
 completion completion_name = send(local_array, stream_name);
-
+```
+```
 // Send part of an array
 completion completion_name = send(local_array[parameter_range_expression], stream_name);
-
 ```
 The `local_array` must be allocated for each PE in the subgrid
 in some `place` block. Similarly, the `stream_name` must be declared in a `dataflow` block
@@ -415,9 +417,9 @@ without affecting the result of the computation.
 
 *Data Races*. Performing multiple sends to the same stream concurrently is considered a data race on the stream.
 You must synchronize the sends using completions.
-Two sends in the same phase are concurrent if they are not ordered by [`await`](#await-completions-with-await).
+Two sends in the same `compute` block are concurrent if they are not ordered by [`await`](#await-completions-with-await).
 
-For example,
+For example, the following code correctly synchronizes two sends to the same stream:
 ```rust
 // Send the first half of the array
 completion c1 = send(a[0:K//2], stream_name);
@@ -696,12 +698,18 @@ We have that `S1 -> S2` if *any* of the following hold:
    - (b) `S1` is a non-blocking statement, and there is a statement `await c` between all possible execution paths from `S1` to `S2`.
 2. `S1` is a `send` statement, and `S2` is the `await` statement of the corresponding `receive` forming the stream edge.
 3. There exists a stream edge from some statement `S3` to `S4` and `S1 -> S3` and `S2` follows `S4` on all execution paths.
-4. There is a statement `S3` where `S1 -> S3` and `S3 -> S2`.
+4. `S1` is a `receive`, `S2` is a `send` statement on the same stream,
+and there exists a stream edge from some statement `S3` to `S1` and `S3 -> S2`.
+5. There is a statement `S3` where `S1 -> S3` and `S3 -> S2`.
 
 Note that we handle phases by implicitly adding `await` statements for all outstanding 
 completions at the end of each `compute` block.
 
 Statements that are not ordered by happens-before are considered **concurrent**.
+
+Note that we require the stream edges to explicitly construct the happens-before graph.
+See [Parametric Routing Graph and Stream Edges](#parametric-routing-graph-and-stream-edges) for how to construct
+the stream edges programmatically. 
 
 The happens-before graph is used to define data races and deadlocks.
 Moreover, it can be used for lowering, specifically it can be used to 
@@ -759,11 +767,9 @@ phase {
   // This is a correct way to synchronize two compute blocks
   // that write to the same array
   
-  // Send from 1 to 0
-  // Concurrently update array a
+  // Send a from 1 to 0
   // at 0, wait for receival, then send to 1
-  // at 1, wait for receival
-  // Then, update array a at 1
+  // at 1, on receival update array a
   
   place i, j in [0:2, 0] {
     f32[K] a;
@@ -798,7 +804,7 @@ phase {
   }
 }
 ```
-Analysis of the Ping-Pong example above:
+Analysis of the Ping-Pong example:
 We have that `S4 -> S2` because of `await c1` statement `S2`.
 We have `S2 -> S3` because an `await` blocks until it completes.  
 We have that `S2 -> S7` because there is a stream edge from `S3` to `S6`
@@ -844,14 +850,13 @@ Stream edges must not cross [phases](#phases), that is, a stream edge must be en
 
 The routing graph contains the following nodes *V*, edges *E*, and paths *P*:
 - Each PE is a node in the graph.
-- Consider each stream edge from PE `(x_1, y_1)` to PE `(x_2, x_2)` going through stream *C* on channel *L* through PE `hops = [(dx_1, dy_1), (dx_2, dy_2), ..., (dx_n, dy_n)]`.
+- Consider each stream edge from PE `(x_1, y_1)` to PE `(x_2, x_2)` going through stream *F* on channel *C* through PE `hops = [(dx_1, dy_1), (dx_2, dy_2), ..., (dx_n, dy_n)]`.
 We add an edge from `(x_1+dx_i, y_1+dy_i)` to `(x_1+dx_{i+1}, y_1+dy_{i+1})` for each *i* in *0, ..., n*.
 where we use the convention that `dx_0 = dy_0 = 0`.
 - Moreover, we add the resulting path `(x_1, y_1), ..., (x_1+dx_i, y_1+dy_i), ..., (x_2, y_2)` to the list of paths *P*
-and record the stream *C* and channel *L*. 
-Importantly, if two paths are identical and share the same stream, they are considered the same path and only one is recorded.
-This can occur the same PE-pair uses the same stream multiple times in the same phase.
-Such uses are already synchronized correctly using completions.
+and record the stream *F* and channel *C*.
+
+#### Example: 1D 2-phase reduce
 
 For example, the following code correctly sets up
 a routing declaration for a 1D 2-phase reduce for 4 PEs:
@@ -911,11 +916,11 @@ There is a single edge from PE (2, 0) to PE (0, 0).
 
 Next, we describe the condition under which the routing behavior is undefined:
 
-We say that *P1* happens-before *P2* and write *P1 -> P2* if
-the receive of *P1* happens-before the send of *P2*.
+We say that *P1* happens-before *P2* and write `P1 -> P2` if
+the `receive` of *P1* happens-before the `send` of *P2*.
 
-**If for a routing graph of a channel there are two paths *P1* and *P2* that share a PE `(x, y)`
-and *P1* and P2 are not ordered by happens-before,
+**If two paths *P1* and *P2* in the routing graph of a phase using the same channel
+that share a PE `(x, y)` and *P1* and *P2* are not ordered by happens-before,
 then the behavior is undefined.**
 
 This is because the two messages may interfere with each other
@@ -929,18 +934,24 @@ that is, a PE may advance to the next phase before another PE has completed the 
 We exploit here implicitly that routers back-pressure when
 they receive data from a channel on which they are not configured
 to receive. 
-[A Note regarding potential extensions]
+
+*A Note regarding potential extensions.*
 The current definition is tailored to the case
 where all streams are point-to-point paths.
 If multicasting is used, the correctness conditions become more challenging
 to specify.
 
-### Parametric Routing Graph
+
+### *Parametric* Routing Graph and Stream Edges
 
 As the routing graph has a size that grows with the size of the PE grid,
 we will not construct it explicitly.
 Instead, we describe a *parametric* routing graph that describes the routing
 graph in terms of predicated edges.
+The construction of the routing graph also provides a way to find the **stream edges**, 
+which we have so far assumed to be matched across PEs.
+Note that the `hops` chosen for the streams do not affect the stream edges,
+and can be chosen as any shortest path if we only want to construct the stream edges.
 
 We again consider a particular phase.
 The parametric routing graph of a phase is defined as follows:
@@ -952,20 +963,29 @@ and the two variables are bound to the PE coordinates in the compute block.
 For example, `i, j in [0:I, 0:J]` could be a node in the routing graph.
 
 The edges of the parametric routing graph are defined as follows:
+We simultaneously define the stream edges.
+
+For each stream `F`, go over all `send` statements `S1` in the program order.
+For each `compute` block, set up a stack of `receive` statements in program order.
+We will use this to match stream edges.
+Let `F` have `hops = [(dx_1, dy_1), ..., (dx_h, dy_h)]`
+and let `v` be the compute block of `S1`.
+
+We iteratively add edges as follows, the idea is to explore an implicitly defined
+graph using DFS:
 Initialize a stack of vertex-index pairs to visit and a set of visited vertex-index pairs.
 Add the node-index pair `(v, 1)` to the stack.
-For each `send` statement with `hops = [(dx_1, dy_1), ..., (dx_h, dy_h)]`
-in a compute block associated with the node `v`, we iteratively add edges as follows.
 
 Until the stack is empty:
 Pop the top vertex-index pair `(u, k)` from the stack.
 Consider the current vertex `u=[I1:I2:I3, J1:J2:J3]` and the next hop `(dx_k, dy_k)` at index `k`.
-Add an edge `(u, w)` to the following vertices `w` and 
-if `(w, k+1)` is not in the visited set add `(w, k+1)` to the stack:
+Add an edge `(u, w)` to each of the vertices `w` described hereafter.
+If `k == k`, pop the next `receive` statement `S2` from the stack of `w` and record the **stream edge** `(S1, S2)`.
+Else if `(w, k+1)` is not in the visited set, add `(w, k+1)` to the stack.
 
 **Case: The stride is `I3 = J3 = 1`:**
 
-- `[I1:I2:1, J1:J2:1]` with predicate (the cases are mutually exclusive by definition because `|dx_k|+|dy_k|==1`):
+- To block `[I1:I2:1, J1:J2:1]` with predicate (the cases are mutually exclusive by definition because `|dx_k|+|dy_k|==1`):
   - `i + 1 < I1 - 1` if `dx_k = 1`
   - `i - 1 > I1` if `dx_k = -1`
   - `j + 1 < J1 - 1` if `dy_k = 1`
@@ -977,11 +997,10 @@ if `(w, k+1)` is not in the visited set add `(w, k+1)` to the stack:
   - Note that the ranges `J4:J5` of all such blocks must together cover the range `J1:J2`.
 Failure to do so constitutes an incorrect declaration of stream edges (deadlock).
 
-- Proceed symmetrically for `dy_k != 0`.
+- Proceed symmetrically in case `dy_k != 0`.
 
 
-**Case: The stride is > 1, but the compute blocks connected by a stream edge
-have the same strides as each other:**
+**Case: All compute blocks have the same stride > 1:**
 
 - If `dx_k != 0`, to all blocks `[I4:I5:I3, J4:J5:J3]` for which `J4 < J2`, `J5 >= J1`, and 
 for which `I4 = I2 + dx_k (mod I3)` with the predicate `I4 <= i + 1 < I5 && J4 <= j < J6`.
@@ -989,7 +1008,7 @@ for which `I4 = I2 + dx_k (mod I3)` with the predicate `I4 <= i + 1 < I5 && J4 <
 the ranges `I4:I5` must together cover the range `I1+dx_k:I2+dx_k`.
 Failure to do so constitutes an incorrect declaration of stream edges (deadlock).
 
-- Proceed symmetrically for the case `dy_k != 0`.
+- Proceed symmetrically in case `dy_k != 0`.
 
 **Case: The strides are either 1 or the same value.**
 
@@ -1006,16 +1025,16 @@ where `n` is the number of vertices in the parametric routing graph.
 Hence, the overall runtime is `O(n^2 * h)`.
 
 The construction of the parametric routing graph also validates the correctness of stream edges.
-If at any point the target vertex does not exist, the program is incorrect due to a deadlock,
-which is raised as an error by the compiler.
-
+If at any point the target vertex does not exist or a stack of `receive` statements is empty before popping from it,
+the program is incorrect due to a deadlock, which is raised as an error by the compiler.
 
 ### The Conflict Graph
 
 The conflict graph can be used to determine if a routing declaration is correct,
 and resolve the `auto` routing declarations.
 The conflict graph is a directed graph that describes the conflicts between streams.
-Two streams conflict if they are routed through the same channel at the same PE.
+Two streams conflict if they are routed through the same channel at the same PE
+and are not ordered by happens-before.
 
 We use the parametric routing graph to construct the conflict graph.
 
