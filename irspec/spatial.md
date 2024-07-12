@@ -418,7 +418,7 @@ without affecting the result of the computation.
 *Data Races*. Performing multiple sends to the same stream concurrently is considered a data race on the stream.
 You must synchronize the sends using completions.
 Two sends in the same `compute` block are concurrent if they are not ordered by [`await`](#await-completions-with-await).
-As a consequence, within each `compute` block, correctly synchronized `send`s **to the same stream** always execute in program order.
+As a consequence, within each `compute` block, correctly synchronized `send`s **to the same stream** always execute in local order.
 
 For example, the following code correctly synchronizes two sends to the same stream:
 ```rust
@@ -451,7 +451,7 @@ will check these constraints and report potential deadlocks on a best-effort bas
 *Data Races*.
 Two receives in the same `compute` block are considered concurrent if they are not ordered by `await`.
 Receiving from the same stream multiple times concurrently is considered a data race on the stream.
-As a consequence, within each `compute` block, correctly synchronized `receive`s **from the same stream** always execute in program order.
+As a consequence, within each `compute` block, correctly synchronized `receive`s **from the same stream** always execute in local order.
 
 #### Processing Data Streams with `foreach`
 
@@ -680,18 +680,18 @@ An asynchronous statement may be pre-empted at any time, even partially during i
 Hence, it is imperative to properly define their semantics to avoid problems, such as *data races*
 and properly define how the representation can be lowered to a task or thread model.
 
-### Program Order
+### Local Order
 
 
-The program order defines the 'local' view of the execution of a PE.
-It a partial order defined in terms of blocking statements:
+The local order defines the 'local' view of the execution of a PE.
+It a partial order defined in terms of blocking statements and `await`:
 
 A *blocking statement* is a statement that must complete before
 any following statement can start. In particular:
 - `await` statements are blocking. This includes asynchronous statements that immediately `await` their completion.
 - assignments to fields are blocking.
 
-We say `S1` precedes `S2` in program order and write `S1 --> S2` if
+We say `S1` precedes `S2` in local order and write `S1 --> S2` if
 `S1` and `S2` are in the same compute block and one of the following hold:
    - `S1` is a blocking statement and `S2` follows `S1` in all execution paths.
    - `S1` is a non-blocking statement with completion `c` and there is a statement `await c` between all possible execution paths from `S1` to `S2`.
@@ -704,9 +704,9 @@ A stream edge goes from a statement-PE pair `S1, (i1, j1)` to a statement-PE pai
 It signifies that the data sent from `S1` at PE `(i1, j1)` is received by `S2` at PE `(i2, j2)`.
 
 Our definition of `send` requires that the order in which statements `send`s access a given stream
-is in program order. Similarly, the order in which statements `receive` from a stream
-is in program order. 
-Hence, we can match `send`s and `receive`s in program order to form stream edges.
+is in local order. Similarly, the order in which statements `receive` from a stream
+is in local order. 
+Hence, we can match `send`s and `receive`s in local order to form stream edges.
 
 ### The Happens-Before Graph
 
@@ -728,7 +728,7 @@ a compact approximation of the happens-before graph.
 We define the order in terms of the `await` statements in the code
 and stream edges. 
 We have that `S1, (i1, j1) -> S2, (i2, j2)` if *any* of the following hold:
-1. *Program Order*: `S1 --> S2` are in program order.
+1. *Local Order*: `S1 --> S2` are in local order.
 2. *Receive completion implies send completion*:
 `S1` is a `send` statement, and `S2` is the `await` statement of the corresponding `receive` 
 forming the stream edge from `(S1, (i1, j1))` to `(S2, (i2, j2))`.
@@ -840,7 +840,7 @@ phase {
 ```
 Analysis of the Ping-Pong example:
 - We have that `S4 -> S2` because of the stream edge from `S4` to `S1` and *receive completion implies send completion*.
-- We have `S2 --> S3` in program order.  
+- We have `S2 --> S3` in local order.  
 - We have that `S2 -> S7` because there is a stream edge from `S3` to `S6`
 and all execution paths to `S7` go through `S6` (*Propagating happens-before through stream edges*).
 - Hence, we have `S4 -> S7` by transitivity.
@@ -854,7 +854,7 @@ This is a data race.
 Observe that `sends` for a given stream in the same `compute` block are ordered by happens-before
 in the same order as they appear in the code.
 Similarly, for `receives`. However, `sends` and `receive` to the same stream
-can be concurrent or ordered by happens-before in reverse program order.
+can be concurrent or ordered by happens-before in reverse local order.
 
 ```rust
 // Example: Sends to the same stream must be synchronized, and receives as well.
@@ -1169,17 +1169,135 @@ where all streams are point-to-point paths.
 If multicasting is used, the correctness conditions become more challenging
 to specify.
 
+## Parametric Semantic Representations
 
-### *Parametric* Routing Graph and Stream Edges
+So far, we have introduced and discussed the formal definitions of [stream edges](#stream-edges),
+the [happens-before graph](#the-happens-before-graph), and the [routing graph](#the-routing-graph).
+Next, we discuss how to construct compact, *parametric* representations of these graphs.
+The advantage of these representations is that there size is much smaller
+than the size of the program grid, and constructing them is polynomial time in 
+the size of the program.
+
+### Constructing the Local Order
+
+The program can be extracted from the control [flow graph](https://en.wikipedia.org/wiki/Control-flow_graph)
+of basic blocks.
+Then, compute the [Dominators](https://en.wikipedia.org/wiki/Dominator_(graph_theory))
+
+If `S1` and `S2` are in the same basic block, then `S1 --> S2` if
+
+- `S1` is blocking and `S2` follows `S1` in the basic block.
+- `S1` is non-blocking and there is an `await` on the completion of `S1` between `S1` and `S2`.
+
+Otherwise, `S1 --> S2` if:
+
+- `S1` is blocking and `S1` dominates `S2`.
+- The set of dominators of `S2` contains an `await` on the completion of `S1`.
+
+Efficient and practical algorithms [can compute dominators in near-linear time](https://www.researchgate.net/publication/220639563_Finding_Dominators_in_Practice).
+
+
+### *Parametric* Stream Edges
+
+The parametric stream edges are a compact representation of the stream edges.
+Each stream edge is represented as `(S1, (i, j)) , (S2, (i+dx, j+dy))` for statements
+`S1`, `S2`, predicated by `P1`.
+Here, `i` and `j` are variables that appear in the predicate.
+The interpretation is that if the predicate `P1` is true for some `i`, `j` where
+`(i, j)` is in the compute block of `S1`, then the stream edge exists for the PE `(i, j)`.
+
+The first step to constructing stream edges is to determine the
+order of the `send`s and `receive`s that occur to the same stream within each
+`compute` block. This follows immediately from the local order `-->`.
+
+*The following assumes that `compute` blocks and `dataflow` blocks
+match N-1, that is, each compute block is specified by a single dataflow block
+from its phase and a single global dataflow block.
+We can remove this assumption by splitting the compute block into multiple blocks
+until the condition is satisfied. (TODO: How? - OR: is there a direct way?)*
+
+Next, we consider each `compute` block in a phase.
+We rename all variables in the `compute` and `dataflow` subgrid expressions to use `i` and `j` for simplicity.
+A `compute` block is now identified with some set of PEs defined as `i, j in [I1:I2:I3, J1:J2:J3]`.
+Within this block, consider some `send` statement `S1`, which is the k-th `send` statement to its stream in the local order.
+Let `(dx, dy)` be the offset of its stream. That is, a PE `(i, j)` sends to PE `(i+dx, j+dy)`.
+Note that we assume the strides are positive without loss of generality.
+
+We now construct the stream edges for this `send` statement.
+For this, we observe the following constraints on the blocks `[I4:I5:I6, J4:J5:J6]` that can receive from the stream
+when sending from PE `(i, j)`:
+
+Range constraints:
+- `I4 <= i + dx < I5`
+- `J4 <= j + dy < J5`
+
+Congruence constraints:
+- `i + dx = I4 (mod I6)` in case `I6 > 1`
+- `j + dy = J4 (mod J6)` in case `J6 > 1`
+
+To correctly identify the stream edges, we need to check if there exists an `(i, j)` in the current
+`compute` block for which all constraints are satisfied.
+
+For this, first solve the linear congruence relations for `i` and `j` (if `I6 > 1` and `J6 > 1` respectively).
+We use that `i=I1+x*I3` and `j=J1+y*J3` for some `k` and `l`.
+Then, we need to solve for `x` and `y` in the following equations:
+- `xI3 = (I4 - I1 - dx) mod I6`
+- `yJ3 = (J4 - J1 - dy) mod J6`
+
+Let's focus on the first equation, as the second is symmetric.
+
+1. Compute `gcd(I_3, I_6) = d` using the [Euclidean Algorithm](https://en.wikipedia.org/wiki/Euclidean_algorithm).
+2. Check if `d` divides `I_4 - I_1 - dx`. If not, no solution exists (there is no stream edge).
+3. If `d` divides `I_4 - I_1 - dx`, we can solve the equation:
+   - Simplify the equation by dividing everything by `d`.
+   - Solve the simplified equation using the
+   [Extended Euclidean Algorithm](https://en.wikipedia.org/wiki/Extended_Euclidean_algorithm) to find one solution `x_0`:
+   - The general solution is:
+     `x = x_0 + k (I_6/d) for k = 0, 1, ... , d-1`
+
+We filter out all solutions for which `I1 + xI3 >= I2` as they are out of bounds of the `compute` block.
+
+Now, we can apply the range constraints using the general solution of `x`
+to determine the solutions `I1 + xI3 + dx` that are in the receiving `compute` block.
+
+That is, we check if 
+- `I4 <= I1 + xI3 + dx < I5` for some `x` in the general filtered solution of `x`.
+and similarly for `y`.
+
+If all constraints are satisfied, we have found a valid receiving block.
+We match the send statement `S1` with the k-th `receive` statement `S2` in the local order
+of the receiving block. If no such `receive` statement exists, we have a deadlock.
+
+Next, we construct the predicate `P1` that describes which PEs in the sending
+block send to the receiving block, which is given by the range and congruence constraints.
+We may simplify the range constraints, as one of the two inequalities is trivially true
+depending on if `dx` is positive or negative (and similarly for `dy`). Moreover, the congruence constraints
+may be left out if `I6 = 1` or `J6 = 1`.
+
+We add parametric stream edge `S1, (i, j)` to `S2, (i+dx, j+dy)` predicated by `P1`
+to the list of stream edges. 
+
+The algorithm takes `O(n^2)` time overall, where `n` is the number of `compute` blocks.
+One can speed up the algorithm by filtering out all `compute` blocks that are not in the range of the stream
+before solving the congruence relations. This can be done efficiently using 2D box intersection tests.
+
+Note that the algorithm also checks for deadlocks by ensuring that all `send`s are matched with a `receive`.
+To check if all `receive`s are matched with a `send`, we can use a similar algorithm
+with the roles of `send` and `receive` reversed and using `dx` and `dy` negated.
+Once we have the stream edges, we can check if the sizes of the stream edges are consistent
+between sends and receives.
+
+### *Parametric* Happens-Before Graph
+
+**TODO:** Define the parametric happens-before graph
+using the parametric stream edges.
+
+### *Parametric* Routing Graph
 
 As the routing graph has a size that grows with the size of the PE grid,
 we will not construct it explicitly.
 Instead, we describe a *parametric* routing graph that describes the routing
 graph in terms of predicated edges.
-The construction of the routing graph also provides a way to find the **stream edges**, 
-which we have so far assumed to be matched across PEs.
-Note that the `hops` chosen for the streams do not affect the stream edges,
-and can be chosen as any shortest path if we only want to construct the stream edges.
 
 We again consider a particular phase.
 The parametric routing graph of a phase is defined as follows:
@@ -1191,11 +1309,8 @@ and the two variables are bound to the PE coordinates in the compute block.
 For example, `i, j in [0:I, 0:J]` could be a node in the routing graph.
 
 The edges of the parametric routing graph are defined as follows:
-We simultaneously define the stream edges.
 
-For each stream `F`, go over all `send` statements `S1` in the program order.
-For each `compute` block, set up a stack of `receive` statements in program order.
-We will use this to match stream edges.
+For each stream `F`, go over all `send` statements `S1` in the local order.
 Let `F` have `hops = [(dx_1, dy_1), ..., (dx_h, dy_h)]`
 and let `v` be the compute block of `S1`.
 
@@ -1239,9 +1354,14 @@ Failure to do so constitutes an incorrect declaration of stream edges (deadlock)
 
 - Proceed symmetrically in case `dy_k != 0`.
 
-**Case: The strides are either 1 or the same value.**
+**General Case**
 
-TODO (Needed? maybe convenient for larger boundary conditions)
+In the general case, we can use the same constraints & method we used to compute stream edges
+for the current hop `(dx_k, dy_k)`, it uses congruence relations to determine the receiving blocks.
+
+*Note, I did the special cases first, so I kept them for now.
+We can also use the general algorithm for all cases,
+but we should make sure to be able to simplify all the predicates in the special cases.*
 
 #### Analysis
 
@@ -1250,12 +1370,9 @@ This is useful for implementing boundary conditions.
 
 Runtime: Note that each vertex is added to the stack at most `h` times, where `h` is the number of hops.
 Adding all edges for a given vertex takes at most `n` time,
-where `n` is the number of vertices in the parametric routing graph.
+where `n` is the number of `compute` blocks.
 Hence, the overall runtime is `O(n^2 * h)`.
-
-The construction of the parametric routing graph also validates the correctness of stream edges.
-If at any point the target vertex does not exist or a stack of `receive` statements is empty before popping from it,
-the program is incorrect due to a deadlock, which is raised as an error by the compiler.
+The space complexity is `O(n * h)`.
 
 ### The Conflict Graph
 
