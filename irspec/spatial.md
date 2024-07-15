@@ -736,7 +736,7 @@ forming the stream edge from `(S1, (i1, j1))` to `(S2, (i2, j2))`.
 3. *Propagation of happens-before through stream edges*: 
 There exists a stream edge from some `S3, (i1, j1)` to `S4, (i2, j2)` for which:
    - `S1, (i1, j1) -> S3, (i1, j1)` and 
-   - `S2` follows `S4` on all execution paths
+   - `S4 --> S2` in local order.
 
 4. *Transitivity*: There is a `S3, (i3, j3)` where `S1, (i1, j1) -> S3, (i3, j3)` and `S3, (i3, j3) -> S2, (i2, j2)`.
 
@@ -1239,10 +1239,11 @@ To correctly identify the stream edges, we need to check if there exists an `(i,
 `compute` block for which all constraints are satisfied.
 
 For this, first solve the linear congruence relations for `i` and `j` (if `I6 > 1` and `J6 > 1` respectively).
-We use that `i=I1+x*I3` and `j=J1+y*J3` for some `k` and `l`.
+We use that `i=I1+x*I3` and `j=J1+y*J3` for some `x` and `y`.
 Then, we need to solve for `x` and `y` in the following equations:
 - `xI3 = (I4 - I1 - dx) mod I6`
 - `yJ3 = (J4 - J1 - dy) mod J6`
+
 
 Let's focus on the first equation, as the second is symmetric.
 
@@ -1289,8 +1290,52 @@ between sends and receives.
 
 ### *Parametric* Happens-Before Graph
 
-**TODO:** Define the parametric happens-before graph
-using the parametric stream edges.
+We now define a parametric happens-before graph that describes the happens-before relations compactly.
+The vertices in the graph are pairs of statements and pairs of symbolic PE coordinates in the variables `i` and `j`.
+The symbolic expressions are restricted to be either constants or of the form `i + c`/`j+c` for some constant `c`.
+The edges in the graph are associated with a predicate over `i` and `j`.
+This predicate may also involve parameters of the kernel and constants.
+We allow for range constraints and congruence constraints as in the parametric stream edges.
+The meaning of the edge `S1, (i1, j1) -> S2, (i2, j2)` with predicate `P1` is that
+if the predicate `P1` is true for some `i1`, `j1` in the compute block of `S1`, then
+`S1` must complete at PE `(i1, j1)` before `S2` can start at PE `(i2, j2)`.
+
+For example, `S1, (i, j)`, `S1, (i-1, 0)`, and `S2, (1, 0)` could be vertices in the graph.
+Then, `S1, (i, j) -> S2, (i+1, j)` could be an edge in the graph,
+and it might have the predicate `i < I-1` where `I` is the size of the PE grid in the `i` dimension.
+Another edge could be `S1, (i, j) -> S2, (i, j)` with the predicate `i == I-1`.
+
+We can construct the parametric happens-before graph for each phase with the following steps,
+which follow the same rules as the formal happens-before graph.
+Throughout, if a vertex or edge already exists, we do not add it again.
+
+1. For each pair of statements `S1`, `S2` in the same compute block for which 
+`S1 --> S2` in [local order](#constructing-the-local-order), add:
+   - the vertices `S1, (i, j)` and `S2, (i, j)` to the graph.
+   - the edge `S1, (i, j) -> S2, (i, j)` with the predicate `true`.
+2. For each parametric stream edge `(S1, (i, j)) -> (S2, (i+dx, j+dy))` predicated by `P1`:
+   - Add the vertices `S1, (i, j)` and `S2, (i+dx, j+dy)` to the graph.
+   - Add the edge `S1, (i, j) -> S2, (i+dx, j+dy)` with the predicate `P1`.
+3. For each parametric stream edge `S3, (i, j) -> S4, (i+dx, j+dy)` predicated by `P1`:
+   - Consider all vertices `S1, (i, j)` in the graph for which `S1, (i, j) -> S3, (i, j)` with predicate `P2`
+   and all vertices `S2, (i+dx, j+dy)` for which `S4 -> S2`.
+   - Add an edge `S1, (i, j) -> S2, (i+dx, j+dy)` with the predicate `P1 && P2`.
+4. Apply transitivity until convergence:
+   - If there is an edge from `S1, (i, j)` to `S2, (i+dx, j+dy)` with predicate `P1`
+   - and an edge from `S2, (i+dx, j+dy)` to `S3, (i+dx', j+dy')` with predicate `P2`,
+   - then add an edge from `S1, (i, j)` to `S3, (i+dx', j+dy')` with predicate `P1 && P2`.
+
+Whenever creating a new predicate from two predicates, we simplify the predicate
+as much as possible. The resulting predicate remains a conjunction of range constraints
+and congruence constraints.
+
+[TODO: Efficient implementation details]
+
+#### Analysis
+
+The runtime is polynomial in the number of compute blocks and the number of stream edges
+in a phase. [TODO: exact cost analysis]
+
 
 ### *Parametric* Routing Graph
 
