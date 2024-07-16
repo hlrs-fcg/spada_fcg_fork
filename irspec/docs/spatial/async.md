@@ -9,11 +9,8 @@ and properly define how the representation can be lowered to a task or thread mo
 
 ## Local Order
 
-The local order defines the 'local' view of the execution of a PE.
-It a partial order defined in terms of blocking statements and `await`:
-Intuitively, if `S1 --> S2` means that the next instance of `S1` must complete
-before the next instance of `S2` may start from the point
-of view of the program order (ignoring communication dependencies).
+The *local order* defines the 'local' view of the execution of a PE.
+It a partial order defined in terms of blocking statements:
 
 !!! abstract "Definition: Blocking Statements"
     A *blocking statement* is a statement that must complete before
@@ -25,26 +22,40 @@ In particular:
    - assignments to fields are blocking.
 
 !!! abstract "Definition: Local Order"
-    We say `S1` precedes `S2` in local order and write `S1 --> S2` if
-    `S1` and `S2` are in the same compute block and one of the following hold:
+    We say `S2` follows `S1` in local order and write `S1 --> S2` if
+    `S1` and `S2` are in the same compute block, `S2` follows `S1` in all execution paths, and one of the following hold:
     
-    - `S1` is a blocking statement and `S2` follows `S1` in all execution paths.
-    - `S1` is a non-blocking statement with completion `c` and there is a statement `await c` between all possible execution paths from `S1` to `S2`.
+    - `S1` is a blocking statement.
+    - `S1` is a non-blocking statement with completion `c` and there is a statement `await c` between all execution paths from `S1` to `S2`.
 
 Note that local order does not model loop-carried dependencies,
 and instead considers the program order.
 
-## Local All-Before Order
+??? example "Example: Loops and Local Order"
+    ```rust
+    // S1
+    a[0] = 0;
+    for i in [0:10] {
+        // S2
+        a[i] = b[i];
+        // S3
+        c[i] = a[i] + b[i];
+    }
+    // S4
+    c[0] = a[0];
+    ```
+    We have `S1 --> S2 --> S3 --> S4` in local order.
+    We do not have `S2` following `S3` in local order because in the last iteration of the loop, `S2` is not executed after `S3`.
 
-The local all-before strengthens the local order.
+## Strict Local Order
 
-[TODO: Better name]
+The *strict local order* strengthens the local order.
 
-!!! abstract "Definition: Local All-Before Order"
-    We say `S1` precedes `S2` in local all-before order and write `S1 --|> S2` if `S1 --> S2` 
-    and additionally `S1` does not follow `S2` in any execution path.
+!!! abstract "Definition: Strict Local Order"
+    We say `S2` follows `S1` in strict local order and write `S1 --|> S2` if `S1 --> S2` 
+    and additionally, `S1` does not follow `S2` in any execution path.
 
-???+ example "Example: For-Loops and Local All-Before Order"
+??? example "Example: For-Loops and Strict Local Order"
     This differs from the local order in the case of loops. For example:
     ```rust
     // S1
@@ -57,20 +68,22 @@ The local all-before strengthens the local order.
     }
     ```
     We have `S1 --|> S2` and `S1 --|> S3`.
-    However, `S3` does not follow `S2` in local all-before
-    order, because it is in a loop.
+    However, `S3` does not follow `S2` in strict local 
+    order because it is in a loop, so sometimes `S2` follows `S3`.
 
 ## Stream edges
 
 *Stream edges* represent the communication between PEs
 and affect the ordering of statements in the `compute` block.
-A stream edge goes from a statement-PE pair `S1, (i1, j1)` to a statement-PE pair `S2, (i2, j2)`.
-It signifies that the data sent from `S1` at PE `(i1, j1)` is received by `S2` at PE `(i2, j2)`.
+
+!!! abstract "Definition: Stream Edge"
+    A stream edge goes from a statement-PE pair `S1, (i1, j1)` to a statement-PE pair `S2, (i2, j2)`
+    if the data sent from `S1` at PE `(i1, j1)` is received by `S2` at PE `(i2, j2)`.
 
 Our definition of `send` requires that the order in which statements `send`s access a given stream
 is in local order. Similarly, the order in which statements `receive` from a stream
 is in local order. 
-Hence, we can match `send`s and `receive`s in local order to form stream edges.
+Hence, we can always match `send`s and `receive`s in local order to uniquely form stream edges.
 
 ## The Happens-Before Relation
 
@@ -78,7 +91,7 @@ The asynchronous semantics can be defined in terms of a *happens-before* relatio
 For each statement `S` in a `compute` block and each PE `(i, j)` in the subgrid,
 we define a *happens-before* relation `->` between statement-PE pairs.
 Intuitively, `S1, (i1, j1) -> S2, (i2, j2)` means that the next instance of `S1` must complete
-at PE `(i1, j1)` before the next instance of `S2` can start at PE `(i2, j2)`.
+at PE `(i1, j1)` before the next instance of `S2` starts at PE `(i2, j2)`.
 If `S1, (i1, j1) -> S2, (i2, j2)` holds for all `(i1, j1)` and `(i2, j2)` in the subgrid, 
 we write `S1 -> S2` for short. This means that the statements are ordered by happens-before
 for all PEs in the subgrid. 
@@ -90,7 +103,7 @@ for all PEs in the subgrid.
     a compact approximation of the happens-before graph.
 
 
-We define the order in terms of the `await` statements in the code
+We define the relation in terms of the local order, `await` statements in the code,
 and stream edges. 
 
 !!! abstract "Definition: Happens-Before Relation"
