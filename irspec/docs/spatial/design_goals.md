@@ -1,0 +1,30 @@
+## Design Goals
+
+- Models processing elements (PEs)
+  - Represents coordinates of PEs
+  - Can represent sub-grids of PEs
+- Models data placement on PEs (memory layout)
+  - Support for multi-dimensional arrays (of fixed, but arbitrary dimensions)
+  - Support for interleaved / strided layouts
+  - Support for placing on sub-regions of PEs grid
+  - Inputs and outputs are placed onto the PEs explicitly, through layout description
+  - Inputs and outputs are *moved* onto the chip implicitly. TODO: Discuss
+  - Inputs and outputs may be streamed into and out of the PEs
+  - PEs may have local memory arrays
+  - Support for parametric array sizes (provided at compile time)
+  - Support for constant array sizes (provided at compile time)
+- Models communication between PEs explicitly
+  - Communication is streaming (pipelined)
+  - Supports relative addressing for communication (e.g., send to the PE to the right or twice to the left)
+  - Support for collective communication (e.g., broadcast, reduce, all-reduce, scatter, gather, all-gather)
+  - Completion of a communication stream may trigger other communication or computation
+- Does not encode platform-specific routing details
+- Models vectorizable computations
+  - Computation is triggered by receiving data
+  - Operations can be expressed in a way that naturally allows for vectorization & streaming processing
+  - Support for sequential loops
+  - When a computational task finished, it may trigger other tasks
+- Models data dependencies
+  - Data dependencies are explicit
+  - Enable reasoning about deadlock-freedom
+  - Allow for scheduling and reordering of tasks

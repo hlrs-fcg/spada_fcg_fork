@@ -1,0 +1,23 @@
+site_name: Multi-Level Spatial IR
+site_url: http://localhost:8000
+theme: material
+nav:
+  - Home: index.md
+  - Spatial IR:
+    - Design Goals: spatial/design_goals.md
+    - Specification: spatial/spatial.md
+    - Asynchronous Semantics: spatial/async.md
+    - Routing Semantics: spatial/routing.md
+    - Parameterized Semantics: spatial/parametric.md
+    - Examples: spatial/examples.md
+  - Stencil IR: stencil/stencil.md
+  - Dataflow Task IR: dataflowtask/dataflowtask.md
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
