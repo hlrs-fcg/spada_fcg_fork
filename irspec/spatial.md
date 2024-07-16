@@ -170,7 +170,6 @@ argument ::= T argument_name | T readonly argument_name | T writeonly argument_n
 where `T` is a scalar type, stream type, or stream array type.
 Notable, it is not possible to pass scalar arrays as arguments, instead,
 arrays must be read through streams.
-[TODO: Discuss the rationale for this, we can always pass a stream array and read the scalar array from it.]
 
 If an argument may be *only* read from or written to, it is marked as `readonly` or `writeonly`, respectively.
 
@@ -225,6 +224,8 @@ The subgrid of the `place` block is given by the PEs that lie in the `subgrid_ex
 An array may be placed using multiple `place` blocks.
 However, each `field_name` may appear at most once for any given PE over all `place` blocks.
 
+Note that each field name must be unique within a `place` block.
+
 ### Dataflow block
 
 All communication is set up in one or more `dataflow` blocks, which describe the communication streams between PEs.
@@ -274,6 +275,8 @@ describes a communication stream that sends `f32` data two PEs to the north.
 
 Note that the stream declaration does not imply that any data is ever sent over the stream.
 It merely declares the existence of a virtual communication stream.
+
+Note that each stream name must be unique within a `dataflow` block.
 
 #### Routing Declarations
 
@@ -390,6 +393,8 @@ array_expression = expression;
 // Assign to a scalar field
 field_name = expression;
 ```
+
+Note that each completion name must be unique within a `compute` block.
 
 #### Streaming Data with `send`
 
@@ -680,11 +685,35 @@ An asynchronous statement may be pre-empted at any time, even partially during i
 Hence, it is imperative to properly define their semantics to avoid problems, such as *data races*
 and properly define how the representation can be lowered to a task or thread model.
 
-### Local Order
+### Deadlocks
 
+TODO discuss deadlocks more
+
+TODO What guarantee do we give?
+
+TODO: What is the effect on happens-before.
+
+```rust
+
+send(a, s1)
+send(b, s2)
+
+await foreach x in [receive(s1)] {
+    // Process x 
+}
+await foreach x in [receive(s2)] {
+    // Process x
+}
+
+```
+
+### Local Order
 
 The local order defines the 'local' view of the execution of a PE.
 It a partial order defined in terms of blocking statements and `await`:
+Intuitively, if `S1 --> S2` means that the next instance of `S1` must complete
+before the next instance of `S2` may start from the point
+of view of the program order (ignoring communication dependencies).
 
 A *blocking statement* is a statement that must complete before
 any following statement can start. In particular:
@@ -695,6 +724,33 @@ We say `S1` precedes `S2` in local order and write `S1 --> S2` if
 `S1` and `S2` are in the same compute block and one of the following hold:
    - `S1` is a blocking statement and `S2` follows `S1` in all execution paths.
    - `S1` is a non-blocking statement with completion `c` and there is a statement `await c` between all possible execution paths from `S1` to `S2`.
+
+Note that local order does not model loop-carried dependencies,
+and instead considers the program order.
+
+### Local All-Before Order
+
+The local all-before strengthens the local order.
+
+[TODO: Better name]
+
+We say `S1` precedes `S2` in local all-before order and write `S1 --|> S2` if `S1 --> S2` 
+and additionally `S1` does not follow `S2` in any execution path.
+
+This differs from tha local order in the case of loops. For example:
+```rust
+// S1
+a[0] = 0;
+for i in [0:10] {
+    // S2
+    a[i] = b[i];
+    // S3
+    c[i] = a[i] + 1;
+}
+```
+We have `S1 --|> S2` and `S1 --|> S3`.
+However, `S3` does not follow `S2` in local all-before
+order, because it is in a loop.
 
 ### Stream edges
 
@@ -711,17 +767,17 @@ Hence, we can match `send`s and `receive`s in local order to form stream edges.
 ### The Happens-Before Graph
 
 The asynchronous semantics can be defined in terms of a *happens-before* graph. 
-For each statement `S` in a `compute` block and each PE `(i, j)` in the block,
+For each statement `S` in a `compute` block and each PE `(i, j)` in the subgrid,
 we define a *happens-before* relation `->` between statement-PE pairs.
-Intuitively, `S1, (i1, j1) -> S2, (i2, j2)` means that `S1` must complete
-at PE `(i1, j1)` before `S2` can start at PE `(i2, j2)`.
+Intuitively, `S1, (i1, j1) -> S2, (i2, j2)` means that the next instance of `S1` must complete
+at PE `(i1, j1)` before the next instance of `S2` can start at PE `(i2, j2)`.
 If `S1, (i1, j1) -> S2, (i2, j2)` holds for all `(i1, j1)` and `(i2, j2)` in the subgrid, 
 we write `S1 -> S2` for short. This means that the statements are ordered by happens-before
-for all PEs in the subgrid.
+for all PEs in the subgrid. 
 
 Note that at this point, the happens-before graph is a formal model used to define the semantics of the language.
 It is not a data structure that is explicitly constructed or used in the implementation.
-Instead, we will see in [Parametric Happens-Before Graph](#TODO) how to efficiently construct
+Instead, we will see in [Parametric Happens-Before Graph](#parametric-happens-before-graph) how to efficiently construct
 a compact approximation of the happens-before graph.
 
 
@@ -1241,8 +1297,8 @@ To correctly identify the stream edges, we need to check if there exists an `(i,
 For this, first solve the linear congruence relations for `i` and `j` (if `I6 > 1` and `J6 > 1` respectively).
 We use that `i=I1+x*I3` and `j=J1+y*J3` for some `x` and `y`.
 Then, we need to solve for `x` and `y` in the following equations:
-- `xI3 = (I4 - I1 - dx) mod I6`
-- `yJ3 = (J4 - J1 - dy) mod J6`
+- `x * I3 = (I4 - I1 - dx) mod I6`
+- `y * J3 = (J4 - J1 - dy) mod J6`
 
 
 Let's focus on the first equation, as the second is symmetric.
@@ -1256,13 +1312,13 @@ Let's focus on the first equation, as the second is symmetric.
    - The general solution is:
      `x = x_0 + k (I_6/d) for k = 0, 1, ... , d-1`
 
-We filter out all solutions for which `I1 + xI3 >= I2` as they are out of bounds of the `compute` block.
+We filter out all solutions for which `I1 + x * I3 >= I2` as they are out of bounds of the `compute` block.
 
 Now, we can apply the range constraints using the general solution of `x`
-to determine the solutions `I1 + xI3 + dx` that are in the receiving `compute` block.
+to determine the solutions `I1 + x * I3 + dx` that are in the receiving `compute` block.
 
 That is, we check if 
-- `I4 <= I1 + xI3 + dx < I5` for some `x` in the general filtered solution of `x`.
+- `I4 <= I1 + x * I3 + dx < I5` for some `x` in the general filtered solution of `x`.
 and similarly for `y`.
 
 If all constraints are satisfied, we have found a valid receiving block.
@@ -1328,6 +1384,8 @@ Throughout, if a vertex or edge already exists, we do not add it again.
 Whenever creating a new predicate from two predicates, we simplify the predicate
 as much as possible. The resulting predicate remains a conjunction of range constraints
 and congruence constraints.
+
+[TODO: Show that there is a unique canonical representation for P1 && P2]
 
 [TODO: Efficient implementation details]
 
@@ -1755,16 +1813,19 @@ kernel conv<J>(stream<f32>[J] readonly input,
         // Streaming receive
         foreach x in receive(input_local) {
             // Send the data to the right
+            // S1
             comp_east = send(x, eastwards);
-
+            // S2
             y = x * kernel[1];
-
+            // S3
             await foreach x, y in [0:1, receive(westwards)] {
+                // S4
                 y = y + x * kernel[2];
             }
-
+            // S5
             await comp_east;
             
+            // S6
             // Send the result to the output
             send(y, output_local);
         }
