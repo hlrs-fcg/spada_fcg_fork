@@ -133,17 +133,22 @@ and how to resolve `auto` routing declarations.
 
 ## Data Races
 
+
+Two statements are concurrent if they are not ordered by happens-before:
 !!! abstract "Definition: Concurrent Statements"
-    Statements that are not ordered by happens-before are considered **concurrent**.
+    Two statements `S1` and `S2` are considered **concurrent** if there exist PEs `(i, j)` and `(i', j')`
+    in the subgrids of `S1` and `S2` respectively such that
+    neither `S1, (i, j) -> S2, (i', j')` nor `S2, (i', j') -> S1, (i, j)`.
+
+    If `(i, j) = (i', j')`, we say that the statements are *concurrent on the same PE*.
 
 !!! abstract "Definition: Data Race"
     Writing to an array in a statement while concurrently reading from it 
-    or writing to it in another statement in the same 
-    compute block constitutes a *data race*
-    and is considered undefined behavior. 
+    or writing to it in another statement on the same 
+    PE constitutes a *data race* and is considered undefined behavior. 
 
 In particular, sending data from an array while concurrently
-writing to it is considered a data race.
+writing to it on the same PE is considered a data race.
 You must synchronize such statements using `await`.
 The motivation for this strict definition is to ensure correctness regardless
 of the interleaving of concurrent operations.
