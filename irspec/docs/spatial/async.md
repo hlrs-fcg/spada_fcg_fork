@@ -452,27 +452,65 @@ There is no guarantee of fairness, that is, concurrents statements may be
 executed in any respective order and may be preempted at any time.
 Failure to guarantee completion regardless of progress order of concurrent operations constitutes a **deadlock**.
 
+
 In particular, each iteration of a [`foreach`](../spatial#processing-data-streams-with-foreach) stalls until receiving a data element.
 An [`await`](../spatial#await-completions-with-await) statement stalls until a completion triggers. 
 A [`send`](../spatial#streaming-data-with-send) statement may stall while the receiver is not ready to receive the data.
-A deadlock-free program will ensure that all PEs can make progress
-eventually regardless of the interleaving of statements.
+
+!!! danger "Deadlock"
+
+    A deadlock-free program ensures that all PEs eventually make progress
+    regardless of the interleaving of concurrent statements.
+
+??? example "Example: Deadlock"
+    ```rust
+    stream s1 = relative_stream(1, 0);
+    // ...
+    await send(a, s1);
+    await foreach x, k in [receive(s1)] {
+        a[k] = x;
+    }
+    ```
+    This example constitutes a deadlock.
+    The send of s1 cannot make progress until the receive of s1 is complete.
+    However, the receive of s1 cannot complete until the send of s1 is complete.
+
+??? example "Example: Deadlock"
+    ```rust
+    stream s1 = relative_stream(1, 0);
+    stream s2 = relative_stream(-1, 0);
+    /// ...
+    // at P0:
+    await send(a, s1);
+    await foreach x, k in [receive(s2)] {
+        a[k] = x;
+    }
+    // ...
+    // at P1:
+    await send(a, s2);
+    await foreach x, k in [receive(s1)] {
+        a[k] = x;
+    }
+    ```
+    This example constitutes a deadlock.
+    The send of s1 cannot make progress until the receive of s2 is complete.
+    However, the receive of s2 cannot complete until the send of s2 is complete.
+    And the send of s2 cannot make progress until the receive of s1 is complete.
 
 
-TODO discuss deadlocks more
-
-TODO What guarantee do we give?
-
-```rust
-
-send(a, s1)
-send(b, s2)
-
-await foreach x in [receive(s1)] {
-    // Process x 
-}
-await foreach x in [receive(s2)] {
-    // Process x
-}
-
-```
+??? example "Example: No Deadlock"
+    ```rust
+    send(a, s1);
+    send(b, s2);
+    
+    await foreach x in [receive(s1)] {
+        // Process x 
+    }
+    await foreach x in [receive(s2)] {
+        // Process x
+    }
+    ```
+    This example does not constitute a deadlock.
+    Because we guarantee that there is progress if there is some progress to be made.
+    In particular, the send of s1 can always make progress.
+    Once the receive of s1 is complete, the send of s2 can make progress.
