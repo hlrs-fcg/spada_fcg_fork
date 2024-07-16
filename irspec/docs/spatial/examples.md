@@ -1,6 +1,5 @@
-## Examples
 
-### Vertical Advection
+## Vertical Advection
 
 
 ```rust
@@ -162,7 +161,7 @@ kernel vadv<I,J,K>(stream<f32>[I, J] utens_stage,
 ```
 
 
-### 2D Laplacian
+## 2D Laplacian
 
 ```rust
 kernel laplacian<I,J,K> (stream<f32>[I+2, J+2] readonly in_field,
@@ -237,9 +236,10 @@ kernel laplacian<I,J,K> (stream<f32>[I+2, J+2] readonly in_field,
         // Example of an await for a completion.
         await f;
         
-        // Writing to local_result form the map would be considered a data race.
+        // Writing to local_result form the map would be considered a data race
+        // if we did not await f
         await foreach i32 k, f32 x in [0:K, receive(westwards)] {
-          local_result[k] -= x;
+          local_result[k] = local_result[k] - x;
         }
 
         // Writing to the same array from multiple foreach blocks concurrently
@@ -247,7 +247,7 @@ kernel laplacian<I,J,K> (stream<f32>[I+2, J+2] readonly in_field,
         // Hence, we need to run one after the other.
         send(local_input, eastwards);
         await foreach i32 k, f32 x in [0:K, receive(eastwards)] {
-          local_result[k] -= x;
+          local_result[k] = local_result[k] - x;
         }
         // ...
 
@@ -258,7 +258,199 @@ kernel laplacian<I,J,K> (stream<f32>[I+2, J+2] readonly in_field,
 }
 ```
 
-### Streaming 1D Convolution
+## Horizontal Diffusion
+
+This example demonstrates how to turn horizontal diffusion into Spatial IR.
+```python title="Horizontal Diffusion in GT4Py"
+def horizontal_diffusion(in_field: Field3D, out_field: Field3D,
+                          coeff: Field3D):
+     with computation(PARALLEL), interval(...):
+         lap_field = 4.0 * in_field[0, 0, 0] - (in_field[1, 0, 0] + in_field[-1, 0, 0] + in_field[0, 1, 0] + in_field[0, -1, 0])
+         res = lap_field[1, 0, 0] - lap_field[0, 0, 0]
+         flx_field = 0 if (res * (in_field[1, 0, 0] - in_field[0, 0, 0])) > 0 else res
+         res = lap_field[0, 1, 0] - lap_field[0, 0, 0]
+         fly_field = 0 if (res * (in_field[0, 1, 0] - in_field[0, 0, 0])) > 0 else res
+         out_field = in_field[0, 0, 0] - coeff[0, 0, 0] * (
+             flx_field[0, 0, 0] - flx_field[-1, 0, 0] + fly_field[0, 0, 0] -
+             fly_field[0, -1, 0])
+```
+
+
+```rust title="Horizontal Diffusion in Spatial IR"
+kernel <I, J, K>hdiff(stream<f32>[I, J] readonly in_stream,
+                      stream<f32>[I, J] writeonly out_stream,
+                      stream<f32>[I, J] readonly coeff_stream) {
+
+    // Data placement
+    place i, j in [0:I, 0:J] {
+        f32[K] in_field;
+        // in field of the east neighbor
+        f32[K] in_field_east;
+        // in field of the south neighbor 
+        f32[K] in_field_south;
+        f32[K] out_field;
+        f32[K] coeff;
+        f32[K] lap_field;
+        f32[K] res;
+        f32[K] flx_field;
+        f32[K] fly_field;
+    }
+    
+    // Read input
+    phase {
+        dataflow i, j in [0:I, 0:J] {
+            stream<f32> in_field_l = in_field[i, j];
+            stream<f32> coeff_l = coeff[i, j];
+        }
+        
+        compute i, j in [0:I, 0:J] {
+            foreach k, x in [0:K, receive(in_field_l)] {
+                in_field[k] = x;
+            }
+            foreach k, x in [0:K, receive(coeff_l)] {
+                coeff[k] = x;
+            }
+        }
+    }
+    
+    // Laplacian computation
+    // There is a small difference to the indipendent 2D laplace example
+    // We need to store the in_field of the east and south neighbor
+    phase {
+    
+        // Set up communication streams
+        dataflow i, j in [0:I+2, 0:J+2] {
+            stream<f32> eastwards = relative_stream(1, 0);
+            stream<f32> westwards = relative_stream(-1, 0);
+            stream<f32> northwards = relative_stream(0, -1);
+            stream<f32> southwards = relative_stream(0, 1);
+        }
+    
+        // See the 2D laplacian example
+        // We store in_field_east and in_field_south
+
+        completion f = map i32 k in [0:K] {
+            lap_field[k] = in_field[k] * 4;
+        }
+  
+        comp c = send(lap_field, westwards);
+
+        await f;
+        
+        // Result needed: store in in_field_east
+        await foreach i32 k, f32 x in [0:K, receive(westwards)] {
+            in_field_east[k] = x;
+        }
+        // Then, decrement the lap_field using the stored in_field_east
+        await map k in [0:K] {
+            lap_field[k] = lap_field[k] - in_field_east[k];
+        }
+        
+        await c;
+
+        comp c2 = send(local_input, eastwards);
+        
+        // result not needed, decrement directly.
+        await foreach i32 k, f32 x in [0:K, receive(eastwards)] {
+            lap_field[k] = lap_field[k] - x;
+        }
+        
+        await c2;
+        // ...
+    }
+    
+    phase {
+        // Set up streams to communicate laplacian results
+        // Note that we could re-use the same streams as in the previous phase
+        // And we could also merge the two phases into one
+    
+        dataflow i, j in [0:I, 0:J] {
+            // Note that the directions are reversed compared to gt4py because
+            // we specify the offsets to send to, wheres it specifies the offsets to read from
+            stream<f32> west = relative_stream(-1, 0);
+            stream<f32> north = relative_stream(0, -1);
+            stream<f32> flx_field_stream = relative_stream(1, 0);
+            stream<f32> fly_field_stream = relative_stream(0, 1);
+        }
+        
+        compute i, j in [1:I-1, 1:J-1] {
+            
+            completion c = send(lap_field, west);
+            
+            foreach k, x in [0:K, receive(west)] {
+                res[k] = x - lap_field[k];
+            }
+            
+            await c;
+            
+            await map k in [0:K] {
+                flx_field[k] = (res[k] * (in_field_east[k] - in_field[k])) <= 0) * res[k];
+            }
+            
+            completion c3 = send(lap_field, north);
+            
+            foreach k, y in [0:K, receive(north)] {
+                res[k] = y - lap_field[k];
+            }
+            
+            await c3;
+            
+            await map k in [0:K] {
+                fly_field[k] = (res[k] * (in_field_south[k] - in_field[k])) <= 0) * res[k];
+            }
+            
+            completion c4 = send(flx_field, flx_field_stream);
+
+            // No need to copy the flx_field, can accumulate directly
+            await foreach k, x in [0:K, receive(flx_field_stream)] {
+                out_field[k] = flx_field[k] - x;
+            }
+            
+            await c4;
+            
+            completion c5 = send(fly_field, fly_field_stream);
+            
+            // No need to copy the fly_field, can accumulate directly
+            await foreach k, y in [0:K, receive(fly_field_stream)] {
+                out_field[k] = outfield[k] + fly_field[k] - y;
+            }
+            
+            await map k in [0:K] {
+                out_field[k] = in_field[k] - local_coeff[k] * out_field[k];
+            }
+            
+            // We may overlap sending of fly with the computation of out_field
+            await c5;
+            
+            send(out_field, out_stream);
+        }
+        
+        compute i, j in [0, 1:J-1] {
+            // Boundary condition
+            // ...
+        }
+        
+        compute i, j in [I, 1:J-1] {
+            // Boundary condition
+            // ...
+        }
+        
+        compute i, j in [1:I-1, 0] {
+            // Boundary condition
+            // ...
+        }
+        
+        compute i, j in [1:I-1, J] {
+            // Boundary condition
+            // ...
+        }
+    }
+    
+
+```
+
+
+## Streaming 1D Convolution
 
 Performs the convolution of a 1D kernel with a streaming K-D input array that changes over time.
 That is in each time step, we receive an array of K elements, and we convolve it with the kernel.
