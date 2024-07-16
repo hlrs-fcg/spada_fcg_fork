@@ -297,11 +297,22 @@ spst.if (%mask) : spst.field<D, spst.extent<(0,0,0)>, bool> {
   ...
 }
 ```
+The conditional may include any number of `elif` branches
+between the if and the else branch:
+```
+spst.if (%mask1) {
+  ...
+} elif (%mask2) {
+  ...
+} else {
+  ...
+}
+```
 
 spst.if may also produce one or more results. For example, when the if-else is used to represent
 a ternary expression. 
 Which values are returned depends on which execution path is taken at each grid
-point of the domain, as indicated by the mask.
+point of the domain, as indicated by the masks.
 
 Example:
 
@@ -314,6 +325,23 @@ Example:
   spst.return (%x_2) : spst.field<D, E_1, T_1>
 }
 ```
+
+For example, to implement a ternary choice on the value of a field, the following pattern is used:
+
+```
+%mask1 = spst.statement(%u) : spst.field<D, E1, T1> -> spst.field<D, E1, bool> { spst.return %u[0, 0, 0] > 0 }
+%mask2 = spst.statement(%u) : spst.field<D, E1, T1> -> spst.field<D, E1, bool>  { spst.return %u[0, 0, 0] < 0 }
+
+%x = spst.if (%mask1) {
+  ...
+} elif (%mask2) {
+  ...
+} else {
+  ...
+}
+```
+
+
 The “then” region has exactly 1 block. The “else” region may have 0 or 1 block.
 In case the spst.if produces results, the “else” region must also have exactly 1 block.
 The blocks are always terminated with spst.return.
