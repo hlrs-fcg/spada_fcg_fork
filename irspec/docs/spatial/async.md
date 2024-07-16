@@ -118,7 +118,7 @@ and stream edges.
        There exists a stream edge from some `S3, (i1, j1)` to `S4, (i2, j2)` for which:
     
         - `S1, (i1, j1) -> S3, (i1, j1)` and 
-        - `S4 --> S2` in local order.
+        - `S2` follows `S4` on all execution paths.
     
     4. *Transitivity*: There is a `S3, (i3, j3)` where `S1, (i1, j1) -> S3, (i3, j3)` and `S3, (i3, j3) -> S2, (i2, j2)`.
 
