@@ -1,7 +1,7 @@
 # Parametric Semantic Representations
 
-So far, we have introduced and discussed the formal definitions of [stream edges](#stream-edges),
-the [happens-before graph](#the-happens-before-graph), and the [routing graph](#the-routing-graph).
+So far, we have introduced and discussed the formal definitions of [stream edges](../async#stream-edges),
+the [happens-before graph](../async#the-happens-before-graph), and the [routing graph](../routing/#the-routing-graph).
 Next, we discuss how to construct compact, *parametric* representations of these graphs.
 The advantage of these representations is that there size is much smaller
 than the size of the program grid, and constructing them is polynomial time in 
@@ -79,10 +79,11 @@ Let's focus on the first equation, as the second is symmetric.
 1. Compute `gcd(I_3, I_6) = d` using the [Euclidean Algorithm](https://en.wikipedia.org/wiki/Euclidean_algorithm).
 2. Check if `d` divides `I_4 - I_1 - dx`. If not, no solution exists (there is no stream edge).
 3. If `d` divides `I_4 - I_1 - dx`, we can solve the equation:
-   - Simplify the equation by dividing everything by `d`.
-   - Solve the simplified equation using the
+
+    - Simplify the equation by dividing everything by `d`.
+    - Solve the simplified equation using the
    [Extended Euclidean Algorithm](https://en.wikipedia.org/wiki/Extended_Euclidean_algorithm) to find one solution `x_0`:
-   - The general solution is:
+    - The general solution is:
      `x = x_0 + k (I_6/d) for k = 0, 1, ... , d-1`
 
 We filter out all solutions for which `I1 + x * I3 >= I2` as they are out of bounds of the `compute` block.
@@ -91,7 +92,7 @@ Now, we can apply the range constraints using the general solution of `x`
 to determine the solutions `I1 + x * I3 + dx` that are in the receiving `compute` block.
 
 That is, we check if 
-- `I4 <= I1 + x * I3 + dx < I5` for some `x` in the general filtered solution of `x`.
+`I4 <= I1 + x * I3 + dx < I5` for some `x` in the general filtered solution of `x`
 and similarly for `y`.
 
 If all constraints are satisfied, we have found a valid receiving block.
@@ -139,20 +140,27 @@ which follow the same rules as the formal happens-before graph.
 Throughout, if a vertex or edge already exists, we do not add it again.
 
 1. For each pair of statements `S1`, `S2` in the same compute block for which 
-`S1 --> S2` in [local order](#constructing-the-local-order), add:
-   - the vertices `S1, (i, j)` and `S2, (i, j)` to the graph.
-   - the edge `S1, (i, j) -> S2, (i, j)` with the predicate `true`.
+`S1 --> S2` in [local order](../async#constructing-the-local-order), add:
+
+    - the vertices `S1, (i, j)` and `S2, (i, j)` to the graph.
+    - the edge `S1, (i, j) -> S2, (i, j)` with the predicate `true`.
+
 2. For each parametric stream edge `(S1, (i, j)) -> (S2, (i+dx, j+dy))` predicated by `P1`:
-   - Add the vertices `S1, (i, j)` and `S2, (i+dx, j+dy)` to the graph.
-   - Add the edge `S1, (i, j) -> S2, (i+dx, j+dy)` with the predicate `P1`.
+
+    - Add the vertices `S1, (i, j)` and `S2, (i+dx, j+dy)` to the graph.
+    - Add the edge `S1, (i, j) -> S2, (i+dx, j+dy)` with the predicate `P1`.
+
 3. For each parametric stream edge `S3, (i, j) -> S4, (i+dx, j+dy)` predicated by `P1`:
-   - Consider all vertices `S1, (i, j)` in the graph for which `S1, (i, j) -> S3, (i, j)` with predicate `P2`
+
+    - Consider all vertices `S1, (i, j)` in the graph for which `S1, (i, j) -> S3, (i, j)` with predicate `P2`
    and all vertices `S2, (i+dx, j+dy)` for which `S4 -> S2`.
-   - Add an edge `S1, (i, j) -> S2, (i+dx, j+dy)` with the predicate `P1 && P2`.
+    - Add an edge `S1, (i, j) -> S2, (i+dx, j+dy)` with the predicate `P1 && P2`.
+
 4. Apply transitivity until convergence:
-   - If there is an edge from `S1, (i, j)` to `S2, (i+dx, j+dy)` with predicate `P1`
-   - and an edge from `S2, (i+dx, j+dy)` to `S3, (i+dx', j+dy')` with predicate `P2`,
-   - then add an edge from `S1, (i, j)` to `S3, (i+dx', j+dy')` with predicate `P1 && P2`.
+
+    - If there is an edge from `S1, (i, j)` to `S2, (i+dx, j+dy)` with predicate `P1`
+    - and an edge from `S2, (i+dx, j+dy)` to `S3, (i+dx', j+dy')` with predicate `P2`,
+    - then add an edge from `S1, (i, j)` to `S3, (i+dx', j+dy')` with predicate `P1 && P2`.
 
 Whenever creating a new predicate from two predicates, we simplify the predicate
 as much as possible. The resulting predicate remains a conjunction of range constraints
@@ -200,22 +208,25 @@ Pop the top vertex-index pair `(u, k)` from the stack.
 Consider the current vertex `u=[I1:I2:I3, J1:J2:J3]` and the next hop `(dx_k, dy_k)` at index `k`.
 Add an edge `(u, w)` to each of the vertices `w` described hereafter,
 labeling it with `F`, `v`, and `k`.
-If `k == h`, pop the next `receive` statement `S2` from the stack of `w` and record the **stream edge** `(S1, S2)`.
-Else if `(w, k+1)` is not in the visited set, add `(w, k+1)` to the stack.
+If `k < h` and `(w, k+1)` is not in the visited set, add `(w, k+1)` to the stack.
 
 **Case: The stride is `I3 == J3 == 1`:**
 
 - To block `[I1:I2:1, J1:J2:1]` with predicate (the cases are mutually exclusive by definition because `|dx_k|+|dy_k|==1`):
-  - `i + 1 < I1 - 1` if `dx_k == 1`
-  - `i - 1 > I1` if `dx_k == -1`
-  - `j + 1 < J1 - 1` if `dy_k == 1`
-  - `j - 1 > J1` if `dy_k == -1`
+
+    - `i + 1 < I1 - 1` if `dx_k == 1`
+    - `i - 1 > I1` if `dx_k == -1`
+    - `j + 1 < J1 - 1` if `dy_k == 1`
+    - `j - 1 > J1` if `dy_k == -1`
+
+If no such block exists, this constitutes an incorrect declaration of stream edges (deadlock).
 
 - If `dx_k != 0`, to all blocks `[I4:I5:1, J4:J5:1]` for which `J4 < J2`, `J5 >= J1`, and
-  - for which `I4 == I2 + 1` with the predicate `i = I2 && J4 <= j < J6` if `dx_k == 1`
-  - for which `I5 == I1 - 1` with the predicate `i = I1 && J4 <= j < J6` if `dx_k == -1`
-  - Note that the ranges `J4:J5` of all such blocks must together cover the range `J1:J2`.
-Failure to do so constitutes an incorrect declaration of stream edges (deadlock).
+
+    - for which `I4 == I2 + 1` with the predicate `i = I2 && J4 <= j < J6` if `dx_k == 1`
+    - for which `I5 == I1 - 1` with the predicate `i = I1 && J4 <= j < J6` if `dx_k == -1`
+    - Note that the ranges `J4:J5` of all such blocks must together cover the range `J1:J2`.
+
 
 - Proceed symmetrically in case `dy_k != 0`.
 
@@ -223,12 +234,15 @@ Failure to do so constitutes an incorrect declaration of stream edges (deadlock)
 **Case: All compute blocks have the same stride > 1:**
 
 - If `dx_k != 0`, to all blocks `[I4:I5:I3, J4:J5:J3]` for which `J4 < J2`, `J5 >= J1`, and 
-for which `I4 = I2 + dx_k (mod I3)` with the predicate `I4 <= i + 1 < I5 && J4 <= j < J6`.
-  - Note that the ranges `J4:J5` of all such blocks must together cover the range `J1:J2`, and similarly, 
-the ranges `I4:I5` must together cover the range `I1+dx_k:I2+dx_k`.
-Failure to do so constitutes an incorrect declaration of stream edges (deadlock).
+for which `I4 = I2 + dx_k (mod I3)` with the predicate `I4 <= i + 1 < I5 && J4 <= j < J6`. 
+    Note that the ranges `J4:J5` of all such blocks must together cover the range `J1:J2`, and similarly, 
+    the ranges `I4:I5` must together cover the range `I1+dx_k:I2+dx_k`.
+    Failure to do so constitutes an incorrect declaration of stream edges (deadlock).
+
 
 - Proceed symmetrically in case `dy_k != 0`.
+
+
 
 **General Case**
 
