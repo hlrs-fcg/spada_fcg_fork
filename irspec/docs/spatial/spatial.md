@@ -73,13 +73,34 @@ An expression may depend on parameters, constants, in-scope variables, and field
 array_expression ::= variable[int_expression]
 int_expression ::= constant_literal | parameter_literal | variable | expression + expression | expression - expression | expression * expression | expression // expression | expression % expression | (expression)
 expression ::= constant_literal | parameter_literal | variable | array_expression | expression + expression | expression - expression | expression * expression | expression / expression | expression // expression | expression % expression | (expression) 
+bool_expression ::= expression == expression | expression != expression | expression < expression | expression <= expression | expression > expression | expression >= expression | bool_expression & bool_expression | bool_expression | bool_expression | !bool_expression | (bool_expression)
 ```
-where // denotes integer division and % denotes modulo.
+where // denotes integer division and % denotes modulo,
+and `==`, `!=`, `<`, `<=`, `>`, `>=`, `&`, `|`, `!` are the standard comparison and logical operators.
+Note that the logical operators `&` and `|` do not short circuit. Both operands are always evaluated.
 
-For example, `I`, `J+2`, `i`, `I+i` are integer expressions and `a[k+1]` is an array expression.
+???+ example "Example: Expressions"
+    `I`, `J+2`, `i`, `I+i` are integer expressions, `a[k+1]` is an array expression, `I+J < 10` is a boolean expression.
 
-`int` expressions must be of type `i64` and `array` expressions must be of type `T[S_1, S_2, ... S_d]`
+`int` expressions must be of type `i64`. 
+`bool` expressions must be of type `bool`. 
+`array` expressions must be of type `T[S_1, S_2, ... S_d]`
 for some scalar type `T` and parameter expressions `S_1`, `S_2`, ... `S_d`.
+
+in an `expression`, values of type `bool` are automatically converted into integers if needed.
+That is, `true` is converted to `1` and `false` is converted to `0`.
+
+??? example "Boolean expressions to emulate conditionals"
+    This example computes the minimum of two integers `x` and `y` if they are 
+    distinct. If they have the same value, it returns the value `z`.
+    ```rust
+    b1 = x < y;
+    b2 = x == y;
+    b3 = x > y;
+    result = b1 * x + b3 * y + b2 * z;
+    ```
+    This demonstrates the casting of boolean expressions to integer values
+    and how to implement conditional-like behavior.
 
 #### Range expressions
 
@@ -95,10 +116,11 @@ The start is inclusive, and the stop is exclusive. The `step` describes the stri
 
 A list of elements of `X` is separated by commas.
 
-For example, `1, 2, 3` is a list of constant literals.
-`x, y, z` is a list of variables.
-`f32[10], i32[I+2, J+2]` is a list of array types.
-`I+2, J+2` is a list of parameter expressions.
+???+ example "Example: Lists"
+    For example, `1, 2, 3` is a list of constant literals.
+    `x, y, z` is a list of variables.
+    `f32[10], i32[I+2, J+2]` is a list of array types.
+    `I+2, J+2` is a list of parameter expressions.
 
 ### The coordinate grid
 
