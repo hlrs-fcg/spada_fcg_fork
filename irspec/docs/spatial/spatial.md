@@ -1,17 +1,14 @@
 # Spatial IR - High-level IR for spatial computations
 
 
-## Specification
 
+## Syntax Fundamentals
 
-
-### Syntax Fundamentals
-
-#### Scalars
+### Scalars
 
 `f16`, `f32`, `f64`, `i8`, `i16`, `i32`, `i64`, `bool` indicate scalar types.
 
-#### Constant Literals
+### Constant Literals
 
 We may use constant literals to represent constant compile-time values. 
 
@@ -19,7 +16,7 @@ For example `0`, `1`, `1024`, `-12` are constant literals.
 Constant integer literals are `i64` and constant floating-point literals are `f32`. 
 
 
-#### Streams
+### Streams
 
 A stream corresponds to an abstract way to communicate between PEs or the host device and the PEs.
 
@@ -28,20 +25,20 @@ For any scalar type `T`,  `stream<T>` indicates the corresponding element type s
 Streams do not send a predetermined number of elements, but the sender and receiver must agree on the number of elements sent and received.
 This can be done explicitly (when the size is known from the parameters) or implicitly (by sending a completion signal with/after the last element).
 
-#### Arrays
+### Arrays
 
 Any scalar or stream type `T` and one or more parameter expressions `S_1`, `S_2`, ... `S_d` may be used to create an array type `T[S_1, S_2, ... S_d]`.
 It represents a d-dimensional array of type `T`, where the i-th dimension contains `S_i` elements.
 
 For example, `f32[10]`, `i32[I+2, J+2]` indicate array types.
 
-#### Parameters
+### Parameters
 
 Parameter literals are placeholders for an actual value that will be substituted with an **integer** 
 value at compile time. They are denoted by capital letters or capital letters followed by a number string.
 For example, `I`, `J`, `K`, `I001` denote parameters.
 
-#### Variables
+### Variables
 
 A variable name starts with a lower case letter and may contain letters, numbers, and underscores.
 For example, `x`, `y`, `my_variable`, `my_Variable_2` are valid variable names.
@@ -54,7 +51,7 @@ variable_declaration ::= T variable_name
 
 A variable is in scope if it is declared in the current block or any enclosing block.
 
-#### Parameter Expressions
+### Parameter Expressions
 
 A parameter expression is an expression that may depend on parameters and constant **integer** literals. 
 
@@ -65,7 +62,7 @@ where // denotes integer division and % denotes modulo.
 
 For example, `I`, `J+2`, `10`, `(I+J) // 2` are parameter expressions.
 
-#### Expressions
+### Expressions
 
 An expression may depend on parameters, constants, in-scope variables, and fields.
 
@@ -102,7 +99,7 @@ That is, `true` is converted to `1` and `false` is converted to `0`.
     This demonstrates the casting of boolean expressions to integer values
     and how to implement conditional-like behavior.
 
-#### Range expressions
+### Range expressions
 
 A `range_expression` can be constructed using the following syntax:
 ```
@@ -112,7 +109,7 @@ where `start`, `stop`, `step` are integer expressions. If all expressions are pa
 range expression is a parameter range expression.
 The start is inclusive, and the stop is exclusive. The `step` describes the stride of the range.
 
-#### Lists
+### Lists
 
 A list of elements of `X` is separated by commas.
 
@@ -129,7 +126,7 @@ The origin `(0, 0)` is at the north-west corner of the grid.
 The `x` axis increased towards the east, and the `y` axis increases towards the south.
 
 
-#### Subgrid expressions
+### Subgrid expressions
 
 A subgrid expression is given by 
 ```
@@ -152,7 +149,12 @@ kernel kernel_name<parameters> (arguments) {
 ```
 where parameters is a list of parameter literals, and arguments is a list of arguments to the kernel.
 
-#### Arguments
+A kernel gets the memory of its arguments from a host device or other kernel,
+runs the computation, and returns the results to the host device.
+This is done through communication streams, which are explicitly defined in the kernel arguments.
+Inputs and outputs may be sent and received in a streaming fashion.
+
+### Kernel Arguments
 
 An argument is a named and typed stream array or scalar that is passed to a kernel.
 ```
@@ -171,15 +173,8 @@ If an argument may be *only* read from or written to, it is marked as `readonly`
 If an argument is known at compiletime it may be annotated with `compiletime`.
 It must be provided at compilation time together with the parameters.
 
-#### Kernel semantics
 
-A kernel gets the memory of its arguments from a host device or other kernel,
-runs the computation, and returns the results to the host device.
-This is done through communication streams, which are explicitly defined in the kernel arguments.
-Inputs and outputs may be sent and received in a streaming fashion.
-If an argument stream may be only read from or written to, it is marked as `readonly` or `writeonly`, respectively.
-
-### Place block
+## Place block
 
 All data is placed on the PEs using one or more `place` blocks.
 
@@ -220,7 +215,7 @@ However, each `field_name` may appear at most once for any given PE over all `pl
 !!! danger "Uniqueness of Field Names"
     Each field name must be unique within a `place` block.
 
-### Dataflow block
+## Dataflow block
 
 All communication is set up in one or more `dataflow` blocks, which describe the communication streams between PEs.
 
@@ -237,7 +232,7 @@ The subgrids of the dataflow blocks must be disjoint.
 The dataflow block can be set up to support various types of streams.
 Currently, only *relative stream* indexing is supported:
 
-#### Relative Stream Declaration
+### Relative Stream Declaration
 
 Inside a `dataflow block`, a relative communication stream is declared as follows:
 ```
@@ -248,7 +243,8 @@ This describes a streaming communication stream for sending from the current PE 
 position `(i ,j)` to the PE at the relative position `(i+dx, j+dy)`, and simultaneously
 a stream for receiving from the PE at the relative position `(i-dx, j-dy)` at the current PE at `(i, j)`.
 
-???+ example "Example: Relative Stream Declaration"
+??? example "Example: Relative Stream Declaration"
+    For example,
     ```rust
     dataflow i, j in [0:I, 0:J] {
         stream<f32> eastwards = relative_stream(1, 0);
@@ -259,14 +255,13 @@ a stream for receiving from the PE at the relative position `(i-dx, j-dy)` at th
     ```
     describes four communication streams to the east, west, north, and south of each PE.
 
-???+ example "Example: Relative Stream Declaration"
     For example,
     ```rust
     dataflow i, j in [0:I, 0:J] {
-        stream<f32> two_north = relative_stream(0, -2);
+        stream<i32> two_north = relative_stream(0, -2);
     }
     ```
-    describes a communication stream that sends `f32` data two PEs to the north. 
+    describes a communication stream that sends `i32` data two PEs to the north. 
 
 !!! note
     The stream declaration does not imply that any data is ever sent over the stream.
@@ -275,7 +270,7 @@ a stream for receiving from the PE at the relative position `(i-dx, j-dy)` at th
 !!! danger "Uniqueness of Stream Names"
     Each stream name must be unique within a `dataflow` block.
 
-#### Routing Declarations
+### Routing Declarations
 
 Optionally, a routing declaration may be set up for each stream.
 This declaration describes how the data is routed between the PEs.
@@ -328,7 +323,7 @@ See the [Semantics of Routing Declarations](../routing) for how the compiler
 checks if routing declarations are correct and how it resolves auto-routing.
 
 
-### Compute block
+## Compute block
 
 The computation is described in one or more `compute` blocks.
 Computation is inherently asynchronous, triggered by receiving data from streams.
@@ -394,7 +389,7 @@ field_name = expression;
 
 Note that each completion name must be unique within a `compute` block.
 
-#### Streaming Data with `send`
+### Streaming Data with `send`
 
 Inside a `compute` block, the `send` statement sends data asynchronously through a `stream`.
 
@@ -434,7 +429,7 @@ always execute in [local program order](../asnyc/#local-order).
     completion c2 = send(a[K//2:K], stream_name);
     ```
 
-#### Receiving Streaming Data with `receive`
+### Receiving Streaming Data with `receive`
 
 Inside a `compute` block, the `receive` operation wraps a stream to receive a stream of data from it.
 
@@ -462,7 +457,7 @@ it merely declares the existence of a stream edge.
 As a consequence, within each `compute` block, correctly synchronized `receive`s **from the same stream** 
 always execute in [local program order](../asnyc/#local-order).
 
-#### Processing Data Streams with `foreach`
+### Processing Data Streams with `foreach`
 
 Inside a `compute` block, a `foreach` loop can be used to apply a computation to a stream of data.
 For each element in the stream, the computation is executed.
@@ -502,13 +497,19 @@ The `completion_name` is a completion handle that may be used to wait for the co
 Note that the completion is triggered when the data has been received, not when it is sent.
 After the completion triggers, the stream may be used for other sends or receives.
 
+!!! danger "Nested Asynchronous Statements"
+    Every asynchronous statement contained in a `foreach` loop must be 
+    [awaited](#await-completions-with-await) inside the loop.
+    
+    *Failure to await outstanding completions in the loop results in a compilation error.*
+
 !!! danger "Deadlocks"
     The sizes sent and received must match: Each `foreach` loop iterating over a stream that specifies the number of elements to receive,
     must match the number of elements sent over the corresponding [`send`](#streaming-data-with-send) statement.
     
     *Failure to correctly match the sizes sent and received may result in a deadlock.*
 
-#### Processing arrays asynchronously with `map`
+### Processing arrays asynchronously with `map`
 
 Inside a `compute` block, the `map` statement is used to apply a computation to each element of an array.
 ```rust
@@ -522,17 +523,18 @@ The motivation for this is to ensure that the map can be efficiently vectorized.
 There is no guarantee on the order in which the map is executed.
 Hence, the map must not contain loop-carried dependencies.
 
-For example,
-```rust
-completion comp = map i32 i, i32 j in [0:10, J] {
-    a[i + 2 * j + 1] = i;
-}
-```
+??? example "Example: Map"
+    ```rust
+    completion comp = map i32 i, i32 j in [0:10, J] {
+        a[i + 2 * j + 1] = i;
+    }
+    ```
 
-If you need to perform non-affine operations or exploit loop-carried dependencies, 
-use a [`for`](#processing-arrays-sequentially-with-for) loop instead.
+!!! note
+    If you need to perform non-affine array accesses, exploit loop-carried dependencies, 
+    or nest other asynchronous operations, use a [`for`](#processing-arrays-sequentially-with-for) loop instead.
 
-#### Await completions with `await`
+### Await completions with `await`
 
 Inside a `compute` block, an `await` statement is used to wait for a completion to trigger.
 The `await` can be applied to a completion name.
@@ -572,7 +574,7 @@ await c;
 See the [Semantics of Asynchronous Statements](../async#semantics-of-asynchronous-statements) for more details
 on the semantics of `await`.
 
-#### Processing arrays sequentially with `for`
+### Processing arrays sequentially with `for`
 
 Inside a `compute` block, the `for` loop is used to apply a computation to each element of an array in a sequential order.
 
@@ -589,20 +591,27 @@ The variables must be of type `i32`.
 
 A `for` loop does not return completions, it executes sequentially and in-order.
 
-For example, a `for` loop can exploit loop-carried dependencies:
-```rust
-for i32 i, i32 j in [0:I, 0:J] {
-    a[i, j] = a[i-1, j] + a[i, j-1];
-}
-```
-It can also use non-affine indexing:
-```rust
-for i32 i, i32 j in [0:I, 0:2] {
-    a[i*j] = a[i] + a[j];
-}
-```
+??? example "Example: For Loop"
+    For example, a `for` loop can exploit loop-carried dependencies:
+    ```rust
+    for i32 i, i32 j in [0:I, 0:J] {
+        a[i, j] = a[i-1, j] + a[i, j-1];
+    }
+    ```
+    It can also use non-affine indexing:
+    ```rust
+    for i32 i, i32 j in [0:I, 0:2] {
+        a[i*j] = a[i] + a[j];
+    }
+    ```
 
-#### Computing asynchronously with `async`
+!!! danger "Nested Asynchronous Statements"
+    Every asynchronous statement contained in a `for` loop must be 
+    [awaited](#await-completions-with-await) inside the loop.
+
+    *Failure to await outstanding completions in the loop results in a compilation error.*
+
+### Computing asynchronously with `async`
 
 Inside a `compute` block, an `async` block is used to execute a computation asynchronously.
 
@@ -613,7 +622,7 @@ completion comp = async {
 ```
 
 
-### Phases
+## Phases
 
 One may define multiple phases in a kernel.
 Each phase may contain one or more `place`, `dataflow`, and `compute` blocks.
@@ -635,7 +644,7 @@ Phases run in the order they are defined in the code from each PE's point of vie
 That is, a PE goes through its phases in-order.
 A PEs may participate in some phases and not in others.
 
-???+ example "Example: Phases"
+??? example "Example: Phases"
     ```rust
     place for i, j in [0:I, 0:J] {
         f32[K] a;
