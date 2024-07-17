@@ -20,11 +20,18 @@ If `S1` and `S2` are in the same basic block, then `S1 --> S2` if
 
 Otherwise, `S1 --> S2` if:
 
-- `S1` is blocking and `S1` dominates `S2`.
+- `S1` is blocking and `S2` post-dominates `S1`.
 - The set of dominators of `S2` contains an `await` on the completion of `S1`.
 
-Efficient and practical algorithms [can compute dominators in near-linear time](https://www.researchgate.net/publication/220639563_Finding_Dominators_in_Practice).
+### Analysis
 
+
+Explicitly constructing the local order costs `O(n^2)` time, where `n` is the number of statements in a `compute` block.
+However, we can represent the local order implicitly by storing the dominators and post-dominators of each statement.
+
+!!! note
+    Efficient and practical algorithms can compute 
+    [dominators in near-linear time](https://www.researchgate.net/publication/220639563_Finding_Dominators_in_Practice).
 
 ## *Parametric* Stream Edges
 
@@ -68,23 +75,24 @@ To correctly identify the stream edges, we need to check if there exists an `(i,
 `compute` block for which all constraints are satisfied.
 
 For this, first solve the linear congruence relations for `i` and `j` (if `I6 > 1` and `J6 > 1` respectively).
-We use that `i=I1+x*I3` and `j=J1+y*J3` for some `x` and `y`.
-Then, we need to solve for `x` and `y` in the following equations:
-- `x * I3 = (I4 - I1 - dx) mod I6`
-- `y * J3 = (J4 - J1 - dy) mod J6`
+We can efficiently characterize the set of solution (and determine if it is empty).
 
+??? info "Algorithm: How to Solve the Congruence Relations"
+    We use that `i=I1+x*I3` and `j=J1+y*J3` for some `x` and `y`.
+    Then, we need to solve for `x` and `y` in the following equations:
+    - `x * I3 = (I4 - I1 - dx) mod I6`
+    - `y * J3 = (J4 - J1 - dy) mod J6`
 
-Let's focus on the first equation, as the second is symmetric.
-
-1. Compute `gcd(I_3, I_6) = d` using the [Euclidean Algorithm](https://en.wikipedia.org/wiki/Euclidean_algorithm).
-2. Check if `d` divides `I_4 - I_1 - dx`. If not, no solution exists (there is no stream edge).
-3. If `d` divides `I_4 - I_1 - dx`, we can solve the equation:
-
-    - Simplify the equation by dividing everything by `d`.
-    - Solve the simplified equation using the
-   [Extended Euclidean Algorithm](https://en.wikipedia.org/wiki/Extended_Euclidean_algorithm) to find one solution `x_0`:
-    - The general solution is:
-     `x = x_0 + k (I_6/d) for k = 0, 1, ... , d-1`
+    Let's focus on the first equation, as the second is symmetric.
+    
+    1. Compute `gcd(I_3, I_6) = d` using the [Euclidean Algorithm](https://en.wikipedia.org/wiki/Euclidean_algorithm).
+    2. Check if `d` divides `I_4 - I_1 - dx`. If not, no solution exists (there is no stream edge).
+    3. If `d` divides `I_4 - I_1 - dx`, we can solve the equation:
+    
+        - Simplify the equation by dividing everything by `d`.
+        - Solve the simplified equation using the
+          [Extended Euclidean Algorithm](https://en.wikipedia.org/wiki/Extended_Euclidean_algorithm) to find one solution `x_0`:
+        - The general solution is: `x = x_0 + k (I_6/d) for k = 0, 1, ... , d-1`
 
 We filter out all solutions for which `I1 + x * I3 >= I2` as they are out of bounds of the `compute` block.
 
@@ -108,15 +116,19 @@ may be left out if `I6 = 1` or `J6 = 1`.
 We add parametric stream edge `S1, (i, j)` to `S2, (i+dx, j+dy)` predicated by `P1`
 to the list of stream edges. 
 
+
+!!! info "Algorithm: Checking for Correct Stream Edges"
+    The algorithm also checks for certain deadlocks by ensuring that all `send`s are matched with a `receive`.
+    To check if all `receive`s are matched with a `send`, we can use a similar algorithm
+    with the roles of `send` and `receive` reversed and using `dx` and `dy` negated.
+    Once we have the stream edges, we can check if the sizes of the stream edges are consistent
+    between sends and receives.
+
+### Analysis
+
 The algorithm takes `O(n^2)` time overall, where `n` is the number of `compute` blocks.
 One can speed up the algorithm by filtering out all `compute` blocks that are not in the range of the stream
 before solving the congruence relations. This can be done efficiently using 2D box intersection tests.
-
-Note that the algorithm also checks for deadlocks by ensuring that all `send`s are matched with a `receive`.
-To check if all `receive`s are matched with a `send`, we can use a similar algorithm
-with the roles of `send` and `receive` reversed and using `dx` and `dy` negated.
-Once we have the stream edges, we can check if the sizes of the stream edges are consistent
-between sends and receives.
 
 ## *Parametric* Happens-Before Graph
 
@@ -130,41 +142,44 @@ The meaning of the edge `S1, (i1, j1) -> S2, (i2, j2)` with predicate `P1` is th
 if the predicate `P1` is true for some `i1`, `j1` in the compute block of `S1`, then
 `S1` must complete at PE `(i1, j1)` before `S2` can start at PE `(i2, j2)`.
 
-For example, `S1, (i, j)`, `S1, (i-1, 0)`, and `S2, (1, 0)` could be vertices in the graph.
-Then, `S1, (i, j) -> S2, (i+1, j)` could be an edge in the graph,
-and it might have the predicate `i < I-1` where `I` is the size of the PE grid in the `i` dimension.
-Another edge could be `S1, (i, j) -> S2, (i, j)` with the predicate `i == I-1`.
 
-We can construct the parametric happens-before graph for each phase with the following steps,
-which follow the same rules as the formal happens-before graph.
-Throughout, if a vertex or edge already exists, we do not add it again.
+???+ example "Example: Parametric Happens-Before"
+    For example, `S1, (i, j)`, `S1, (i-1, 0)`, and `S2, (1, 0)` could be vertices in the graph.
+    Then, `S1, (i, j) -> S2, (i+1, j)` could be an edge in the graph,
+    and it might have the predicate `i < I-1` where `I` is the size of the PE grid in the `i` dimension.
+    Another edge could be `S1, (i, j) -> S2, (i, j)` with the predicate `i == I-1`.
 
-1. For each pair of statements `S1`, `S2` in the same compute block for which 
-`S1 --> S2` in [local order](../async#constructing-the-local-order), add:
+!!! info "Algorithm: Constructing the Parametric Happens-Before Graph"
+    We can construct the parametric happens-before graph for each phase with the following steps,
+    which follow the same rules as the formal happens-before graph.
+    Throughout, if a vertex or edge already exists, we do not add it again.
+    
+    1. For each pair of statements `S1`, `S2` in the same compute block for which 
+    `S1 --> S2` in [local order](../async#constructing-the-local-order), add:
+    
+        - the vertices `S1, (i, j)` and `S2, (i, j)` to the graph.
+        - the edge `S1, (i, j) -> S2, (i, j)` with the predicate `true`.
 
-    - the vertices `S1, (i, j)` and `S2, (i, j)` to the graph.
-    - the edge `S1, (i, j) -> S2, (i, j)` with the predicate `true`.
+    2. For each parametric stream edge `(S1, (i, j)) -> (S2, (i+dx, j+dy))` predicated by `P1`:
 
-2. For each parametric stream edge `(S1, (i, j)) -> (S2, (i+dx, j+dy))` predicated by `P1`:
+        - Add the vertices `S1, (i, j)` and `S2, (i+dx, j+dy)` to the graph.
+        - Add the edge `S1, (i, j) -> S2, (i+dx, j+dy)` with the predicate `P1`.
+    
+    3. For each parametric stream edge `S3, (i, j) -> S4, (i+dx, j+dy)` predicated by `P1`:
+    
+        - Consider all vertices `S1, (i, j)` in the graph for which `S1, (i, j) -> S3, (i, j)` with predicate `P2`
+        and all vertices `S2, (i+dx, j+dy)` for which `S4 -> S2`.
+        - Add an edge `S1, (i, j) -> S2, (i+dx, j+dy)` with the predicate `P1 && P2`.
 
-    - Add the vertices `S1, (i, j)` and `S2, (i+dx, j+dy)` to the graph.
-    - Add the edge `S1, (i, j) -> S2, (i+dx, j+dy)` with the predicate `P1`.
+    4. Apply transitivity until convergence:
 
-3. For each parametric stream edge `S3, (i, j) -> S4, (i+dx, j+dy)` predicated by `P1`:
+        - If there is an edge from `S1, (i, j)` to `S2, (i+dx, j+dy)` with predicate `P1`
+        - and an edge from `S2, (i+dx, j+dy)` to `S3, (i+dx', j+dy')` with predicate `P2`,
+        - then add an edge from `S1, (i, j)` to `S3, (i+dx', j+dy')` with predicate `P1 && P2`.
 
-    - Consider all vertices `S1, (i, j)` in the graph for which `S1, (i, j) -> S3, (i, j)` with predicate `P2`
-   and all vertices `S2, (i+dx, j+dy)` for which `S4 -> S2`.
-    - Add an edge `S1, (i, j) -> S2, (i+dx, j+dy)` with the predicate `P1 && P2`.
-
-4. Apply transitivity until convergence:
-
-    - If there is an edge from `S1, (i, j)` to `S2, (i+dx, j+dy)` with predicate `P1`
-    - and an edge from `S2, (i+dx, j+dy)` to `S3, (i+dx', j+dy')` with predicate `P2`,
-    - then add an edge from `S1, (i, j)` to `S3, (i+dx', j+dy')` with predicate `P1 && P2`.
-
-Whenever creating a new predicate from two predicates, we simplify the predicate
-as much as possible. The resulting predicate remains a conjunction of range constraints
-and congruence constraints.
+    Whenever creating a new predicate from two predicates, we simplify the predicate
+    as much as possible. The resulting predicate remains a conjunction of range constraints
+    and congruence constraints.
 
 [TODO: Show that there is a unique canonical representation for P1 && P2]
 

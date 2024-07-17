@@ -226,7 +226,7 @@ _**Note**: This representation allows us to both handle implicitly padded domain
 }
 ```
 
-A stencil-statement-block is a block that contains one or more spst.statements and spst.ifs.
+A stencil-statement-block is a block that contains one or more `spst.statement`s and `spst.if`s.
 The execution semantics is equivalent to executing one statement after the other.
 
 Note that the extent types, interval types, and domain type `D` must be compatible.
@@ -235,7 +235,7 @@ That is, any extent access plus an interval must not go beyond the bounds of the
 The input argument's extent types must be super-types of the consuming statements.
 Similarly for the extent types of intermediate fields.
 
-Every stentil-statement block must be terminated with a spst.return operation.
+Every stencil-statement block must be terminated with a spst.return operation.
 
 ### spst.materialize
 

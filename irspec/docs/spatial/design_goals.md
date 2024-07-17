@@ -1,4 +1,4 @@
-## Design Goals
+# Design Goals
 
 - Models processing elements (PEs)
   - Represents coordinates of PEs
