@@ -109,18 +109,18 @@ and stream edges.
 !!! abstract "Definition: Happens-Before Relation"
     We have that `S1, (i1, j1) -> S2, (i2, j2)` if *any* of the following hold:
 
-    1. *Local Order*: `S1 --> S2` are in local order.
-    2. *Receive completion implies send completion*:
+    1. **Local Order**: `S1 --> S2` are in local order.
+    2. **Receive completion implies send completion**:
        `S1` is a `send` statement, and `S2` is the `await` statement of the corresponding `receive` 
        forming the stream edge from `(S1, (i1, j1))` to `(S2, (i2, j2))`.
     
-    3. *Propagation of happens-before through stream edges*: 
+    3. **Propagation through stream edges**: 
        There exists a stream edge from some `S3, (i1, j1)` to `S4, (i2, j2)` for which:
     
         - `S1, (i1, j1) -> S3, (i1, j1)` and 
         - `S2` follows `S4` on all execution paths.
     
-    4. *Transitivity*: There is a `S3, (i3, j3)` where `S1, (i1, j1) -> S3, (i3, j3)` and `S3, (i3, j3) -> S2, (i2, j2)`.
+    4. **Transitivity**: There is a `S3, (i3, j3)` where `S1, (i1, j1) -> S3, (i3, j3)` and `S3, (i3, j3) -> S2, (i2, j2)`.
 
 Note that we handle phases by implicitly adding `await` statements for all outstanding 
 completions at the end of each `compute` block.
