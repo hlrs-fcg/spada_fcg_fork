@@ -212,8 +212,10 @@ The subgrid of the `place` block is given by the PEs that lie in the `subgrid_ex
 An array may be placed using multiple `place` blocks.
 However, each `field_name` may appear at most once for any given PE over all `place` blocks.
 
-!!! danger "Uniqueness of Field Names"
+!!! danger "Error: Uniqueness of Field Names"
     Each field name must be unique within a `place` block.
+
+    *Failure to provide unique field names raises a syntax error.*
 
 ## Dataflow block
 
@@ -267,8 +269,10 @@ a stream for receiving from the PE at the relative position `(i-dx, j-dy)` at th
     The stream declaration does not imply that any data is ever sent over the stream.
     It merely declares the existence of a virtual communication stream.
 
-!!! danger "Uniqueness of Stream Names"
+!!! danger "Error: Uniqueness of Stream Names"
     Each stream name must be unique within a `dataflow` block.
+
+    *Failure to provide unique stream names raises a syntax error.*
 
 ### Routing Declarations
 
@@ -411,15 +415,15 @@ The completion merely indicates that the data in `local_array` may be safely ove
 without affecting the result of the computation.
 
 
-!!! danger "Data Races"
+!!! danger "Error: Data Races"
     Performing multiple sends to the same stream concurrently is considered a data race on the stream.
     You must synchronize the sends using completions.
     Two sends in the same `compute` block are concurrent if they are not ordered by [`await`](#await-completions-with-await).
 
 As a consequence, within each `compute` block, correctly synchronized `send`s **to the same stream** 
-always execute in [local program order](../asnyc/#local-order).
+always execute in [local order](../async#local-order).
 
-??? Example "Sends through the same stream"
+??? Example "Example: Sends through the same stream"
     For example, the following code correctly synchronizes two sends to the same stream:
     ```rust
     // Send the first half of the array
@@ -446,11 +450,11 @@ See the [stream edges](../async/#stream-edges) for more details.
 Note that a `receive` operation does not imply that any data is actually received,
 it merely declares the existence of a stream edge.
 
-!!! danger "Deadlocks"
+!!! danger "Error: Deadlocks"
     Failure to construct proper stream edges may result in a *deadlock*. The compiler
     will check these constraints and report potential deadlocks on a best-effort basis.
 
-!!! danger "Dataraces"
+!!! danger "Error: Dataraces"
     Two receives in the same `compute` block are considered concurrent if they are not ordered by `await`.
     Receiving from the same stream multiple times concurrently is considered a data race on the stream.
 
@@ -497,17 +501,24 @@ The `completion_name` is a completion handle that may be used to wait for the co
 Note that the completion is triggered when the data has been received, not when it is sent.
 After the completion triggers, the stream may be used for other sends or receives.
 
-!!! danger "Nested Asynchronous Statements"
+!!! danger "Error: Nested Asynchronous Statements"
     Every asynchronous statement contained in a `foreach` loop must be 
     [awaited](#await-completions-with-await) inside the loop.
     
-    *Failure to await outstanding completions in the loop results in a compilation error.*
+    *Failure to await outstanding completions in the loop raises a compilation error.*
 
-!!! danger "Deadlocks"
+!!! danger "Error: Deadlocks"
     The sizes sent and received must match: Each `foreach` loop iterating over a stream that specifies the number of elements to receive,
     must match the number of elements sent over the corresponding [`send`](#streaming-data-with-send) statement.
     
-    *Failure to correctly match the sizes sent and received may result in a deadlock.*
+    *Failure to correctly match the sizes sent and received may result in a deadlock and raises a compilation error.*
+
+!!! danger "Error: Nested Send & Receives"
+    Every `send` nested in a `foreach` loop must be associated with exactly one `receive` nested in a `foreach`
+    or `for` loop in each of the receiving `compute` blocks.
+
+    *Failure to uniquely match nested `send`s and `receives` results
+    in incorrect stream edges and raises a compilation error.*
 
 ### Processing arrays asynchronously with `map`
 
@@ -605,11 +616,19 @@ A `for` loop does not return completions, it executes sequentially and in-order.
     }
     ```
 
-!!! danger "Nested Asynchronous Statements"
+!!! danger "Error: Nested Asynchronous Statements"
     Every asynchronous statement contained in a `for` loop must be 
     [awaited](#await-completions-with-await) inside the loop.
 
-    *Failure to await outstanding completions in the loop results in a compilation error.*
+    *Failure to await outstanding completions in the loop raises a compilation error.*
+
+!!! danger "Error: Nested Send & Receives"
+    Every `send` nested in a `for` loop must be associated with exactly one `receive` nested in a `foreach`
+    or `for` loop in each of the receiving `compute` blocks.
+
+    *Failure to uniquely match nested `send`s and `receives` results
+    in incorrect stream edges and raises a compilation error.*
+
 
 ### Computing asynchronously with `async`
 
