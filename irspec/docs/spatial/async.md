@@ -22,11 +22,11 @@ In particular:
    - assignments to fields are blocking.
 
 !!! abstract "Definition: Local Order"
-    We say `S2` follows `S1` in local order and write `S1 --> S2` if
-    `S1` and `S2` are in the same compute block, `S2` follows `S1` in all execution paths, and one of the following hold:
+    We say $S_2$ follows $S_1$ in local order and write $S1 \leadsto S_2$ if
+    $S_1$ and $S_2$ are in the same compute block, $S_2$ follows $S_1$ in all execution paths, and one of the following hold:
     
-    - `S1` is a blocking statement.
-    - `S1` is a non-blocking statement with completion `c` and there is a statement `await c` between all execution paths from `S1` to `S2`.
+    - $S_1$ is a blocking statement.
+    - $S_1$ is a non-blocking statement with completion `c` and there is a statement `await c` between all execution paths from $S_1$ to $S_2$.
 
 Note that local order does not model loop-carried dependencies,
 and instead considers the program order.
@@ -36,40 +36,16 @@ and instead considers the program order.
     // S1
     a[0] = 0;
     for i in [0:10] {
-        // S2
+        // S_2
         a[i] = b[i];
-        // S3
+        // S_3
         c[i] = a[i] + b[i];
     }
-    // S4
+    // S_4
     c[0] = a[0];
     ```
-    We have `S1 --> S2 --> S3 --> S4` in local order.
-    We do not have `S2` following `S3` in local order because in the last iteration of the loop, `S2` is not executed after `S3`.
-
-## Strict Local Order
-
-The *strict local order* strengthens the local order.
-
-!!! abstract "Definition: Strict Local Order"
-    We say `S2` follows `S1` in strict local order and write `S1 --|> S2` if `S1 --> S2` 
-    and additionally, `S1` does not follow `S2` in any execution path.
-
-??? example "Example: For-Loops and Strict Local Order"
-    This differs from the local order in the case of loops. For example:
-    ```rust
-    // S1
-    a[0] = 0;
-    for i in [0:10] {
-        // S2
-        a[i] = b[i];
-        // S3
-        c[i] = a[i] + 1;
-    }
-    ```
-    We have `S1 --|> S2` and `S1 --|> S3`.
-    However, `S3` does not follow `S2` in strict local 
-    order because it is in a loop, so sometimes `S2` follows `S3`.
+    We have $S_1 \leadsto S_2 \leadsto S_3 \leadsto S_4` in local order.
+    We do not have $S_2$ following $S_3$ in local order because in the last iteration of the loop, $S_2$ is not executed after $S_3$.
 
 ## Stream edges
 
@@ -77,8 +53,8 @@ The *strict local order* strengthens the local order.
 and affect the ordering of statements in the `compute` block.
 
 !!! abstract "Definition: Stream Edge"
-    A stream edge goes from a statement-PE pair `S1, (i1, j1)` to a statement-PE pair `S2, (i2, j2)`
-    if the data sent from `S1` at PE `(i1, j1)` is received by `S2` at PE `(i2, j2)`.
+    A stream edge goes from a statement-PE pair $S_1, (i_1, j_1)$ to a statement-PE pair $S_2, (i_2, j_2)$
+    if the data sent from $S_1$ at PE $(i_1, j_1)$ is received by $S_2$ at PE $(i_2, j_2)$.
 
 Our definition of `send` requires that the order in which statements `send`s access a given stream
 is in local order. Similarly, the order in which statements `receive` from a stream
@@ -88,12 +64,12 @@ Hence, we can always match `send`s and `receive`s in local order to uniquely for
 ## The Happens-Before Relation
 
 The asynchronous semantics can be defined in terms of a *happens-before* relation. 
-For each statement `S` in a `compute` block and each PE `(i, j)` in the subgrid,
-we define a *happens-before* relation `->` between statement-PE pairs.
-Intuitively, `S1, (i1, j1) -> S2, (i2, j2)` means that the next instance of `S1` must complete
-at PE `(i1, j1)` before the next instance of `S2` starts at PE `(i2, j2)`.
-If `S1, (i1, j1) -> S2, (i2, j2)` holds for all `(i1, j1)` and `(i2, j2)` in the subgrid, 
-we write `S1 -> S2` for short. This means that the statements are ordered by happens-before
+For each statement $S$ in a `compute` block and each PE $(i, j)$ in the subgrid,
+we define a *happens-before* relation $\rightarrow$ between statement-PE pairs.
+Intuitively, $S_1, (i_1, j_1) \rightarrow S_2, (i_2, j_2)$ means that the next instance of $S_1$ must complete
+at PE $(i_1, j_1$) before the next instance of $S_2$ starts at PE $(i_2, j_2)$.
+If $S_1, (i_1, j_1) \rightarrow S_2, (i_2, j_2)$ holds for all $(i_1, j_1)$ and $(i_2, j_2)$ in the subgrid, 
+we write $S_1 \rightarrow S_2$ for short. This means that the statements are ordered by happens-before
 for all PEs in the subgrid. 
 
 !!! note
@@ -107,20 +83,20 @@ We define the relation in terms of the local order, `await` statements in the co
 and stream edges. 
 
 !!! abstract "Definition: Happens-Before Relation"
-    We have that `S1, (i1, j1) -> S2, (i2, j2)` if *any* of the following hold:
+    We have that $S_1, (i_1, j_1) \rightarrow S_2, (i_2, j_2)$ if *any* of the following hold:
 
-    1. **Local Order**: `S1 --> S2` are in local order.
+    1. **Local Order**: $S_1 \rightarrow S_2$ are in local order.
     2. **Receive completion implies send completion**:
-       `S1` is a `send` statement, and `S2` is the `await` statement of the corresponding `receive` 
-       forming the stream edge from `(S1, (i1, j1))` to `(S2, (i2, j2))`.
+       $S_1$ is a `send` statement, and $S_2$ is the `await` statement of the corresponding `receive` 
+       forming the stream edge from $(S_1, (i_1, j_1))$ to $(S_2, (i_2, j_2))$.
     
     3. **Propagation through stream edges**: 
-       There exists a stream edge from some `S3, (i1, j1)` to `S4, (i2, j2)` for which:
+       There exists a stream edge from some $S_3, (i_1, j_1)$ to $S_4, (i_2, j_2)$ for which:
     
-        - `S1, (i1, j1) -> S3, (i1, j1)` and 
-        - `S2` follows `S4` on all execution paths.
+        - $S_1, (i_1, j_1) \rightarrow S_3, (i_1, j_1)$ and 
+        - $S_2$ follows $S_4$ on all execution paths.
     
-    4. **Transitivity**: There is a `S3, (i3, j3)` where `S1, (i1, j1) -> S3, (i3, j3)` and `S3, (i3, j3) -> S2, (i2, j2)`.
+    4. **Transitivity**: There is a $S_3, (i_3, j_3)$ where $S_1, (i_1, j_1) \rightarrow S_3, (i_3, j_3)$ and $S_3, (i_3, j_3) \rightarrow S_2, (i_2, j_2)$.
 
 Note that we handle phases by implicitly adding `await` statements for all outstanding 
 completions at the end of each `compute` block.
@@ -136,11 +112,11 @@ and how to resolve `auto` routing declarations.
 
 Two statements are concurrent if they are not ordered by happens-before:
 !!! abstract "Definition: Concurrent Statements"
-    Two statements `S1` and `S2` are considered **concurrent** if there exist PEs `(i, j)` and `(i', j')`
-    in the subgrids of `S1` and `S2` respectively such that
-    neither `S1, (i, j) -> S2, (i', j')` nor `S2, (i', j') -> S1, (i, j)`.
+    Two statements $S_1$ and $S_2$ are considered **concurrent** if there exist PEs $(i, j)$ and $(i', j')$
+    in the subgrids of $S_1$ and $S_2$ respectively such that
+    neither $S_1, (i, j) \rightarrow S_2, (i', j')$ nor $S_2, (i', j') \rightarrow S_1, (i, j)$.
 
-    If `(i, j) = (i', j')`, we say that the statements are *concurrent on the same PE*.
+    If $(i, j) = (i', j')$, we say that the statements are *concurrent on the same PE*.
 
 !!! abstract "Definition: Data Race"
     Writing to an array in a statement while concurrently reading from it 
@@ -206,24 +182,24 @@ of the interleaving of concurrent operations.
       }
     
       compute i, j in [0, 0] {
-         // S1
+         // S_1
          completion c1 = foreach x, k in [receive(eastwards)] {
             a[k] = 2 * x
          }
-         // S2
+         // S_2
          await c1;
-         // S3
+         // S_3
          completion c2 = send(a, westwards);
       }
     
       compute i, j in [1, 0] {
-         // S4
+         // S_4
          completion c3 = send(a, eastwards);
-         // S5 (data race)
+         // S_5 (data race)
          a[0] = 0;
-         // S6
+         // S_6
          completion c4 = foreach x, k in [receive(westwards)] {
-            // S7 (correctly synchronized)
+            // S_7 (correctly synchronized)
             a[k] = x;
          }
       }
@@ -231,14 +207,14 @@ of the interleaving of concurrent operations.
     ```
     Analysis of the Ping-Pong example:
 
-    - We have that `S4 -> S2` because of the stream edge from `S4` to `S1` and *receive completion implies send completion*.
-    - We have `S2 --> S3` in local order.  
-    - We have that `S2 -> S7` because there is a stream edge from `S3` to `S6`
-      and all execution paths to `S7` go through `S6` (*Propagating happens-before through stream edges*).
-    - Hence, we have `S4 -> S7` by transitivity.
-      Hence, the statement `S7` is correctly synchronized with `S4`.
+    - We have that $S_4 \rightarrow S_2$ because of the stream edge from $S_4$ to $S_1$ and *receive completion implies send completion*.
+    - We have $S_2 \leadsto S_3$ in local order.  
+    - We have that $S_2 \rightarrow S_7$ because there is a stream edge from $S_3$ to $S_6$
+      and all execution paths to $S_7$ go through $S_6$ (*Propagating happens-before through stream edges*).
+    - Hence, we have $S_4 \rightarrow S_7$ by transitivity.
+      Hence, the statement $S_7$ is correctly synchronized with $S_4$.
     
-    However, the access at `S5` is concurrent with the `send` at `S4`.
+    However, the access at $S_5$ is concurrent with the `send` at $S_4$.
     This is a data race.
 
 
@@ -265,48 +241,48 @@ of the interleaving of concurrent operations.
     compute i, j in [0, 0] {
       // Receive twice:
       // The receives must be synchronized
-      // S1
+      // S_1
       await foreach x, k in [0:K, receive(eastwards)] {
           a[k] = x + 1;
       }
-      // S2
+      // S_2
       await foreach x, k in [0:K, receive(eastwards)] {
           a[k] = a[k] + x;
       }
     }
     
     compute i, j in [1:4, 0] {
-       // S3
+       // S_3
        // Receive (concurrent with send)
        completion c2 = foreach x, k in [0:K, receive(eastwards)] {
-          // S4
+          // S_4
           a[k] = x + 1;
        }
-       // S5
+       // S_5
        await send(a, eastwards);
        
-       // S6
+       // S_6
        completion c3 = send(b, eastwards);
        
-       // S7
+       // S_7
        await c2;
        
-       // S8
+       // S_8
        // Receive (concurrent with send)
        completion c4 = foreach x, k in [0:K, receive(eastwards)] {
-          // S9
+          // S_9
           a[k] = a[k] + x;
        }
     
-       // S10
+       // S_10
        await c3;
        await c4;
     }
     ```
     
-    The sends are ordered by happens-before as in the program `S5 -> S6`.
-    Similarly, the receives are ordered by happens-before as in the program `S1 --> S2` and `S3 --> S8`.
-    However, `S3` and `S5` are concurrent, as are `S3` and `S6`, as are `S6` and `S8`.
+    The sends are ordered by happens-before as in the program $S_5 \rightarrow S_6$.
+    Similarly, the receives are ordered by happens-before as in the program $S_1 \leadsto S_2$ and $S_3 \leadsto S_8$.
+    However, $S_3$ and $S_5$ are concurrent, as are $S_3$ and $S_6$, as are $S_6$ and $S_8$.
 
 
 ??? example "Example: Ping-Pong-Ping"
@@ -334,47 +310,47 @@ of the interleaving of concurrent operations.
       }
     
       compute i, j in [0, 0] {
-         // S1
+         // S_1
          completion c1 = foreach x, k in [0: K, receive(eastwards)] {
             a[k] = x;
          }
-         // S2
+         // S_2
          await c1;
-         // S3
+         // S_3
          completion c2 = send(a, westwards);
     
          // Another ping
-         // S4
+         // S_4
          await foreach x, k in [0: K, receive(eastwards)] {
             a[k] = x;
          }
       }
     
       compute i, j in [1, 0] {
-         // S5
+         // S_5
          completion c3 = send(a, eastwards);
-         // S6
+         // S_6
          completion c4 = foreach x, k in [0: K, receive(westwards)] {
             // S (correctly synchronized)
             a[k] = x;
          }
-         // S7
+         // S_7
          await c4;
          
          // Another ping
-         // S8 (implicitly synchronized through the ping-pong)
+         // S_8 (implicitly synchronized through the ping-pong)
          completion c5 = send(a, eastwards);
       }
     }
     ```
     In this example, we can argue that:
 
-    - `S5 -> S2` because of the stream edge from S5 to S1 and *receive completion implies send completion*.
-    - `S2 --> S3` because S2 is an `await`, which is a blocking statement.
-    - `S3 -> S7` because of the stream edge from S3 to S6 and *receive completion implies send completion*.
-    - `S7 --> S8` because S7 is an `await`, which is a blocking statement.
+    - $S_5 \rightarrow S_2$ because of the stream edge from $S_5$ to $S_1$ and *receive completion implies send completion*.
+    - $S_2 \leadsto S_3$ because $S_2$ is an `await`, which is a blocking statement.
+    - $S_3 \rightarrow S_7$ because of the stream edge from $S_3$ to $S_6$ and *receive completion implies send completion*.
+    - $S_7 \leadsto S_8$ because $S_7$ is an `await`, which is a blocking statement.
 
-    Hence, by transitivity, we have `S5 -> S8`.
+    Hence, by transitivity, we have $S_5 \rightarrow S_8$.
     
     Therefore, the sends are correctly synchronized, even though there
     is no explicit `await` on the first send completion.
@@ -404,41 +380,41 @@ of the interleaving of concurrent operations.
     }
     
     compute i, j in [0, 0] {
-        // S1
+        // S_1
         await foreach x, k in [0:K, receive(eastwards)] {
-            // S2
+            // S_2
             a[k] = a[k] + x;
         }
     }
     
     compute i, j in [1:K-1, 0] {
-        // S3
+        // S_3
         await foreach x, k in [0:K, receive(eastwards)] {
             a[k] = a[k] + x;
         }
-        // S4
+        // S_4
         completion c1 = send(a, eastwards);
     }
     
     compute i, j in [K, 0] {
-        // S5
+        // S_5
         completion c1 = send(a, eastwards);
     }
     ```
     
     Analysis of the Happens-Before Relations:
     
-    - `S4, (1, 0) -> S1, (0, 0)` (by stream edge and *receive completion implies send completion*)
-    - `S4, (i, 0) -> S3, (i-1, 0)` for `i` in `[2:K-1]` (by stream edge and *receive completion implies send completion*)
-    - `S5, (K, 0) -> S3, (K-1, 0)` (by stream edge and *receive completion implies send completion*)
-    - `S3, (i, 0) --> S4, (i, 0)` for `i` in `[1:K-1]`
+    - $S_4, (1, 0) \rightarrow S_1, (0, 0)$ (by stream edge and *receive completion implies send completion*)
+    - $S_4, (i, 0) \rightarrow S_3, (i-1, 0)$ for `i` in `[2:K-1]` (by stream edge and *receive completion implies send completion*)
+    - $S_5, (K, 0) \rightarrow S_3, (K-1, 0)$ (by stream edge and *receive completion implies send completion*)
+    - $S_3, (i, 0) \leadsto S_4, (i, 0)$ for `i` in `[1:K-1]`
     
     Hence, we can conclude by transitivity:
     
-    - `S4, (i, 0) -> S4 (i-j, 0)` for `i` in `[2:K-1]`, `j` in `[1:i-1]`
-    - `S5, (K, 0) -> S4, (i, 0)` for `i` in `[1:K-1]`
-    - `S4, (i, 0) -> S1, (0, 0)` for `i` in `[1:K]`
-    - `S5, (K, 0) -> S1, (0, 0)`
+    - $S_4, (i, 0) \rightarrow S_4 (i-j, 0)$ for `i` in `[2:K-1]`, `j` in `[1:i-1]`
+    - $S_5, (K, 0) \rightarrow S_4, (i, 0)$ for `i` in `[1:K-1]`
+    - $S_4, (i, 0) \rightarrow S_1, (0, 0)$ for `i` in `[1:K]`
+    - $S_5, (K, 0) \rightarrow S_1, (0, 0)$
     
     The computation is correctly synchronized, and we
     have fully characterized all happens-before relations.
