@@ -7,181 +7,200 @@ The advantage of these representations is that there size is much smaller
 than the size of the program grid, and constructing them is polynomial time in 
 the size of the program.
 
-## Constructing the Local Order
+## Constructing (Strict) Local Order
+
+### Local Order
 
 The program can be extracted from the control [flow graph](https://en.wikipedia.org/wiki/Control-flow_graph)
-of basic blocks.
+(CFG) of basic blocks.
 Then, compute the [Dominators](https://en.wikipedia.org/wiki/Dominator_(graph_theory))
 
-If `S1` and `S2` are in the same basic block, then `S1 --> S2` if
+If $S_1$ and $S_2$ are in the same basic block, then $S_1 \leadsto S_2$ if
 
-- `S1` is blocking and `S2` follows `S1` in the basic block.
-- `S1` is non-blocking and there is an `await` on the completion of `S1` between `S1` and `S2`.
+- $S_1$ is blocking and $S_2$ follows $S_1$ in the basic block.
+- $S_1$ is non-blocking and there is an `await` on the completion of $S_1$ between $S_1$ and $S_2$.
 
-Otherwise, `S1 --> S2` if:
+Otherwise, $S_1 \leadsto S_2$ if:
 
-- `S1` is blocking and `S2` post-dominates `S1`.
-- The set of dominators of `S2` contains an `await` on the completion of `S1`.
+- $S_1$ is blocking and $S_2$ post-dominates $S_1$.
+- The set of dominators of $S_2$ contains an `await` on the completion of $S_1$.
 
-### Analysis
+#### Analysis
 
-
-Explicitly constructing the local order costs `O(n^2)` time, where `n` is the number of statements in a `compute` block.
-However, we can represent the local order implicitly by storing the dominators and post-dominators of each statement.
+Explicitly constructing the local order costs $O(n^2)$ time, where $n$ is the number of statements in a `compute` block.
+However, we can represent the local order implicitly by storing the post-dominator-tree.
+Then, we can check if $S_1 \leadsto S_2$ in $O(d)$ time, where $d$ is the diameter of the CFG
+by a search in the post-dominator tree if they are in different blocks and comparing
+their indices if they are in the same block.
 
 !!! note
     Efficient and practical algorithms can compute 
-    [dominators in near-linear time](https://www.researchgate.net/publication/220639563_Finding_Dominators_in_Practice).
+    [dominator trees in near-linear time](https://www.researchgate.net/publication/220639563_Finding_Dominators_in_Practice).
+
+
+### Strict Local Order
+
+For block $B_2$, determine the set of reachable blocks. 
+For each reachable $B_1$ exclude all
+$S_1 \leadsto S_2$ from the strict local order for all statements $S_1$ in $B_1$ and $S_2$ in $B_2$.
+
+#### Analysis
+
+The implementation of the reachability checks
+takes $O(b^2 s^2)$ time, where $b$ is the number of basic blocks
+in the control flow graph and $s$ is the largest number of statements in a block.
 
 ## *Parametric* Stream Edges
 
 The parametric stream edges are a compact representation of the stream edges.
-Each stream edge is represented as `(S1, (i, j)) , (S2, (i+dx, j+dy))` for statements
-`S1`, `S2`, predicated by `P1`.
-Here, `i` and `j` are variables that appear in the predicate.
-The interpretation is that if the predicate `P1` is true for some `i`, `j` where
-`(i, j)` is in the compute block of `S1`, then the stream edge exists for the PE `(i, j)`.
+Each stream edge is represented as $(S_1, (i, j)) , (S_2, (i+d_x, j+d_y))$ for statements
+$S_1$, $S_2$, predicated by $P_1$.
+Here, $i$ and $j$ are variables that appear in the predicate.
+The interpretation is that if the predicate $P_1$ is true for some $i$, $j$ where
+$(i, j)$ is in the compute block of $S_1$, then the stream edge exists for the PE $(i, j)$.
 
 The first step to constructing stream edges is to determine the
 order of the `send`s and `receive`s that occur to the same stream within each
-`compute` block. This follows immediately from the local order `-->`.
+`compute` block. This follows immediately from the local order $\leadsto$.
 
 *The following assumes that `compute` blocks and `dataflow` blocks
 match N-1, that is, each compute block is specified by a single dataflow block
 from its phase and a single global dataflow block.
 We can remove this assumption by splitting the compute block into multiple blocks
-until the condition is satisfied. (TODO: How? - OR: is there a direct way?)*
+until the condition is satisfied.*
 
 Next, we consider each `compute` block in a phase.
-We rename all variables in the `compute` and `dataflow` subgrid expressions to use `i` and `j` for simplicity.
-A `compute` block is now identified with some set of PEs defined as `i, j in [I1:I2:I3, J1:J2:J3]`.
-Within this block, consider some `send` statement `S1`, which is the k-th `send` statement to its stream in the local order.
-Let `(dx, dy)` be the offset of its stream. That is, a PE `(i, j)` sends to PE `(i+dx, j+dy)`.
+We rename all variables in the `compute` and `dataflow` subgrid expressions to use $i$ and $j$ for simplicity.
+A `compute` block is now identified with some set of PEs defined as `i, j in [I_1:I_2:I_3, J_1:J_2:J_3]`.
+Within this block, consider some `send` statement $S_1$, which is the k-th `send` statement to its stream in the local order.
+Let `(d_x, d_y)` be the offset of its stream. That is, a PE $(i, j)$ sends to PE $(i+d_x, j+d_y)$.
 Note that we assume the strides are positive without loss of generality.
 
 We now construct the stream edges for this `send` statement.
-For this, we observe the following constraints on the blocks `[I4:I5:I6, J4:J5:J6]` that can receive from the stream
-when sending from PE `(i, j)`:
+For this, we observe the following constraints on the blocks $[I_4:I_5:I_6, J_4:J_5:J_6]$ that can receive from the stream
+when sending from PE $(i, j)$:
 
 Range constraints:
-- `I4 <= i + dx < I5`
-- `J4 <= j + dy < J5`
+
+- $I_4 \leq i + d_x < I_5$
+- $J_4 \leq j + d_y < J_5$
 
 Congruence constraints:
-- `i + dx = I4 (mod I6)` in case `I6 > 1`
-- `j + dy = J4 (mod J6)` in case `J6 > 1`
 
-To correctly identify the stream edges, we need to check if there exists an `(i, j)` in the current
+- $i + d_x = I_4 \mod I_6$  in case $I_6 > 1$
+- $j + d_y = J_4 \mod J_6$  in case $J_6 > 1$
+
+To correctly identify the stream edges, we need to check if there exists an $(i, j)$ in the current
 `compute` block for which all constraints are satisfied.
 
-For this, first solve the linear congruence relations for `i` and `j` (if `I6 > 1` and `J6 > 1` respectively).
+For this, first solve the linear congruence relations for $i$ and $j$ (if $I_6 > 1$ and $J_6 > 1$ respectively).
 We can efficiently characterize the set of solution (and determine if it is empty).
 
 ??? info "Algorithm: How to Solve the Congruence Relations"
-    We use that `i=I1+x*I3` and `j=J1+y*J3` for some `x` and `y`.
-    Then, we need to solve for `x` and `y` in the following equations:
-    - `x * I3 = (I4 - I1 - dx) mod I6`
-    - `y * J3 = (J4 - J1 - dy) mod J6`
+    We use that $i=I_1+ x \cdot I_3$ and $j=J_1+ y c \cdot J_3$ for some $x$ and $y$.
+    Then, we need to solve for $x$ and $y$ in the following equations:
+
+    - $x \cdot I_3 = (I_4 - I_1 - d_x) \mod I_6$
+    - $y \cdot J_3 = (J_4 - J_1 - d_y) \mod J_6$
 
     Let's focus on the first equation, as the second is symmetric.
     
-    1. Compute `gcd(I_3, I_6) = d` using the [Euclidean Algorithm](https://en.wikipedia.org/wiki/Euclidean_algorithm).
-    2. Check if `d` divides `I_4 - I_1 - dx`. If not, no solution exists (there is no stream edge).
-    3. If `d` divides `I_4 - I_1 - dx`, we can solve the equation:
+    1. Compute $\text{gcd}(I_3, I_6) = d$ using the [Euclidean Algorithm](https://en.wikipedia.org/wiki/Euclidean_algorithm).
+    2. Check if $d$ divides $I_4 - I_1 - d_x$. If not, no solution exists (there is no stream edge).
+    3. If $d$ divides $I_4 - I_1 - d_x$, we can solve the equation:
     
-        - Simplify the equation by dividing everything by `d`.
+        - Simplify the equation by dividing everything by $d$.
         - Solve the simplified equation using the
-          [Extended Euclidean Algorithm](https://en.wikipedia.org/wiki/Extended_Euclidean_algorithm) to find one solution `x_0`:
-        - The general solution is: `x = x_0 + k (I_6/d) for k = 0, 1, ... , d-1`
+          [Extended Euclidean Algorithm](https://en.wikipedia.org/wiki/Extended_Euclidean_algorithm) to find one solution $x_0$:
+        - The general solution is: $x = x_0 + l \frac{I_6}{d}$ for $l \in 0, 1, \dotsc , d-1$
 
-We filter out all solutions for which `I1 + x * I3 >= I2` as they are out of bounds of the `compute` block.
+We filter out all solutions $x$ for which $I_1 + x \cdot I_3 \geq I_2$ as they are out of bounds of the `compute` block.
 
-Now, we can apply the range constraints using the general solution of `x`
-to determine the solutions `I1 + x * I3 + dx` that are in the receiving `compute` block.
+Now, we can apply the range constraints using the general solution of $x$
+to determine the solutions $I_1 + x \cdot I_3 + d_x$ that are in the receiving `compute` block.
 
 That is, we check if 
-`I4 <= I1 + x * I3 + dx < I5` for some `x` in the general filtered solution of `x`
-and similarly for `y`.
+$I_4 \leq I_1 + x \cdot I_3 + d_x < I_5$ for some $x$ in the general filtered solution of $x$
+and similarly for $y$.
 
 If all constraints are satisfied, we have found a valid receiving block.
-We match the send statement `S1` with the k-th `receive` statement `S2` in the local order
-of the receiving block. If no such `receive` statement exists, we have a deadlock.
+We match the send statement $S_1$ with the $k$-th `receive` statement $S_2$ in the local order
+of the receiving block. If no such `receive$ statement exists, we have a deadlock.
 
-Next, we construct the predicate `P1` that describes which PEs in the sending
+Next, we construct the predicate $P_1$ that describes which PEs in the sending
 block send to the receiving block, which is given by the range and congruence constraints.
 We may simplify the range constraints, as one of the two inequalities is trivially true
-depending on if `dx` is positive or negative (and similarly for `dy`). Moreover, the congruence constraints
-may be left out if `I6 = 1` or `J6 = 1`.
+depending on if $d_x$ is positive or negative (and similarly for $d_y$). Moreover, the congruence constraints
+may be left out if $I_6 = 1$ or $J_6 = 1$.
 
-We add parametric stream edge `S1, (i, j)` to `S2, (i+dx, j+dy)` predicated by `P1`
-to the list of stream edges. 
+We add parametric stream edge $S_1, (i, j)$ to $S_2, (i+d_x, j+d_y)$ predicated by $P_1$
+to the list of stream edges.
 
-
-!!! info "Algorithm: Checking for Correct Stream Edges"
+!!! info "Note: Checking for Correct Stream Edges"
     The algorithm also checks for certain deadlocks by ensuring that all `send`s are matched with a `receive`.
     To check if all `receive`s are matched with a `send`, we can use a similar algorithm
-    with the roles of `send` and `receive` reversed and using `dx` and `dy` negated.
+    with the roles of `send` and `receive` reversed and using $d_x$ and $d_y$ negated.
     Once we have the stream edges, we can check if the sizes of the stream edges are consistent
     between sends and receives.
 
 ### Analysis
 
-The algorithm takes `O(n^2)` time overall, where `n` is the number of `compute` blocks.
+The algorithm takes $O(n^2)$ time overall, where $n$ is the number of `compute` blocks.
 One can speed up the algorithm by filtering out all `compute` blocks that are not in the range of the stream
 before solving the congruence relations. This can be done efficiently using 2D box intersection tests.
 
 ## *Parametric* Happens-Before Graph
 
 We now define a parametric happens-before graph that describes the happens-before relations compactly.
-The vertices in the graph are pairs of statements and pairs of symbolic PE coordinates in the variables `i` and `j`.
-The symbolic expressions are restricted to be either constants or of the form `i + c`/`j+c` for some constant `c`.
-The edges in the graph are associated with a predicate over `i` and `j`.
+The vertices in the graph are pairs of statements and pairs of symbolic PE coordinates in the variables $i$ and $j$.
+The symbolic expressions are restricted to be either constants or of the form $i + c$ or $j+c$ for some constant $c$.
+The edges in the graph are associated with a predicate over $i$ and $j$.
 This predicate may also involve parameters of the kernel and constants.
 We allow for range constraints and congruence constraints as in the parametric stream edges.
-The meaning of the edge `S1, (i1, j1) -> S2, (i2, j2)` with predicate `P1` is that
-if the predicate `P1` is true for some `i1`, `j1` in the compute block of `S1`, then
-`S1` must complete at PE `(i1, j1)` before `S2` can start at PE `(i2, j2)`.
-
+The meaning of the edge from $S_1, (I_1, J_1)$ to $S_2, (I_1+d_x, J_1+dy)$ with predicate $P_1$ is that
+if the predicate $P_1$ is true for some $i_1$, $j_1$ in the compute block of $S_1$, 
+then $S_1, (i_1, j_1) \rightarrow S_2, (i_1+d_x, j_1+d_y)$. 
+If such an edge exists, we write $S_1, (I_1, J_1) \rightarrow S_2, (I_1+d_x, J_1+dy) \ | \ P_1$.
 
 ???+ example "Example: Parametric Happens-Before"
-    For example, `S1, (i, j)`, `S1, (i-1, 0)`, and `S2, (1, 0)` could be vertices in the graph.
-    Then, `S1, (i, j) -> S2, (i+1, j)` could be an edge in the graph,
-    and it might have the predicate `i < I-1` where `I` is the size of the PE grid in the `i` dimension.
-    Another edge could be `S1, (i, j) -> S2, (i, j)` with the predicate `i == I-1`.
+    For example, $S_1, (i, j)$, $S_1, (i-1, 0)$, and $S_2, (1, 0)$ could be vertices in the graph.
+    Then, $((S_1, (i, j)) , (S_2, (i+1, j)))$ could be an edge in the graph,
+    and it might have the predicate $i < I-1$ where $i$ is the size of the PE grid in the $i$ dimension.
+    Another edge could be $S_1, (i, j) \rightarrow S_2, (i, j) \ | \ i = I-1$.
 
 !!! info "Algorithm: Constructing the Parametric Happens-Before Graph"
     We can construct the parametric happens-before graph for each phase with the following steps,
     which follow the same rules as the formal happens-before graph.
     Throughout, if a vertex or edge already exists, we do not add it again.
     
-    1. For each pair of statements `S1`, `S2` in the same compute block for which 
-    `S1 --> S2` in [local order](../async#constructing-the-local-order), add:
+    1. For each pair of statements $S_1$, $S_2$ in the same compute block for which 
+    $S_1 \leadsto S_2$ in [local order](../async#constructing-the-local-order), add:
     
-        - the vertices `S1, (i, j)` and `S2, (i, j)` to the graph.
-        - the edge `S1, (i, j) -> S2, (i, j)` with the predicate `true`.
+        - the vertices $S_1, (i, j)$ and $S_2, (i, j)$ to the graph.
+        - the edge $S_1, (i, j) \rightarrow S_2, (i, j)) \ | \ \emptyset$ (true).
 
-    2. For each parametric stream edge `(S1, (i, j)) -> (S2, (i+dx, j+dy))` predicated by `P1`:
+    2. For each parametric stream edge $S_1, (i, j) \rightarrow S_2, (i+d_x, j+d_y) \ | \ P_1$:
 
-        - Add the vertices `S1, (i, j)` and `S2, (i+dx, j+dy)` to the graph.
-        - Add the edge `S1, (i, j) -> S2, (i+dx, j+dy)` with the predicate `P1`.
+        - Add the vertices $S_1, (i, j)$ and $S_2, (i+d_x, j+d_y)$ to the graph.
+        - Add the edge $S_1, (i, j) , S_2, (i+d_x, j+d_y)$ with the predicate $P_1$.
     
-    3. For each parametric stream edge `S3, (i, j) -> S4, (i+dx, j+dy)` predicated by `P1`:
+    3. For each parametric stream edge $(S_3, (i, j)) , (S_4, (i+d_x, j+d_y))$ predicated by $P_1$:
     
-        - Consider all vertices `S1, (i, j)` in the graph for which `S1, (i, j) -> S3, (i, j)` with predicate `P2`
-        and all vertices `S2, (i+dx, j+dy)` for which `S4 -> S2`.
-        - Add an edge `S1, (i, j) -> S2, (i+dx, j+dy)` with the predicate `P1 && P2`.
+        - Consider all vertices $S_1, (i, j)$ in the graph for which $S_1, (i, j) \rightarrow S_3, (i, j) \ | \ P_2$
+        and all vertices $S_2, (i+d_x, j+d_y)$ for which $S_2$ follows $S_4$ in the CFG.
+        - Add an edge $S_1, (i, j) \rightarrow S_2, (i+d_x, j+d_y) \ | \ P_1 \land P_2$.
 
     4. Apply transitivity until convergence:
 
-        - If there is an edge from `S1, (i, j)` to `S2, (i+dx, j+dy)` with predicate `P1`
-        - and an edge from `S2, (i+dx, j+dy)` to `S3, (i+dx', j+dy')` with predicate `P2`,
-        - then add an edge from `S1, (i, j)` to `S3, (i+dx', j+dy')` with predicate `P1 && P2`.
+        - If there is an edge from $S_1, (i, j) \rightarrow S_2, (i+d_x, j+d_y) \ | \ P_1$ 
+        and an edge from $S_2, (i+d_x, j+d_y) \rightarrow S_3, (i+d_x', j+d_y') \ | \ P_2$,
+        - then add an edge from $S_1, (i, j) \rightarrow S_3, (i+d_x', j+d_y') \ | \ P_1 \land P_2$.
 
     Whenever creating a new predicate from two predicates, we simplify the predicate
     as much as possible. The resulting predicate remains a conjunction of range constraints
     and congruence constraints.
 
-[TODO: Show that there is a unique canonical representation for P1 && P2]
+[TODO: Show that there is a unique canonical representation for P_1 \land P_2]
 
 [TODO: Efficient implementation details]
 
@@ -202,67 +221,68 @@ We again consider a particular phase.
 The parametric routing graph of a phase is defined as follows:
 
 There is a node for each compute block in the phase.
-We rename all variables in the `compute` and `dataflow` subgrid expressions to `i` and `j` for simplicity.
+We rename all variables in the `compute` and `dataflow` subgrid expressions to $i$ and $j$ for simplicity.
 The node is identified with the `i, j in subgrid_expression` that describes the PE coordinates of the compute block
 and the two variables are bound to the PE coordinates in the compute block.
-For example, `i, j in [0:I, 0:J]` could be a node in the routing graph.
+For example, $[0:I:2, 0:J:1]$ could be a node in the routing graph.
 
 The edges of the parametric routing graph are defined as follows:
 
-For each stream `F`, go over all `send` statements `S1` in the local order.
-Let `F` have `hops = [(dx_1, dy_1), ..., (dx_h, dy_h)]`
-and let `v` be the compute block of `S1`.
+For each stream $F$, go over all `send` statements $S_1$ in the local order.
+Let $F$ have `hops` = $[(d_{x_1}, d_{y_1}), \dotsc , (d_{x_h}, d_{y_h})]$
+and let $v$ be the compute block of $S_1$.
 
 We iteratively add edges as follows, the idea is to explore an implicitly defined
 graph using DFS:
 Initialize a stack of vertex-index pairs to visit and a set of visited vertex-index pairs.
-Add the node-index pair `(v, 1)` to the stack.
+Add the node-index pair $(v, 1)$ to the stack.
 
 Until the stack is empty:
-Pop the top vertex-index pair `(u, k)` from the stack.
-Consider the current vertex `u=[I1:I2:I3, J1:J2:J3]` and the next hop `(dx_k, dy_k)` at index `k`.
-Add an edge `(u, w)` to each of the vertices `w` described hereafter,
-labeling it with `F`, `v`, and `k`.
-If `k < h` and `(w, k+1)` is not in the visited set, add `(w, k+1)` to the stack.
+Pop the top vertex-index pair $(u, k)$ from the stack.
+Consider the current vertex $u=[I_1:I_2:I_3, J_1:J_2:J_3]$ and the next hop $(d_{x_k}, d_{y_k})$ at index $k$.
+Add an edge $(u, w)$ to each of the vertices $w$ described hereafter,
+labeling it with $(F, v, k)$.
+If $k < h$ and $(w, k+1)$ is not in the visited set, add $(w, k+1)$ to the stack.
 
-**Case: The stride is `I3 == J3 == 1`:**
+**Case: The stride is $I_3 = J_3 = 1$:**
 
-- To block `[I1:I2:1, J1:J2:1]` with predicate (the cases are mutually exclusive by definition because `|dx_k|+|dy_k|==1`):
+- To block $[I_1:I_2:1, J_1:J_2:1]$ with predicate 
+(the cases are mutually exclusive by definition because $|d_{x_k}|+|d_{y_k}|=1$):
 
-    - `i + 1 < I1 - 1` if `dx_k == 1`
-    - `i - 1 > I1` if `dx_k == -1`
-    - `j + 1 < J1 - 1` if `dy_k == 1`
-    - `j - 1 > J1` if `dy_k == -1`
+    - $i + 1 < I_1 - 1$ if $d_{x_k} = 1$
+    - $i - 1 > I_1$ if $d_{x_k} = -1$
+    - $j + 1 < J_1 - 1$ if $d_{y_k} = 1$
+    - $j - 1 > J_1$ if $d_{y_k} = -1$
 
 If no such block exists, this constitutes an incorrect declaration of stream edges (deadlock).
 
-- If `dx_k != 0`, to all blocks `[I4:I5:1, J4:J5:1]` for which `J4 < J2`, `J5 >= J1`, and
+- If $d_{x_k} \neq 0$, to all blocks $[I_4:I_5:1, J_4:J_5:1]$ for which $J_4 < J_2$, $J_5 \geq J_1$, and
 
-    - for which `I4 == I2 + 1` with the predicate `i = I2 && J4 <= j < J6` if `dx_k == 1`
-    - for which `I5 == I1 - 1` with the predicate `i = I1 && J4 <= j < J6` if `dx_k == -1`
-    - Note that the ranges `J4:J5` of all such blocks must together cover the range `J1:J2`.
+    - for which $I_4 = I_2 + 1$ with the predicate $i = I_2 \land J_4 \leq j < J_6$ if $d_{x_k} = 1$
+    - for which $I_5 = I_1 - 1$ with the predicate $i = I_1 \land J_4 \leq j < J_6$ if $d_{x_k} = -1$
+    - Note that the ranges $J_4:J_5$ of all such blocks must together cover the range $J_1:J_2$.
 
 
-- Proceed symmetrically in case `dy_k != 0`.
+- Proceed symmetrically in case $d_{y_k} \neq 0$.
 
 
 **Case: All compute blocks have the same stride > 1:**
 
-- If `dx_k != 0`, to all blocks `[I4:I5:I3, J4:J5:J3]` for which `J4 < J2`, `J5 >= J1`, and 
-for which `I4 = I2 + dx_k (mod I3)` with the predicate `I4 <= i + 1 < I5 && J4 <= j < J6`. 
-    Note that the ranges `J4:J5` of all such blocks must together cover the range `J1:J2`, and similarly, 
-    the ranges `I4:I5` must together cover the range `I1+dx_k:I2+dx_k`.
+- If $d_{x_k} \neq 0$, to all blocks $[I_4:I_5:I_3, J_4:J_5:J_3]$ for which $J_4 < J_2$, $J_5 \geq J_1$, and 
+for which $I_4 = I_2 + d_{x_k} \mod I_3$ with the predicate $I_4 \leq i + 1 < I_5 \land J_4 \leq j < J_6$. 
+    Note that the ranges $J_4:J_5$ of all such blocks must together cover the range $J_1:J_2$, and similarly, 
+    the ranges $I_4:I_5$ must together cover the range $I_1+d_{x_k}:I_2+d_{x_k}$.
     Failure to do so constitutes an incorrect declaration of stream edges (deadlock).
 
 
-- Proceed symmetrically in case `dy_k != 0`.
+- Proceed symmetrically in case $d_{y_k} \neq 0$.
 
 
 
 **General Case**
 
 In the general case, we can use the same constraints & method we used to compute stream edges
-for the current hop `(dx_k, dy_k)`, it uses congruence relations to determine the receiving blocks.
+for the current hop $(d_{x_k}, d_{y_k})$, it uses congruence relations to determine the receiving blocks.
 
 *Note, I did the special cases first, so I kept them for now.
 We can also use the general algorithm for all cases,
@@ -273,11 +293,11 @@ but we should make sure to be able to simplify all the predicates in the special
 Note that blocks with a single element can be interpreted as having any arbitrary stride.
 This is useful for implementing boundary conditions.
 
-Runtime: Note that each vertex is added to the stack at most `h` times, where `h` is the number of hops.
-Adding all edges for a given vertex takes at most `n` time,
-where `n` is the number of `compute` blocks.
-Hence, the overall runtime is `O(n^2 * h)`.
-The space complexity is `O(n * h)`.
+Runtime: Note that each vertex is added to the stack at most $h$ times, where $h$ is the number of hops.
+Adding all edges for a given vertex takes at most $n$ time,
+where $n$ is the number of `compute` blocks.
+Hence, the overall runtime is $O(n^2 \cdot h)$.
+The space complexity is $O(n \cdot h)$.
 
 ## The Conflict Graph
 
