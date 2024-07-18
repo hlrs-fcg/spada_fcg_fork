@@ -87,8 +87,8 @@ Range constraints:
 
 Congruence constraints:
 
-- $i + d_x = I_4 \mod I_6$  in case $I_6 > 1$
-- $j + d_y = J_4 \mod J_6$  in case $J_6 > 1$
+- $i = I_4 - d_x \mod I_6$  in case $I_6 > 1$
+- $j = J_4 - d_y \mod J_6$  in case $J_6 > 1$
 
 To correctly identify the stream edges, we need to check if there exists an $(i, j)$ in the current
 `compute` block for which all constraints are satisfied.
@@ -151,58 +151,53 @@ before solving the congruence relations. This can be done efficiently using 2D b
 
 ## *Parametric* Happens-Before Graph
 
-We now define a parametric happens-before graph that describes the happens-before relations compactly.
-The vertices in the graph are pairs of statements and pairs of symbolic PE coordinates in the variables $i$ and $j$.
-The symbolic expressions are restricted to be either constants or of the form $i + c$ or $j+c$ for some constant $c$.
-The edges in the graph are associated with a predicate over $i$ and $j$.
+We now define a parametric happens-before multi-graph that describes the happens-before relations compactly.
+The vertices in the graph are statements and the edges are annotated with $(d_x, d_y)$ constant offsets 
+and a predicate over variables $i$ and $j$.
 This predicate may also involve parameters of the kernel and constants.
 We allow for range constraints and congruence constraints as in the parametric stream edges.
-The meaning of the edge from $S_1, (I_1, J_1)$ to $S_2, (I_1+d_x, J_1+dy)$ with predicate $P_1$ is that
+The meaning of the edge from $S_1$ to $S_2$ with offset $(d_x, d_y)$ and predicate $P_1$ is that
 if the predicate $P_1$ is true for some $i_1$, $j_1$ in the compute block of $S_1$, 
 then $S_1, (i_1, j_1) \rightarrow S_2, (i_1+d_x, j_1+d_y)$. 
-If such an edge exists, we write $S_1, (I_1, J_1) \rightarrow S_2, (I_1+d_x, J_1+dy) \ | \ P_1$.
+If such an edge exists, we write $S_1, (i, j) \rightarrow S_2, (i+d_x, j+dy) \ | \ P_1$.
+
+We do not explicitly represent the transitively closed relation, but only the necessary edges.
+One can then follow paths in the graph to determine if two statements are in the happens-before relation
+for a given set of PEs.
 
 ???+ example "Example: Parametric Happens-Before"
-    For example, $S_1, (i, j)$, $S_1, (i-1, 0)$, and $S_2, (1, 0)$ could be vertices in the graph.
-    Then, $((S_1, (i, j)) , (S_2, (i+1, j)))$ could be an edge in the graph,
-    and it might have the predicate $i < I-1$ where $i$ is the size of the PE grid in the $i$ dimension.
-    Another edge could be $S_1, (i, j) \rightarrow S_2, (i, j) \ | \ i = I-1$.
+    For example, $S_1$ and $S_2$ $S_3$ could be vertices in the graph.
+    Then, we might have $S_1, (i, j) \rightarrow S_2, (i+1, j) \ | i < I-1$
+    and $S_1, (i, j) \rightarrow S_3, (i+1, j+1) \ | i = I-1$.
 
 !!! info "Algorithm: Constructing the Parametric Happens-Before Graph"
     We can construct the parametric happens-before graph for each phase with the following steps,
     which follow the same rules as the formal happens-before graph.
-    Throughout, if a vertex or edge already exists, we do not add it again.
+
+    Initialize the vertices with the statements in the phase.
+    Throughout, if an edge already exists with the same predicate and offset, we do not add it again.
     
     1. For each pair of statements $S_1$, $S_2$ in the same compute block for which 
-    $S_1 \leadsto S_2$ in [local order](../async#constructing-the-local-order), add:
+    $S_1 \leadsto S_2$ in [local order](../async#constructing-the-local-order):
     
-        - the vertices $S_1, (i, j)$ and $S_2, (i, j)$ to the graph.
-        - the edge $S_1, (i, j) \rightarrow S_2, (i, j)) \ | \ \emptyset$ (true).
+        - Add the edge $S_1, (i, j) \rightarrow S_2, (i, j)) \ | \ \emptyset$ (true).
 
-    2. For each parametric stream edge $S_1, (i, j) \rightarrow S_2, (i+d_x, j+d_y) \ | \ P_1$:
+    2. For each parametric stream edge from $S_1, (i, j)$ to $S_2, (i+d_x, j+d_y)$ predicated with $P_1$:
 
-        - Add the vertices $S_1, (i, j)$ and $S_2, (i+d_x, j+d_y)$ to the graph.
-        - Add the edge $S_1, (i, j) , S_2, (i+d_x, j+d_y)$ with the predicate $P_1$.
+        - Add the edge $S_1, (i, j) , S_2, (i+d_x, j+d_y) \ | \ P_1$.
     
-    3. For each parametric stream edge $(S_3, (i, j)) , (S_4, (i+d_x, j+d_y))$ predicated by $P_1$:
+    3. For each parametric stream edge from $(S_3, (i, j))$ to $(S_4, (i+d_x, j+d_y))$ predicated by $P_1$:
     
-        - Consider all vertices $S_1, (i, j)$ in the graph for which $S_1, (i, j) \rightarrow S_3, (i, j) \ | \ P_2$
-        and all vertices $S_2, (i+d_x, j+d_y)$ for which $S_2$ follows $S_4$ in the CFG.
+        - Consider all edges $S_1, (i, j) \rightarrow S_3, (i, j) \ | \ P_2$
+        and all vertices $S_2$ for which $S_2$ follows $S_4$ in the CFG.
         - Add an edge $S_1, (i, j) \rightarrow S_2, (i+d_x, j+d_y) \ | \ P_1 \land P_2$.
-
-    4. Apply transitivity until convergence:
-
-        - If there is an edge from $S_1, (i, j) \rightarrow S_2, (i+d_x, j+d_y) \ | \ P_1$ 
-        and an edge from $S_2, (i+d_x, j+d_y) \rightarrow S_3, (i+d_x', j+d_y') \ | \ P_2$,
-        - then add an edge from $S_1, (i, j) \rightarrow S_3, (i+d_x', j+d_y') \ | \ P_1 \land P_2$.
 
     Whenever creating a new predicate from two predicates, we simplify the predicate
     as much as possible. The resulting predicate remains a conjunction of range constraints
     and congruence constraints.
+    To simplify the congruence constraints, we can either use the Chinese Remainder Theorem
+    or a method to solve linear diophantine equations.
 
-[TODO: Show that there is a unique canonical representation for P_1 \land P_2]
-
-[TODO: Efficient implementation details]
 
 ### Analysis
 
