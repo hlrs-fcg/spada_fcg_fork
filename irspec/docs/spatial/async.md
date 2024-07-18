@@ -44,7 +44,7 @@ and instead considers the program order.
     // S_4
     c[0] = a[0];
     ```
-    We have $S_1 \leadsto S_2 \leadsto S_3 \leadsto S_4` in local order.
+    We have $S_1 \leadsto S_2 \leadsto S_3 \leadsto S_4$ in local order.
     We do not have $S_2$ following $S_3$ in local order because in the last iteration of the loop, $S_2$ is not executed after $S_3$.
 
 ## Stream edges
@@ -58,7 +58,7 @@ and affect the ordering of statements in the `compute` block.
 
 Our definition of `send` requires that the order in which statements `send`s access a given stream
 is in local order. Similarly, the order in which statements `receive` from a stream
-is in local order. 
+is in local order. Moreover, `send`s and `receives` in loops must always line up one-to-one.
 Hence, we can always match `send`s and `receive`s in local order to uniquely form stream edges.
 
 ## The Happens-Before Relation
@@ -66,8 +66,12 @@ Hence, we can always match `send`s and `receive`s in local order to uniquely for
 The asynchronous semantics can be defined in terms of a *happens-before* relation. 
 For each statement $S$ in a `compute` block and each PE $(i, j)$ in the subgrid,
 we define a *happens-before* relation $\rightarrow$ between statement-PE pairs.
-Intuitively, $S_1, (i_1, j_1) \rightarrow S_2, (i_2, j_2)$ means that the next instance of $S_1$ must complete
-at PE $(i_1, j_1$) before the next instance of $S_2$ starts at PE $(i_2, j_2)$.
+
+!!! abstract "Definition: Happens-Before Relation"
+    If every instance of $S_1$ at PE $(i_1, j_1$) completes 
+    before the next respective instance of $S_2$ starts at PE $(i_2, j_2)$, we say 
+    that $S_1, (i_1, j_1)$ happens-before $S_2, (i_2, j_2)$ and write $S_1, (i_1, j_1) \rightarrow S_2, (i_2, j_2)$.
+
 If $S_1, (i_1, j_1) \rightarrow S_2, (i_2, j_2)$ holds for all $(i_1, j_1)$ and $(i_2, j_2)$ in the subgrid, 
 we write $S_1 \rightarrow S_2$ for short. This means that the statements are ordered by happens-before
 for all PEs in the subgrid. 
@@ -79,10 +83,10 @@ for all PEs in the subgrid.
     a compact approximation of the happens-before graph.
 
 
-We define the relation in terms of the local order, `await` statements in the code,
+We characterize the relation in terms of the local order, `await` statements in the code,
 and stream edges. 
 
-!!! abstract "Definition: Happens-Before Relation"
+!!! abstract "Lemma: Happens-Before Relation"
     We have that $S_1, (i_1, j_1) \rightarrow S_2, (i_2, j_2)$ if *any* of the following hold:
 
     1. **Local Order**: $S_1 \rightarrow S_2$ are in local order.
@@ -102,10 +106,9 @@ Note that we handle phases by implicitly adding `await` statements for all outst
 completions at the end of each `compute` block.
 
 
-The happens-before relation is used to define data races and deadlocks.
+The happens-before relation is used to define data races.
 A compact representation of it can be used for lowering, specifically it can be used to 
-determine how the code can be mapped to a task-based or thread-based model
-and how to resolve `auto` routing declarations.
+determine how the code can be mapped to a task-based or thread-based model.
 
 ## Data Races
 
