@@ -29,6 +29,8 @@ class PlacedStencilGraph(StencilGraph):
                          stencil_graph.graph.vs[StencilGraph.FIELD_NAME],
                          stencil_graph.graph.vs[StencilGraph.FIELD_VERSION],
                          stencil_graph.stencils())
+        assert placement.strides.shape[0] == len(self.graph.vs)
+        assert len(distances) == len(self.graph.es)
         self.placement = placement
         self.distances = distances
         self.graph.vs['partition'] = self.placement.parts()
