@@ -5,8 +5,8 @@
 
 The first step is to create a graph that models the dependencies between the
 operations in the computation. This graph is a directed acyclic graph (DAG) where
-the nodes are the operations and the edges represent the dependencies between
-the operations. The graph is created using the `StencilGraph` class:
+the nodes are the fields and the edges represent the dependencies between
+the fields. The graph is created using the `StencilGraph` class:
 
 ```python 
     # Example: Laplacian stencil
