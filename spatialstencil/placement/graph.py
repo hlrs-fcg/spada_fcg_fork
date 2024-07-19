@@ -1,4 +1,4 @@
-from typing import Sequence, List, Dict
+from typing import Sequence, List, Dict, Tuple
 import igraph as ig
 
 from spatialstencil.placement.domain import FieldDomain
@@ -12,19 +12,44 @@ class StencilGraph:
     FIELD_NAME = 'name'
     FIELD_VERSION = 'version'
 
-    def __init__(self, graph: ig.Graph,
+    def __init__(self,
+                 edges: Sequence[Tuple[int, int]],
                  domain: FieldDomain,
                  field_domains: Sequence[FieldDomain],
                  field_names: Sequence[str],
-                 field_versions: Optional[Sequence[int]] = None,
-                 stencils: Sequence[Stencil]
+                 field_versions: Sequence[int],
+                 stencils: Sequence[Stencil],
                  ) -> None:
+        """
+        Create a new StencilGraph that encapsulates a graph with fields and stencils.
+        The graph is assumed to already contain all the vertices and edges.
+        Here, we only store auxiliary information with it and provide accessors to it.
 
-        self.graph = graph
-        assert len(stencils) == len(graph.es)
-        assert len(field_domains) == len(graph.vs)
-        assert len(field_names) == len(graph.vs)
-        assert len(field_versions) == len(graph.vs)
+        See the ig.Graph documentation for more information on the graph object.
+
+        All sequences refer to the order in which the vertices/edges are represented in the ig.Graph object.
+
+        [TODO: It might be much nicer to encapsulate the ig.Graph object within this class and provide accessors to it,
+        so that we can abstract from the implementation details of the graph object.]
+
+        :param edges: The directed edges of the graph. Each edge points from source (input) to target (result).
+        :param domain: The overall domain of the fields (must contain all the domains of the fields)
+        :param field_domains: The domain of each field
+        :param field_names: The name of each field
+        :param field_versions: The version of each field
+        :param stencils: The stencil pattern of each edge
+        """
+
+        n = len(field_names)
+
+        assert len(stencils) == len(edges)
+        assert len(field_domains) == n
+        assert len(field_names) == n
+        assert len(field_versions) == n
+
+        self.graph = ig.Graph(directed=True)
+        self.graph.add_vertices(n)
+        self.graph.add_edges(edges)
         self.graph.vs[StencilGraph.FIELD_NAME] = field_names
         self.graph.vs[StencilGraph.FIELD_VERSION] = field_versions or ([0] * len(field_names))
         self.graph.vs[StencilGraph.DOMAIN] = field_domains
@@ -166,7 +191,7 @@ class MergedStencilGraph(StencilGraph):
                  original_field_to_merged: Sequence[int],
                  merged_to_original_field: Sequence[Sequence[int]]
                  ) -> None:
-        super().__init__(graph, domain, field_domains, field_names, field_versions, stencils)
+        super().__init__([e.tuple for e in graph.es], domain, field_domains, field_names, field_versions, stencils)
         self.original_field_to_merged = original_field_to_merged
         self.merged_to_original_field = merged_to_original_field
 

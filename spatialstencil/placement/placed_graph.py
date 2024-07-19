@@ -8,13 +8,22 @@ from spatialstencil.placement.stencil import StencilDirection
 
 
 class PlacedStencilGraph(StencilGraph):
-
+    """
+    Represents a stencil graph with a specific placement of the fields on the processing elements.
+    """
     def __init__(self,
                  stencil_graph: StencilGraph,
                  placement: Placement,
                  distances: Sequence[int]
                  ) -> None:
-        super().__init__(stencil_graph.graph,
+        """
+        Create a new PlacedStencilGraph that encapsulates a graph with fields and stencils and a specific placement.
+
+        :param stencil_graph: the underlying stencil graph
+        :param placement: the placement of the fields
+        :param distances: the distances of each of the edges (this caches the results of the model costs)
+        """
+        super().__init__([e.tuple for e in stencil_graph.edges()],
                          stencil_graph.domain(),
                          stencil_graph.graph.vs[StencilGraph.DOMAIN],
                          stencil_graph.graph.vs[StencilGraph.FIELD_NAME],
