@@ -69,15 +69,15 @@ def horizontal_diffusion():
     ]
     # 11 vertices in_field = 0, out_field = 1, coeff = 2, lap_field = 3, res_x = 4, cond_x = 5, flx_field = 6,
     # res_y = 7, cond_y = 8, fly_field = 9
-    g = ig.Graph(directed=True, n=10, edges=[
+    edges = [
         (0, 3), (3, 4), (4, 5), (0, 5), (4, 6), (5, 6), (3, 7), (7, 8), (0, 8), (7, 9), (8, 9), (0, 1), (2, 1), (6, 1), (9, 1)
-    ])
+    ]
     # Set field names
     names = ["in_field", "out_field", "coeff", "lap_field", "res_x", "cond_x", "flx_field", "res_y", "cond_y", "fly_field"]
     versions = [0] * 10
 
     # Define the graph
-    graph = StencilGraph(g, domain, [domain] * 10, names, versions, stencils)
+    graph = StencilGraph(edges, domain, [domain] * 10, names, versions, stencils)
     graph.graph["name"] = "horizontal_diffusion"
     return graph
 
@@ -201,8 +201,7 @@ def vertical_advection_simplified():
     # utens_stage = 0, u_stage = 1, wcon = 2, u_pos = 3, utens = 4, gav = 5, gcv = 6, as_ = 7, cs = 8, acol = 9,
     # ccol = 10, bcol = 11, correction_term = 12, dcol = 13, divided = 14, ccol_2 = 15, dcol_2 = 16, datacol = 17, data_col = 18, data_col_2 = 19, utens_stage_2 = 20
     # 21 vertices in total
-
-    g = ig.Graph(directed=True, n=21, edges=[
+    edges = [
         # Forward stencil
         # into gav
         (2, 5),
@@ -235,13 +234,13 @@ def vertical_advection_simplified():
         (17, 19),
         # into utens_stage_2
         (17, 20), (3, 20)
-    ])
+    ]
 
     names = ["utens_st", "u_stage", "wcon", "u_pos", "utens", "gav", "gcv", "as_", "cs", "acol", "ccol", "bcol",
                     "correction", "dcol", "divided", "ccol", "dcol", "datacol", "data_col", "data_col", "utens_st"]
 
     versions = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1]
 
-    graph = StencilGraph(g, domain, [domain] * g.vcount(), names, versions, stencils)
+    graph = StencilGraph(edges, domain, [domain] * len(names), names, versions, stencils)
     graph.graph["name"] = "vertical_advection"
     return graph

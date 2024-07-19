@@ -26,13 +26,12 @@ class TestModel(unittest.TestCase):
                         Stencil(one_point_elementwise_stencil, StencilDirection.PARALLEL)
                         ]
 
-        g = ig.Graph(directed=True, n=3)
-        g.add_edges([(0, 1), (1, 2)])
+        edges = [(0, 1), (1, 2)]
 
         names = ["u", "v", "w"]
         versions = [0, 0, 0]
 
-        stencil_graph = StencilGraph(g, domain_type, [domain_type] * 3, names, versions, stencils)
+        stencil_graph = StencilGraph(edges, domain_type, [domain_type] * 3, names, versions, stencils)
         return stencil_graph
 
     def demo_graph_wedge(self):
@@ -46,8 +45,7 @@ class TestModel(unittest.TestCase):
         # u -> w, v-> w
         # as numbers, we get
         # u = 0, v = 1, w = 2
-        g = ig.Graph(directed=True, n=3)
-        g.add_edges([(0, 2), (1, 2)])
+        edges = [(0, 2), (1, 2)]
         # Set the names of the nodes
         names = ["u", "v", "w"]
         versions = [0, 0, 0]
@@ -62,7 +60,7 @@ class TestModel(unittest.TestCase):
                     ]
 
         # Create the StencilGraph
-        stencil_graph = StencilGraph(g, domain_type, [domain_type] * 3, names, versions, stencils)
+        stencil_graph = StencilGraph(edges, domain_type, [domain_type] * 3, names, versions, stencils)
 
         stencil_graph.plot("test_stencil_wedge.png")
 

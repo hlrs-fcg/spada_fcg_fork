@@ -1,5 +1,5 @@
 """
-Defines placements and the cost model of a placement.
+Defines placements and the cost model of a placement in the spatial model with contention (SMC)
 """
 from dataclasses import dataclass
 from typing import Sequence
@@ -15,7 +15,7 @@ from spatialstencil.placement.placement import Placement
 @dataclass
 class PlacementCost:
     """
-    The cost of a placement
+    The cost of a placement in the SMC
     """
     # The contention of the placement
     contention: int
