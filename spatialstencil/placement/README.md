@@ -65,7 +65,9 @@ the `optimizer.best_of_k_placement`:
 To colocate all fields, one can choose the shape to be [1, 1].
 This ensures that all fields are placed in the same PE.
 
-The placement is an `n x 2` matrix where `n` in the number of fields in the graph.
+The placement is an `n x 2` matrix where `n` in the number of fields in the graph,
+counting the versions multiple times. The placement ensures
+that fields that are just different versions are always co-located.
 Each row in the matrix represents the PE where the operation is placed. The first
 column is the PE row and the second column is the PE column.
 
