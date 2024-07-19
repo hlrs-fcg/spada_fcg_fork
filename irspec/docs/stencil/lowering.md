@@ -3,12 +3,18 @@
 
 This document describes the lowering of the stencil IR to the Spatial IR.
 
+[Start with describing the assumptions on the stencil IR state & metadata]
+
 Assuming we have decided on the placement of fields, we can now lower the stencil IR to the Spatial IR.
+(we can always assume the default placement of (1,1) stride and (0, 0) offset)
+
+Assume type-inference has been done and the extents have been inferred.
 
 On a high level, the lowering proceeds hierarchically over the stencil IR.
 
 * Each spst.program maps to a kernel in Spatial IR.
-* Each spst.computation maps to a phase in Spatial IR.
+* One or more spst.computations map to a phase in Spatial IR, additionally there is an input phase and an output phase.
+* (Each spst.if is transformed into one or more statements and predicated statements)
 * Each spst.statement maps to a sequence of operations inside a compute block in Spatial IR.
 
 At the global scope, the lowering places the input and output fields on the PEs.
@@ -24,7 +30,9 @@ Within each phase, the lowering contains the following steps:
 
 An spst.program is lowered to a Spatial IR kernel.
 
+
 ### Determining the Parameters
+
 
 The grid size is determined by the domain type, extent type of the input fields,
 and the placement strategy of the fields.
@@ -47,6 +55,8 @@ Scalar types are passed as scalar arguments.
 
 ## Lowering spst.compute
 
+(maybe move to beginning)
+[Remember to discuss when to materialize - I would always meterialize by default and remove if needed...]
 As a preprocessing step, replace all non-materialized field accesses with the
 equivalent accesses to non-intermediate fields.
 This ensures that we can lower statements in isolation.
@@ -81,7 +91,7 @@ If a field access is not local, we generate a unique stream for it in the datafl
 
 #### Parallel Schedule
 
-In a parallel schedule, each operation is lowered one after the other.
+In a parallel schedule, each statement is lowered one after the other.
 
 
 #### Statements
@@ -108,7 +118,7 @@ Otherwise, the computation is performed locally on the PE using a map.
     Then, all non-(0, 0, x) accesses are translated into sends/receives, while the local computation is translated into a map.
     
     The Spatial IR for this statement would look like this:
-    
+
     ```rust
     // Lowered Spatial IR
 
@@ -133,6 +143,9 @@ Otherwise, the computation is performed locally on the PE using a map.
 
     ```
 
+[TODO: Think about multi-cast streams!!!!!]
+[TODO: Think about tiled PEs?]
+[TODO: Think about extensibility of placement of more than 1x1 columns]
 
 #### Forward/Backward Schedule
 
@@ -140,6 +153,8 @@ Otherwise, the computation is performed locally on the PE using a map.
 
 A computation with forward or backward schedule is lowered by generating a for-loop in the Spatial IR,
 looping over the z-dimension of the field in ascending or descending order, respectively.
+
+[TODO details in case z dimension is split...]
 
 The computation may contain some accesses to read-only fields.
 These fields are communicated and stored locally at the beginning of the loop.
