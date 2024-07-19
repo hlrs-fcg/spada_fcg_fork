@@ -13,24 +13,24 @@ the size of the program.
 
 The program can be extracted from the control [flow graph](https://en.wikipedia.org/wiki/Control-flow_graph)
 (CFG) of basic blocks.
-Then, compute the [Dominators](https://en.wikipedia.org/wiki/Dominator_(graph_theory))
+Then, compute the [dominators](https://en.wikipedia.org/wiki/Dominator_(graph_theory)) and post-dominators.
 
-If $S_1$ and $S_2$ are in the same basic block, then $S_1 \leadsto S_2$ if
+If $S_1$ and $S_2$ are in the same basic block, then $S_1 \succeq S_2$ if
 
-- $S_1$ is blocking and $S_2$ follows $S_1$ in the basic block.
+- $S_1$ is blocking and $S_2$ follows $S_1$ in the basic block, or
 - $S_1$ is non-blocking and there is an `await` on the completion of $S_1$ between $S_1$ and $S_2$.
 
-Otherwise, $S_1 \leadsto S_2$ if:
+Otherwise, $S_1 \succeq S_2$ if:
 
-- $S_1$ is blocking and $S_2$ post-dominates $S_1$.
-- The set of dominators of $S_2$ contains an `await` on the completion of $S_1$.
+- $S_1$ is blocking and $S_2$ post-dominates $S_1$, or
+- $S_1$ is non-blocking and the set of dominators of $S_2$ contains an `await` on the completion of $S_1$.
 
 #### Analysis
 
 Explicitly constructing the local order costs $O(n^2)$ time, where $n$ is the number of statements in a `compute` block.
 However, we can represent the local order implicitly by storing the post-dominator-tree.
-Then, we can check if $S_1 \leadsto S_2$ in $O(d)$ time, where $d$ is the diameter of the CFG
-by a search in the post-dominator tree if they are in different blocks and comparing
+Then, we can check if $S_1 \succeq S_2$ in $O(d)$ time, where $d$ is the diameter of the CFG
+by a search in the dominator or post-dominator tree if they are in different blocks and comparing
 their indices if they are in the same block.
 
 !!! note
@@ -40,9 +40,10 @@ their indices if they are in the same block.
 
 ### Strict Local Order
 
-For block $B_2$, determine the set of reachable blocks. 
-For each reachable $B_1$ exclude all
-$S_1 \leadsto S_2$ from the strict local order for all statements $S_1$ in $B_1$ and $S_2$ in $B_2$.
+We can compute the strict local order as a subset of the local order.
+For each block $B_2$, determine the set of reachable blocks. 
+For each such block $B_1$ reachable from $B_2$ exclude all
+$S_1 \succeq S_2$ from the strict local order for all statements $S_1$ in $B_1$ and $S_2$ in $B_2$.
 
 #### Analysis
 
@@ -61,7 +62,7 @@ $(i, j)$ is in the compute block of $S_1$, then the stream edge exists for the P
 
 The first step to constructing stream edges is to determine the
 order of the `send`s and `receive`s that occur to the same stream within each
-`compute` block. This follows immediately from the local order $\leadsto$.
+`compute` block. This follows immediately from the local order $\succeq$.
 
 *The following assumes that `compute` blocks and `dataflow` blocks
 match N-1, that is, each compute block is specified by a single dataflow block
@@ -73,7 +74,7 @@ Next, we consider each `compute` block in a phase.
 We rename all variables in the `compute` and `dataflow` subgrid expressions to use $i$ and $j$ for simplicity.
 A `compute` block is now identified with some set of PEs defined as `i, j in [I_1:I_2:I_3, J_1:J_2:J_3]`.
 Within this block, consider some `send` statement $S_1$, which is the k-th `send` statement to its stream in the local order.
-Let `(d_x, d_y)` be the offset of its stream. That is, a PE $(i, j)$ sends to PE $(i+d_x, j+d_y)$.
+Let $(d_x, d_y)$ be the offset of its stream. That is, a PE $(i, j)$ sends to PE $(i+d_x, j+d_y)$.
 Note that we assume the strides are positive without loss of generality.
 
 We now construct the stream edges for this `send` statement.
@@ -93,7 +94,7 @@ Congruence constraints:
 To correctly identify the stream edges, we need to check if there exists an $(i, j)$ in the current
 `compute` block for which all constraints are satisfied.
 
-For this, first solve the linear congruence relations for $i$ and $j$ (if $I_6 > 1$ and $J_6 > 1$ respectively).
+For this, first solve the linear congruence relations for $i$ and $j$ (in case $I_6 > 1$ and $J_6 > 1$, respectively).
 We can efficiently characterize the set of solution (and determine if it is empty).
 
 ??? info "Algorithm: How to Solve the Congruence Relations"
@@ -113,6 +114,7 @@ We can efficiently characterize the set of solution (and determine if it is empt
         - Solve the simplified equation using the
           [Extended Euclidean Algorithm](https://en.wikipedia.org/wiki/Extended_Euclidean_algorithm) to find one solution $x_0$:
         - The general solution is: $x = x_0 + l \frac{I_6}{d}$ for $l \in 0, 1, \dotsc , d-1$
+        
 
 We filter out all solutions $x$ for which $I_1 + x \cdot I_3 \geq I_2$ as they are out of bounds of the `compute` block.
 
@@ -170,15 +172,17 @@ for a given set of PEs.
     Then, we might have $S_1, (i, j) \rightarrow S_2, (i+1, j) \ | i < I-1$
     and $S_1, (i, j) \rightarrow S_3, (i+1, j+1) \ | i = I-1$.
 
-!!! info "Algorithm: Constructing the Parametric Happens-Before Graph"
-    We can construct the parametric happens-before graph for each phase with the following steps,
-    which follow the same rules as the formal happens-before graph.
 
+We can construct the parametric happens-before graph for each phase with the following steps.
+Its construction follows the same rules as the happens-before lemma, except
+we do not explicitly resolve the transitivity to save space and time.
+
+!!! info "Algorithm: Constructing the Parametric Happens-Before Graph"
     Initialize the vertices with the statements in the phase.
     Throughout, if an edge already exists with the same predicate and offset, we do not add it again.
     
     1. For each pair of statements $S_1$, $S_2$ in the same compute block for which 
-    $S_1 \leadsto S_2$ in [local order](../async#constructing-the-local-order):
+    $S_1 \succeq S_2$ in [local order](../async#constructing-the-local-order):
     
         - Add the edge $S_1, (i, j) \rightarrow S_2, (i, j)) \ | \ \emptyset$ (true).
 
@@ -195,9 +199,20 @@ for a given set of PEs.
     Whenever creating a new predicate from two predicates, we simplify the predicate
     as much as possible. The resulting predicate remains a conjunction of range constraints
     and congruence constraints.
-    To simplify the congruence constraints, we can either use the Chinese Remainder Theorem
-    or a method to solve linear diophantine equations.
+    To simplify the congruence constraints, we can use the
+    [Chinese Remainder Theorem](https://en.wikipedia.org/wiki/Chinese_remainder_theorem).
+    If a predicate becomes unsatisfiable after simplification, we skip the edge.
 
+
+### Strict Happens-Before
+
+To construct the parametric strict happens-before graph, we modify the algorithm as follows:
+
+1. Use the strict local order.
+
+2. Only consider stream edges outside of loops.
+
+3. Only consider vertices $S_2$ for which $S_4 \succ S_2$ in strict local order.
 
 ### Analysis
 

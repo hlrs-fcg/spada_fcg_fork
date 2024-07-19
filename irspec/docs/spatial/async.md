@@ -22,7 +22,7 @@ In particular:
    - assignments to fields are blocking.
 
 !!! abstract "Definition: Local Order"
-    We say $S_2$ follows $S_1$ in local order and write $S1 \leadsto S_2$ if
+    We say $S_2$ follows $S_1$ in local order and write $S1 \succeq S_2$ if
     $S_1$ and $S_2$ are in the same compute block, $S_2$ follows $S_1$ in all execution paths, and one of the following hold:
     
     - $S_1$ is a blocking statement.
@@ -44,7 +44,7 @@ and instead considers the program order.
     // S_4
     c[0] = a[0];
     ```
-    We have $S_1 \leadsto S_2 \leadsto S_3 \leadsto S_4$ in local order.
+    We have $S_1 \succeq S_2 \succeq S_3 \succeq S_4$ in local order.
     We do not have $S_2$ following $S_3$ in local order because in the last iteration of the loop, $S_2$ is not executed after $S_3$.
 
 ## Stream edges
@@ -211,7 +211,7 @@ of the interleaving of concurrent operations.
     Analysis of the Ping-Pong example:
 
     - We have that $S_4 \rightarrow S_2$ because of the stream edge from $S_4$ to $S_1$ and *receive completion implies send completion*.
-    - We have $S_2 \leadsto S_3$ in local order.  
+    - We have $S_2 \succeq S_3$ in local order.  
     - We have that $S_2 \rightarrow S_7$ because there is a stream edge from $S_3$ to $S_6$
       and all execution paths to $S_7$ go through $S_6$ (*Propagating happens-before through stream edges*).
     - Hence, we have $S_4 \rightarrow S_7$ by transitivity.
@@ -284,7 +284,7 @@ of the interleaving of concurrent operations.
     ```
     
     The sends are ordered by happens-before as in the program $S_5 \rightarrow S_6$.
-    Similarly, the receives are ordered by happens-before as in the program $S_1 \leadsto S_2$ and $S_3 \leadsto S_8$.
+    Similarly, the receives are ordered by happens-before as in the program $S_1 \succeq S_2$ and $S_3 \succeq S_8$.
     However, $S_3$ and $S_5$ are concurrent, as are $S_3$ and $S_6$, as are $S_6$ and $S_8$.
 
 
@@ -349,9 +349,9 @@ of the interleaving of concurrent operations.
     In this example, we can argue that:
 
     - $S_5 \rightarrow S_2$ because of the stream edge from $S_5$ to $S_1$ and *receive completion implies send completion*.
-    - $S_2 \leadsto S_3$ because $S_2$ is an `await`, which is a blocking statement.
+    - $S_2 \succeq S_3$ because $S_2$ is an `await`, which is a blocking statement.
     - $S_3 \rightarrow S_7$ because of the stream edge from $S_3$ to $S_6$ and *receive completion implies send completion*.
-    - $S_7 \leadsto S_8$ because $S_7$ is an `await`, which is a blocking statement.
+    - $S_7 \succeq S_8$ because $S_7$ is an `await`, which is a blocking statement.
 
     Hence, by transitivity, we have $S_5 \rightarrow S_8$.
     
@@ -410,7 +410,7 @@ of the interleaving of concurrent operations.
     - $S_4, (1, 0) \rightarrow S_1, (0, 0)$ (by stream edge and *receive completion implies send completion*)
     - $S_4, (i, 0) \rightarrow S_3, (i-1, 0)$ for `i` in `[2:K-1]` (by stream edge and *receive completion implies send completion*)
     - $S_5, (K, 0) \rightarrow S_3, (K-1, 0)$ (by stream edge and *receive completion implies send completion*)
-    - $S_3, (i, 0) \leadsto S_4, (i, 0)$ for `i` in `[1:K-1]`
+    - $S_3, (i, 0) \succeq S_4, (i, 0)$ for `i` in `[1:K-1]`
     
     Hence, we can conclude by transitivity:
     
