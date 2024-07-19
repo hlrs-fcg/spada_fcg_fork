@@ -1,0 +1,36 @@
+site_name: Multi-Level Spatial IR
+site_url: http://localhost:8000
+theme: material
+nav:
+  - Stencil IR:
+      - Specification: stencil/stencil.md
+      - Examples: stencil/examples.md
+      - Lowering: stencil/lowering.md
+  - Spatial IR:
+    - Design Goals: spatial/design_goals.md
+    - Specification: spatial/spatial.md
+    - Asynchronous Semantics: spatial/async.md
+    - Routing Semantics: spatial/routing.md
+    - Parameterized Semantics: spatial/parametric.md
+    - Examples: spatial/examples.md
+  - Dataflow Task IR: dataflowtask/dataflowtask.md
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - admonition
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+  - footnotes
+  - pymdownx.arithmatex:
+      generic: true
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
