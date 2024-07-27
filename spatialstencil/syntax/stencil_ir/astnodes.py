@@ -397,6 +397,7 @@ class Program(Node):
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
+        newline = '\n'
         inputs = ', '.join(i.as_ir() for i in self.inputs)
         input_types = ', '.join(i.dtype.as_ir() for i in self.inputs)
         outputs = ', '.join(o.as_ir() for o in self.outputs)
@@ -406,5 +407,5 @@ class Program(Node):
         return (f'{indent_str}{outputs} = spst.program{name} ({inputs}) {{ }}'
                 f' : {input_types} -> {output_types}'
                 '{\n'
-                f'{"\n".join(c.as_ir(indent + 1) for c in self.computations)}'
+                f'{newline.join(c.as_ir(indent + 1) for c in self.computations)}'
                 '\n' + indent_str + '}')

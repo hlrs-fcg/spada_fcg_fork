@@ -59,9 +59,9 @@ multi_interval_type : "[" interval_type ("," interval_type)* "]"
 ?test : or_test
       | or_test "if" or_test "else" test -> ternary_op
 
-?or_test: and_test ("or" or_test) -> binary_op_logical
+?or_test: and_test ("or" or_test) -> binary_op_logical_or
         | and_test
-?and_test: not_test_ ("and" and_test) -> binary_op_logical
+?and_test: not_test_ ("and" and_test) -> binary_op_logical_and
          | not_test_
 ?not_test_: "not" not_test_ -> not_test
           | comparison
@@ -69,11 +69,11 @@ multi_interval_type : "[" interval_type ("," interval_type)* "]"
            | expr
 
 ?expr: or_expr
-?or_expr: xor_expr ("|" or_expr) -> binary_op
+?or_expr: xor_expr ("|" or_expr) -> binary_op_or
         | xor_expr
-?xor_expr: and_expr ("^" xor_expr) -> binary_op
+?xor_expr: and_expr ("^" xor_expr) -> binary_op_xor
          | and_expr
-?and_expr: shift_expr ("&" and_expr) -> binary_op
+?and_expr: shift_expr ("&" and_expr) -> binary_op_and
          | shift_expr
 ?shift_expr: arith_expr (_shift_op shift_expr) -> binary_op
            | arith_expr
@@ -128,7 +128,7 @@ statement : identifier "=" "spst.statement" params attributes ":" type_list "->"
 subscript_slice : posneg_integer_literal ("," posneg_integer_literal)*
 value_expr : test     // Basic value type. See operator precedence for more information
 assign_expr : id_list "=" value_expr (";")?
-return_expr : "spst.return" value_expr  ("," value_expr)* (";")?
+return_expr : ("spst.")? "return" value_expr  ("," value_expr)* (";")?
 ?statement_contents : assign_expr | return_expr
 
 materialize_op : identifier "=" "spst.materialize" "(" identifier ")" (":" field_or_scalar_type "->" field_or_scalar_type)?
