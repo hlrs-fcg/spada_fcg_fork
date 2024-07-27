@@ -1,9 +1,10 @@
 import ast
 from collections import defaultdict
-from spatialstencil.syntax import gt4py_parser as gt, astnodes
+from spatialstencil.syntax.gt4py import parser as gt
+from spatialstencil.syntax.stencil_ir import astnodes
 
 
-def lower_gt4py_to_logical_ir(program: gt.GTProgram) -> astnodes.Program:
+def lower_gt4py_to_stencil_ir(program: gt.GTProgram) -> astnodes.Program:
     """
     Takes a GT4Py program (as AST) and returns a logical IR program.
     """

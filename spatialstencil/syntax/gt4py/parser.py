@@ -1,64 +1,14 @@
 import ast
-import enum
-from dataclasses import dataclass
 import sys
 from typing import TextIO
+from spatialstencil.syntax.gt4py.astnodes import *
 
-class ComputationType(enum.Enum):
-    PARALLEL = 0
-    FORWARD = 1
-    BACKWARD = 2
-
-class GTree:
-    def pretty(self) -> str:
-        """
-        A pretty-printed version of the GT4Py stencil tree
-        """
-        return str(self)
-
-@dataclass
-class GTStatement(GTree):
-    target: str
-    body: ast.Expr
-
-    def pretty(self) -> str:
-        return f'      {self.target} = {ast.unparse(self.body)}'
-
-@dataclass
-class GTInterval(GTree):
-    start: int
-    end: int | None
-    statements: list[GTStatement]
-
-    def pretty(self) -> str:
-        newline = '\n'
-        end = 'END' if self.end is None else self.end
-        return f'    interval [{self.start}:{end}]:\n{newline.join(i.pretty() for i in self.statements)}'
-
-
-@dataclass
-class GTComputation(GTree):
-    computation_type: ComputationType
-    intervals: list[GTInterval]
-
-    def pretty(self) -> str:
-        newline = '\n'
-        return f'  {self.computation_type.name.lower()}:\n{newline.join(i.pretty() for i in self.intervals)}'
-
-@dataclass
-class GTProgram(GTree):
-    name: str
-    fields: list[str]
-    computations: list[GTComputation]
-    
-    def pretty(self) -> str:
-        newline = '\n'
-        return f'program {self.name} ({", ".join(self.fields)}):\n{newline.join(c.pretty() for c in self.computations)}'
 
 class GTVisitor(ast.NodeVisitor):
     """
     Recursively visits a (valid) GT4Py Python AST and produces the stencil program tree
     """
+
     def visit_FunctionDef(self, node: ast.FunctionDef) -> GTProgram:
         fields = [arg.arg for arg in node.args.args]
         computations = []
@@ -80,7 +30,7 @@ class GTVisitor(ast.NodeVisitor):
                 assert isinstance(stmt, ast.With)
                 assert len(stmt.items) == 1
                 intervals.append(self.visit_interval(stmt))
-        elif len(node.items) == 2: # Computation and interval
+        elif len(node.items) == 2:  # Computation and interval
             intervals = [self.visit_interval(node, 1)]
         else:
             raise SyntaxError('Unexpected number of with items')
@@ -93,21 +43,58 @@ class GTVisitor(ast.NodeVisitor):
         if len(interval) == 1 and ast.unparse(interval[0]) == '...':
             int_s, int_e = (0, None)
         elif len(interval) == 2:
-            int_s, int_e = (ast.literal_eval(interval[0]), ast.literal_eval(interval[1]))
+            int_s, int_e = (ast.literal_eval(interval[0]),
+                            ast.literal_eval(interval[1]))
         else:
             raise SyntaxError('Unexpected interval')
-        
-        stmts = []
-        for stmt in node.body:
-            assert isinstance(stmt, ast.Assign)
-            assert len(stmt.targets) == 1 # Do not allow ``a = b = ...``
-            stmts.append(GTStatement(target=ast.unparse(stmt.targets[0]),
-                         body=stmt.value))
+
+        stmts = self._parse_statements(node.body)
         return GTInterval(int_s, int_e, stmts)
+
+    def _parse_statements(self, body: list[ast.AST]) -> list[GTStatement]:
+        """
+        Parses stencil statements inside an interval or conditional block.
+        """
+        stmts = []
+        for stmt in body:
+            if isinstance(stmt, ast.If):
+                stmts.append(self._parse_conditional(stmt))
+            else:
+                assert isinstance(stmt, ast.Assign)
+                assert len(stmt.targets) == 1  # Do not allow ``a = b = ...``
+                stmts.append(
+                    GTComputeStatement(target=ast.unparse(stmt.targets[0]),
+                                       body=stmt.value))
+
+        return stmts
+
+    def _parse_conditional(self, stmt: ast.If) -> GTIfStatement:
+        """
+        Parses an if/elif/.../else branches inside an interval or conditional block.
+        """
+        # Parse "elif"s
+        else_ifs = []
+        current_branch: ast.If = stmt
+        while current_branch.orelse:
+            if len(current_branch.orelse) == 1 and isinstance(
+                    current_branch.orelse[0], ast.If):
+                current_branch = current_branch.orelse[0]
+                else_ifs.append((current_branch.test,
+                                 self._parse_statements(current_branch.body)))
+            else:
+                break
+        orelse = current_branch.orelse
+
+        return GTIfStatement(
+            condition=stmt.test,
+            body=self._parse_statements(stmt.body),
+            else_ifs=else_ifs if else_ifs else None,
+            orelse=self._parse_statements(orelse) if orelse else None)
 
 
 def parse_function(func: ast.FunctionDef) -> GTProgram:
     return GTVisitor().visit(func)
+
 
 def parse_string(code: str) -> dict[str, GTree]:
     """
@@ -126,6 +113,7 @@ def parse_string(code: str) -> dict[str, GTree]:
 
     return result
 
+
 def parse_file(file_or_filename: TextIO | str) -> dict[str, ast.FunctionDef]:
     """
     Parses a file representing a spatial stencil program, returning the
@@ -142,7 +130,9 @@ def parse_file(file_or_filename: TextIO | str) -> dict[str, ast.FunctionDef]:
 
 if __name__ == '__main__':
     if len(sys.argv) not in (2, 3):
-        print('USAGE: python -m spatialstencil.syntax.gt4py_parser <PYTHON FILE> [FUNCTION NAME]')
+        print(
+            'USAGE: python -m spatialstencil.syntax.gt4py_parser <PYTHON FILE> [FUNCTION NAME]'
+        )
         exit(1)
 
     out = parse_file(sys.argv[1])
@@ -150,10 +140,10 @@ if __name__ == '__main__':
         out = out[sys.argv[2]]
         print(out.pretty())
     else:
-        from spatialstencil.syntax.gt4py_to_logical_ir import lower_gt4py_to_logical_ir
+        from spatialstencil.lowering.gt4py_to_stencil_ir import lower_gt4py_to_stencil_ir
 
         for fname, func in out.items():
             print('\n====================================')
             print('Function', fname)
-            lower_gt4py_to_logical_ir(func)
+            lower_gt4py_to_stencil_ir(func)
             print(func.pretty())

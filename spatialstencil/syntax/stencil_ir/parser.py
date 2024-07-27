@@ -3,8 +3,8 @@ import os
 import sys
 from typing import TextIO
 
-from spatialstencil.syntax import astnodes
-from spatialstencil.syntax import lark_to_ast
+from spatialstencil.syntax.stencil_ir import astnodes
+from spatialstencil.syntax.stencil_ir import lark_to_ast
 
 
 class Parser:

@@ -1,7 +1,7 @@
 
 import lark
 
-from spatialstencil.syntax import astnodes
+from spatialstencil.syntax.stencil_ir import astnodes
 
 class TreeToAST(lark.Transformer):
     # Low-level literal syntax
