@@ -1,7 +1,7 @@
 
 // Version 2, with cast_extent to prevent type-propagation
 
-%spst.program(%in) {
+%out = spst.program (%in) {
     %res = spst.computation (%in)
     {
         schedule: spst.schedule<PARALLEL>,

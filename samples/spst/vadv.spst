@@ -4,7 +4,7 @@
  **/
 
 // Note that utens_stage is both an input and output. converted to SSA
-%utens_stage_out = stencil.program(%utens_stage, %u_stage, %wcon, %u_pos, %utens, %dtr_stage) {} : 
+%utens_stage_out = spst.program @vadv(%utens_stage, %u_stage, %wcon, %u_pos, %utens, %dtr_stage) {} : 
         field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
         field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
         field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
@@ -13,7 +13,7 @@
         f32
      -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
 
-    %ccol, %dcol = stencil.computation(%wcon, %dtr_stage, %u_stage, %u_pos, %utens, %utens_stage) {
+    %ccol, %dcol = spst.computation(%wcon, %dtr_stage, %u_stage, %u_pos, %utens, %utens_stage) {
      schedule = FORWARD,
      interval = [interval<?, ?>, interval<?, ?>, interval<0, 1>] } : 
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
@@ -25,7 +25,7 @@
          -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
     {
-        %ccol, %dcol = stencil.statement(%wcon, %dtr_stage, %u_stage, %u_pos, %utens, %utens_stage) {} : 
+        %ccol, %dcol = spst.statement(%wcon, %dtr_stage, %u_stage, %u_pos, %utens, %utens_stage) {} : 
                 field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
                 f32,
                 field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
@@ -56,7 +56,7 @@
         }
     }
 
-    %ccol, %dcol = stencil.computation(%wcon, %ccol, %dcol, %dtr_stage, %u_stage, %u_pos, %utens_stage) {
+    %ccol, %dcol = spst.computation(%wcon, %ccol, %dcol, %dtr_stage, %u_stage, %u_pos, %utens_stage) {
      schedule = FORWARD,
      interval = [interval<?, ?>, interval<?, ?>, interval<1, -1>] } : 
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
@@ -69,7 +69,7 @@
          -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
     {
-        %ccol, %dcol = stencil.statement(%wcon, %ccol, %dcol, %dtr_stage, %u_stage, %u_pos, %utens_stage) {} : 
+        %ccol, %dcol = spst.statement(%wcon, %ccol, %dcol, %dtr_stage, %u_stage, %u_pos, %utens_stage) {} : 
                 field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
                 field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
                 field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
@@ -107,7 +107,7 @@
         }
     }
 
-    %dcol = stencil.computation(%wcon, %ccol, %dcol, %dtr_stage, %u_stage, %u_pos, %utens_stage) {
+    %dcol = spst.computation(%wcon, %ccol, %dcol, %dtr_stage, %u_stage, %u_pos, %utens_stage) {
      schedule = FORWARD,
      interval = [interval<?, ?>, interval<?, ?>, interval<-1, None>] } : 
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
@@ -119,7 +119,7 @@
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
          -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
     {
-        %dcol = stencil.statement(%wcon, %ccol, %dcol, %dtr_stage, %u_stage, %u_pos, %utens_stage) {} : 
+        %dcol = spst.statement(%wcon, %ccol, %dcol, %dtr_stage, %u_stage, %u_pos, %utens_stage) {} : 
                 field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
                 field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
                 field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
@@ -150,7 +150,7 @@
         }
     }
 
-    %data_col, %utens_stage_out = stencil.computation(%dcol, %dtr_stage, %u_pos) {
+    %data_col, %utens_stage_out = spst.computation(%dcol, %dtr_stage, %u_pos) {
      schedule = BACKWARD,
      interval = [interval<?, ?>, interval<?, ?>, interval<-1, None>] } : 
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
@@ -159,7 +159,7 @@
          -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
     {
-        %data_col, %utens_stage_out = stencil.statement(%dcol, %dtr_stage, %u_pos) {} :
+        %data_col, %utens_stage_out = spst.statement(%dcol, %dtr_stage, %u_pos) {} :
                 field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
                 f32,
                 field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
@@ -174,7 +174,7 @@
         }
     }
 
-    %utens_stage_out = stencil.computation(%dcol, %dtr_stage, %u_pos, %data_col) {
+    %utens_stage_out = spst.computation(%dcol, %dtr_stage, %u_pos, %data_col) {
      schedule = BACKWARD,
      interval = [interval<?, ?>, interval<?, ?>, interval<0, -1>] } : 
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
@@ -183,7 +183,7 @@
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
          -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
     {
-        %utens_stage_out = stencil.statement(%dcol, %dtr_stage, %u_pos, %data_col) {} :
+        %utens_stage_out = spst.statement(%dcol, %dtr_stage, %u_pos, %data_col) {} :
                 field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
                 f32,
                 field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,

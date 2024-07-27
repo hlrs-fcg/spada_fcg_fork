@@ -28,7 +28,7 @@ u8, u16, u32,
 ```
 and the floating point types
 ```
-f16, f32
+f16, f32, f64,
 ```
 and boolean types
 ```
@@ -70,16 +70,16 @@ The goal is that the type encapsulates the data layout and data movement.
 An extent defines the access offsets of a stencil operation.
 For every integer triple `i, j, k` there is an extent access:
 ```
-stencil.access<i, j, k> ::= (i, j, k)
+spst.access<i, j, k> ::= (i, j, k)
 ```
 If an extent is unknown, it can contain the placeholder extent `?`. The purpose of placeholders is to allow
 type-inference to deduce the extent accesses. We require the extent accesses to be compile-time inferrable.
-Replacing a concrete value with a `?` creates a super-type. That is, the type `stencil.access<?, ?, ? >` is a
+Replacing a concrete value with a `?` creates a super-type. That is, the type `spst.access<?, ?, ? >` is a
 super-type of all stencil accesses.
 
 A sequence of extent accesses forms the extent:
 ```
-stencil.extent<extent-access* >
+spst.extent<extent-access* >
 ```
 This sequence must *contain no duplicates*.
 
@@ -88,10 +88,10 @@ As such, values of type `E_sub` may be consumed everywhere that values of type `
 
 Example:
 ```
-%x_sup : stencil.extent<(0, 0, 0)>
-%x_sub : stencil.extent<(0, 0, 0), (0, 0, 1)>
+%x_sup : spst.extent<(0, 0, 0)>
+%x_sub : spst.extent<(0, 0, 0), (0, 0, 1)>
 // x_sub is a sub-type of x_sup
-%y : stencil.extent<(0, 0, ?)>
+%y : spst.extent<(0, 0, ?)>
 // y is a super-type of both x_sup and x_sub
 ```
 
@@ -374,7 +374,7 @@ A stencil program contains one more stencil computations.
 Its arguments and return types may contain both scalar types and field types.
 
 ```
-%out_1, ..., %out_m = spst.program(%in_1, ..., %in_n) {
+%out_1, ..., %out_m = spst.program @programname (%in_1, ..., %in_n) {
    } : T_1, ...,  T_n
  -> T_N+1 , ...,  T_n+m {
    stencil-computation-block
