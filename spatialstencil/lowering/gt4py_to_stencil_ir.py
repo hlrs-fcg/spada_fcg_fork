@@ -1,10 +1,11 @@
 import ast
 from collections import defaultdict
-from spatialstencil.syntax.gt4py import parser as gt
+from spatialstencil.syntax.gt4py import astnodes as gtast
+from spatialstencil.syntax.helpers import ASTFindReplace
 from spatialstencil.syntax.stencil_ir import astnodes
 
 
-def lower_gt4py_to_stencil_ir(program: gt.GTProgram) -> astnodes.Program:
+def lower_gt4py_to_stencil_ir(program: gtast.GTProgram) -> astnodes.Program:
     """
     Takes a GT4Py program (as AST) and returns a logical IR program.
     """
@@ -15,11 +16,15 @@ def lower_gt4py_to_stencil_ir(program: gt.GTProgram) -> astnodes.Program:
     # Unique naming
     field_versioning(program)
 
-    # TODO: Type/shape inference
+    # TODO: Build new tree structure (that matches the language)
+
+    # TODO: Perform type/shape inference in stencil IR language
+
+    # TODO: Insert materialize for all fields
     pass
 
 
-def field_versioning(program: gt.GTProgram):
+def field_versioning(program: gtast.GTProgram):
     """
     Ensures every assignment target is unique by setting versions for each field.
     """
@@ -43,7 +48,7 @@ def field_versioning(program: gt.GTProgram):
                     names.add(stmt.target)
 
 
-def constant_propagation(program: gt.GTProgram):
+def constant_propagation(program: gtast.GTProgram):
     """
     Replaces all subsequent appearances of a constant with its value.
     """
@@ -61,8 +66,7 @@ def constant_propagation(program: gt.GTProgram):
                     constants[stmt.target] = stmt.body.value
                     statements_to_remove.append(i)
                     continue
-                elif isinstance(stmt.body, ast.Expr) and isinstance(
-                        stmt.body.value, ast.Constant):
+                elif isinstance(stmt.body, ast.Expr) and isinstance(stmt.body.value, ast.Constant):
                     constants[stmt.target] = stmt.body.value.value
                     statements_to_remove.append(i)
                     continue
@@ -84,43 +88,3 @@ def constant_propagation(program: gt.GTProgram):
                 intvl.statements.pop(i)
 
 
-class ASTFindReplace(ast.NodeTransformer):
-    """
-    Finds and replaces a name with another value
-    """
-
-    def __init__(self, repldict: dict[str, ast.AST]):
-        """
-        Creates a find-and-replace AST node transformer.
-
-        :param repldict: A dictionary mapping a source name to a target replacement AST node.
-        """
-        self.replace_count = 0
-        self.repldict = repldict
-        # If ast.Names were given, use them as keys as well
-        self.repldict.update({
-            k.id: v
-            for k, v in self.repldict.items() if isinstance(k, ast.Name)
-        })
-
-    def visit_Name(self, node: ast.Name):
-        if node.id in self.repldict:
-            val = self.repldict[node.id]
-            if isinstance(val, ast.AST):
-                new_node = ast.copy_location(val, node)
-            else:
-                new_node = ast.copy_location(
-                    ast.parse(str(self.repldict[node.id])).body[0].value, node)
-            self.replace_count += 1
-            return new_node
-
-        return self.generic_visit(node)
-
-    def visit_keyword(self, node: ast.keyword):
-        if node.arg in self.repldict:
-            val = self.repldict[node.arg]
-            if isinstance(val, ast.AST):
-                val = ast.unparse(val)
-            node.arg = val
-            self.replace_count += 1
-        return self.generic_visit(node)
