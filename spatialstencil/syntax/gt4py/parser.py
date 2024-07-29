@@ -43,8 +43,7 @@ class GTVisitor(ast.NodeVisitor):
         if len(interval) == 1 and ast.unparse(interval[0]) == '...':
             int_s, int_e = (0, None)
         elif len(interval) == 2:
-            int_s, int_e = (ast.literal_eval(interval[0]),
-                            ast.literal_eval(interval[1]))
+            int_s, int_e = (ast.literal_eval(interval[0]), ast.literal_eval(interval[1]))
         else:
             raise SyntaxError('Unexpected interval')
 
@@ -62,9 +61,7 @@ class GTVisitor(ast.NodeVisitor):
             else:
                 assert isinstance(stmt, ast.Assign)
                 assert len(stmt.targets) == 1  # Do not allow ``a = b = ...``
-                stmts.append(
-                    GTComputeStatement(target=ast.unparse(stmt.targets[0]),
-                                       body=stmt.value))
+                stmts.append(GTComputeStatement(target=ast.unparse(stmt.targets[0]), body=stmt.value))
 
         return stmts
 
@@ -76,11 +73,9 @@ class GTVisitor(ast.NodeVisitor):
         else_ifs = []
         current_branch: ast.If = stmt
         while current_branch.orelse:
-            if len(current_branch.orelse) == 1 and isinstance(
-                    current_branch.orelse[0], ast.If):
+            if len(current_branch.orelse) == 1 and isinstance(current_branch.orelse[0], ast.If):
                 current_branch = current_branch.orelse[0]
-                else_ifs.append((current_branch.test,
-                                 self._parse_statements(current_branch.body)))
+                else_ifs.append((current_branch.test, self._parse_statements(current_branch.body)))
             else:
                 break
         orelse = current_branch.orelse
@@ -130,9 +125,7 @@ def parse_file(file_or_filename: TextIO | str) -> dict[str, ast.FunctionDef]:
 
 if __name__ == '__main__':
     if len(sys.argv) not in (2, 3):
-        print(
-            'USAGE: python -m spatialstencil.syntax.gt4py_parser <PYTHON FILE> [FUNCTION NAME]'
-        )
+        print('USAGE: python -m spatialstencil.syntax.gt4py.parser <PYTHON FILE> [FUNCTION NAME]')
         exit(1)
 
     out = parse_file(sys.argv[1])
@@ -140,10 +133,7 @@ if __name__ == '__main__':
         out = out[sys.argv[2]]
         print(out.pretty())
     else:
-        from spatialstencil.lowering.gt4py_to_stencil_ir import lower_gt4py_to_stencil_ir
-
         for fname, func in out.items():
             print('\n====================================')
             print('Function', fname)
-            lower_gt4py_to_stencil_ir(func)
             print(func.pretty())

@@ -65,7 +65,7 @@ def parse_file(file_or_filename: TextIO | str) -> astnodes.Program:
 
 if __name__ == '__main__':
     if len(sys.argv) != 2:
-        print('USAGE: python -m spatialstencil.syntax.parser <STENCIL FILE>')
+        print('USAGE: python -m spatialstencil.syntax.stencil_ir.parser <STENCIL FILE>')
         exit(1)
 
     out = parse_file(sys.argv[1])

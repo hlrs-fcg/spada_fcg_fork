@@ -88,3 +88,21 @@ def constant_propagation(program: gtast.GTProgram):
                 intvl.statements.pop(i)
 
 
+if __name__ == '__main__':
+    import sys
+    from spatialstencil.syntax.gt4py import parser
+
+    if len(sys.argv) not in (2, 3):
+        print('USAGE: python -m spatialstencil.lowering.gt4py_to_stencil_ir <PYTHON FILE> [FUNCTION NAME]')
+        exit(1)
+
+    out = parser.parse_file(sys.argv[1])
+    if len(sys.argv) == 3:
+        out = out[sys.argv[2]]
+        print(out.pretty())
+    else:
+        for fname, func in out.items():
+            print('\n====================================')
+            print('Function', fname)
+            lower_gt4py_to_stencil_ir(func)
+            print(func.pretty())
