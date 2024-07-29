@@ -4,6 +4,7 @@ Native class definitions for the spatial stencil Abstract Syntax Tree (AST).
 from dataclasses import dataclass, field
 import enum
 from typing import Literal
+import pprint
 
 
 class ScalarType(enum.Enum):
@@ -18,6 +19,9 @@ class ScalarType(enum.Enum):
     f32 = enum.auto()
     f64 = enum.auto()
     bool = enum.auto()
+
+    def as_ir(self, indent: int = 0) -> str:
+        return self.name
 
 
 class ComputationType(enum.Enum):
@@ -49,9 +53,15 @@ class Node:
 
     def validate(self) -> None:
         """
-        Runs assertions on the node
+        Runs assertions on the node.
         """
         pass
+
+    def pretty(self) -> str:
+        """
+        Pretty-prints the contents of this AST node.
+        """
+        return pprint.pformat(self)
 
 
 class Domain(Node):
@@ -103,7 +113,7 @@ class Extent(Node):
     extents: list[DimTuple]
 
     def as_ir(self, indent: int = 0) -> str:
-        return f'spst.extent<{", ".join(self.extents.as_ir())}>'
+        return f'spst.extent<{", ".join(e.as_ir() for e in self.extents)}>'
 
 
 @dataclass
@@ -120,8 +130,33 @@ class FieldType(Node):
         return FieldType(
             domain=Cartesian(None, None, None), extent=Extent([DimTuple((None, None, None))]), dtype=ScalarType.UNKNOWN)
 
+    def validate(self) -> None:
+        assert self.dtype != ScalarType.f64
+
     def as_ir(self, indent: int = 0) -> str:
-        return f'spst.field<{self.domain.as_ir()}, {self.extent.as_ir()}, {self.dtype.value}>'
+        return f'spst.field<{self.domain.as_ir()}, {self.extent.as_ir()}, {self.dtype.as_ir()}>'
+
+
+@dataclass
+class TypeInfo(Node):
+    source: FieldType | list[FieldType] = field(default_factory=FieldType.empty)
+    destination: FieldType | list[FieldType] | None = None
+
+    def as_ir(self, indent: int = 0) -> str:
+        if isinstance(self.source, list):
+            srcstr = ", ".join(v.as_ir() for v in self.source)
+        else:
+            srcstr = self.source.as_ir()
+
+        if self.destination is None:
+            return srcstr
+
+        if isinstance(self.destination, list):
+            dststr = ", ".join(v.as_ir() for v in self.destination)
+        else:
+            dststr = self.destination.as_ir()
+
+        return f'{srcstr} -> {dststr}'
 
 
 @dataclass
@@ -151,26 +186,11 @@ class Identifier(Node):
     """
     name: str
     version: int = 0
-    dtype: FieldType = field(default_factory=FieldType.empty)
-
-    def validate(self) -> None:
-        assert self.dtype.dtype != ScalarType.f64
 
     def as_ir(self, indent: int = 0) -> str:
         if self.version != 0:
             return f'%{self.name}#{self.version}'
         return f'%{self.name}'
-
-
-@dataclass
-class Constant(Node):
-    """
-    A constant literal
-    """
-    value: int | float
-
-    def as_ir(self, indent: int = 0) -> str:
-        return f'{self.value}'
 
 
 @dataclass
@@ -220,7 +240,7 @@ class Subscript(Node):
     subscript: tuple[int, int, int]
 
     def as_ir(self, indent: int = 0) -> str:
-        return f'{self.value.as_ir()}[{", ".join(self.subscript)}]'
+        return f'{self.value.as_ir()}[{", ".join(str(s) for s in self.subscript)}]'
 
 
 # TODO(later): Call nodes (e.g., for math calls)
@@ -231,10 +251,12 @@ class Expression(Node):
     """
     An expression that can take the form of an identifier, literal, subscript, or a unary/binary/ternary operator.
     """
-    value: Identifier | Constant | Subscript | UnaryOperator | BinaryOperator | TernaryOperator
+    value: Identifier | int | float | Subscript | UnaryOperator | BinaryOperator | TernaryOperator
 
     def as_ir(self, indent: int = 0) -> str:
-        if isinstance(self.value, (Identifier, Constant, Subscript, UnaryOperator)):
+        if isinstance(self.value, (int, float)):
+            return str(self.value)
+        if isinstance(self.value, (Identifier, Subscript, UnaryOperator)):
             return self.value.as_ir(indent)
         return f'({self.value.as_ir(indent)})'
 
@@ -257,20 +279,23 @@ class Block(Node):
 
 @dataclass
 class ReturnOp(Operation):
-    value: Identifier
+    values: list[Expression]
+    typeinfo: TypeInfo = field(default_factory=TypeInfo)
 
     def validate(self) -> None:
-        assert isinstance(self.value, Identifier)
+        assert isinstance(self.values[0].value, Identifier)
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
-        return f'{indent_str}spst.return {self.value.as_ir()} : {self.value.dtype.as_ir()}'
+        return (f'{indent_str}spst.return {", ".join(v.as_ir() for v in self.values)}'
+                f' : {self.typeinfo.as_ir()}')
 
 
 @dataclass
 class MaterializeOp(Operation):
     result: Identifier
     value: Identifier
+    typeinfo: TypeInfo = field(default_factory=TypeInfo)
 
     def validate(self) -> None:
         assert isinstance(self.result, Identifier)
@@ -279,7 +304,22 @@ class MaterializeOp(Operation):
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
         return (f'{indent_str}{self.result.as_ir()} = spst.materialize ({self.value.as_ir()})'
-                f' : {self.value.dtype.as_ir()} -> {self.result.dtype.as_ir()}')
+                f' : {self.typeinfo.as_ir()}')
+
+
+@dataclass
+class AssignOp(Operation):
+    result: Identifier
+    value: Expression
+    typeinfo: TypeInfo = field(default_factory=TypeInfo)
+
+    def validate(self) -> None:
+        assert isinstance(self.result, Identifier)
+
+    def as_ir(self, indent: int = 0) -> str:
+        indent_str = '  ' * indent
+        return (f'{indent_str}{self.result.as_ir()} = {self.value.as_ir()}'
+                f' : {self.typeinfo.as_ir()}')
 
 
 @dataclass
@@ -289,19 +329,19 @@ class StatementBlock(Block):
     """
     output: Identifier
     inputs: list[Identifier]
-    body: ReturnOp
+    attributes: dict[str, Node]
+    typeinfo: TypeInfo
+    body: list[AssignOp | ReturnOp]
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
         inputs = ', '.join(i.as_ir() for i in self.inputs)
-        input_types = ', '.join(i.dtype.as_ir() for i in self.inputs)
         output = self.output.as_ir()
-        output_type = self.output.dtype.as_ir()
         result = f'{indent_str}{output} = spst.statement ({inputs})'
-        result += f' : {input_types} -> {output_type} '
+        result += ' {}'
+        result += f' : {self.typeinfo.as_ir()} '
         result += '{\n'
-        result += self.body.as_ir(indent + 1)
-        #result += '\n'.join(stmt.as_ir(indent + 1) for stmt in self.body)
+        result += '\n'.join(stmt.as_ir(indent + 1) for stmt in self.body)
         result += '\n' + indent_str + '}'
         return result
 
@@ -313,6 +353,7 @@ class IfBlock(Block, Operation):
     """
     result: Identifier
     condition: Identifier
+    typeinfo: TypeInfo
     body: list[Operation]
     else_ifs: list[tuple[Identifier, list[Operation]]] | None  # List of (condition, body)
     orelse: list[Operation] | None
@@ -334,10 +375,10 @@ class IfBlock(Block, Operation):
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
         result = f'{indent_str}{self.result.as_ir()} = spst.if ({self.condition.as_ir()})'
-        result += f' : {self.condition.dtype.as_ir()} -> {self.result.dtype.as_ir()} '
+        result += f' : {self.typeinfo.as_ir()} '
         result += '{\n'
         result += '\n'.join(stmt.as_ir(indent + 1) for stmt in self.body)
-        result += '\n' + indent_str + '}'
+        result += indent_str + '}'
         if self.else_ifs:
             for elif_cond, elif_body in self.else_ifs:
                 result += f' elif ({elif_cond.as_ir()}) '
@@ -360,27 +401,25 @@ class ComputationBlock(Block):
     inputs: list[Identifier]
     schedule: ComputationType
     interval: tuple[Interval, Interval, Interval]
+    typeinfo: TypeInfo
     body: list[StatementBlock | IfBlock | MaterializeOp | ReturnOp]
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
         inputs = ', '.join(i.as_ir() for i in self.inputs)
-        input_types = ', '.join(i.dtype.as_ir() for i in self.inputs)
         outputs = ', '.join(o.as_ir() for o in self.outputs)
-        output_types = ', '.join(o.dtype.as_ir() for o in self.outputs)
-        result = f'{indent_str}{outputs} = spst.computation ({inputs})'
+        result = f'{indent_str}{outputs} = spst.computation ({inputs}) '
 
         # Attributes
         result += '{\n'
-        result += f'{indent_str} schedule = {self.schedule.value}\n'
+        result += f'{indent_str} schedule = {self.schedule.name},\n'
         result += f'{indent_str} interval = [{", ".join(i.as_ir() for i in self.interval)}]\n'
-        result += '\n' + indent_str + '}'
+        result += indent_str + '}'
         # Types
-        result += f' : {input_types} -> {output_types} '
+        result += f' : {self.typeinfo.as_ir()} '
         # Body
         result += '{\n'
-        result += self.body.as_ir(indent + 1)
-        #result += '\n'.join(stmt.as_ir(indent + 1) for stmt in self.body)
+        result += '\n'.join(stmt.as_ir(indent + 1) for stmt in self.body)
         result += '\n' + indent_str + '}'
         return result
 
@@ -393,19 +432,19 @@ class Program(Node):
     outputs: list[Identifier]
     name: str | None
     inputs: list[Identifier]
+    attributes: dict[str, Node]
+    typeinfo: TypeInfo
     computations: list[ComputationBlock]
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
         newline = '\n'
         inputs = ', '.join(i.as_ir() for i in self.inputs)
-        input_types = ', '.join(i.dtype.as_ir() for i in self.inputs)
         outputs = ', '.join(o.as_ir() for o in self.outputs)
-        output_types = ', '.join(o.dtype.as_ir() for o in self.outputs)
         name = f' @{self.name}' if self.name else ''
 
-        return (f'{indent_str}{outputs} = spst.program{name} ({inputs}) {{ }}'
-                f' : {input_types} -> {output_types}'
+        return (f'{indent_str}{outputs} = spst.program{name}({inputs}) {{}}'
+                f' : {self.typeinfo.as_ir()} '
                 '{\n'
                 f'{newline.join(c.as_ir(indent + 1) for c in self.computations)}'
                 '\n' + indent_str + '}')

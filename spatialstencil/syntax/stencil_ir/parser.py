@@ -12,6 +12,7 @@ class Parser:
     A spatial stencil language parser. Parses multiple strings faster than
     calling ``parser.parse_string`` multiple times.
     """
+
     def __init__(self) -> None:
         # Find and load the local lark file
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -68,4 +69,4 @@ if __name__ == '__main__':
         exit(1)
 
     out = parse_file(sys.argv[1])
-    print(out.pretty())
+    print(out.as_ir())
