@@ -37,6 +37,15 @@ bool
 
 Note that not all targets might support all scalar types natively.
 
+Type promotion rules (e.g., when adding an `f16` to `f32`) follows the ANSI C standard, and evaluates
+the following rules in this order:
+
+  * If one type is integral and another is floating point, the result will be floating point;
+    * Example: `i32 + f16 -> f16`
+  * When one of the types is wider, the widest type will be used for the output;
+    * Example: `i16 + u16 -> u16`
+  * For the purposes of type promotion, `bool` is considered a signed integral 1-bit value.
+
 #### Domain types
 
 The abstract base domain type is
