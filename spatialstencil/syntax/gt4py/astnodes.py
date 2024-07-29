@@ -41,9 +41,7 @@ class GTComputeStatement(GTStatement):
 class GTIfStatement(GTStatement):
     condition: ast.Expr | ast.Name
     body: list[GTStatement]
-    else_ifs: list[
-        tuple[ast.Expr | ast.Name,
-              list[GTStatement]]] | None  # List of (condition, body)
+    else_ifs: list[tuple[ast.Expr | ast.Name, list[GTStatement]]] | None  # List of (condition, body)
     orelse: list[GTStatement] | None
 
     def pretty(self, indent: int = 0) -> str:
@@ -73,7 +71,7 @@ class GTInterval(GTree):
         newline = '\n'
         end = 'END' if self.end is None else self.end
         indent_str = indent * '  '
-        return f'{indent_str}interval [{self.start}:{end}]:\n{newline.join(i.pretty() for i in self.statements)}'
+        return f'{indent_str}interval [{self.start}:{end}]:\n{newline.join(i.pretty(indent + 1) for i in self.statements)}'
 
 
 @dataclass
@@ -84,9 +82,8 @@ class GTComputation(GTree):
     def pretty(self, indent: int = 0) -> str:
         newline = '\n'
         indent_str = indent * '  '
-        return (
-            f'{indent_str}{self.computation_type.name.lower()}:\n' +
-            f'{newline.join(i.pretty(indent + 1) for i in self.intervals)}')
+        return (f'{indent_str}{self.computation_type.name.lower()}:\n' +
+                f'{newline.join(i.pretty(indent + 1) for i in self.intervals)}')
 
 
 @dataclass
@@ -98,6 +95,5 @@ class GTProgram(GTree):
     def pretty(self, indent: int = 0) -> str:
         newline = '\n'
         indent_str = indent * '  '
-        return (
-            f'{indent_str}program {self.name} ({", ".join(self.fields)}):\n' +
-            f'{newline.join(c.pretty(indent + 1) for c in self.computations)}')
+        return (f'{indent_str}program {self.name} ({", ".join(self.fields)}):\n' +
+                f'{newline.join(c.pretty(indent + 1) for c in self.computations)}')

@@ -68,8 +68,8 @@ class TreeToAST(lark.Transformer):
 
     def dim_or_end(self, args, meta=None):
         dim = args[0]
-        # Dimension can be explicit, end (END/None), or indeterminate (?)
-        if str(dim) in ("END", "None"):
+        # Dimension can be explicit, end (None), or indeterminate ("?")
+        if str(dim) == "None":
             return None
         return dim
 

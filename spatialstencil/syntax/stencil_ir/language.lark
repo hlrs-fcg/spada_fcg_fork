@@ -41,7 +41,7 @@ identifier : "%" suffix_id ("#" digits)?
 
 // Language built-in types
 ?dim : posneg_integer_literal | unknown_dim_literal
-!dim_or_end : dim | "END" | "None"
+!dim_or_end : dim | "None"
 dim_list: dim ("," dim)*
 extent_tuple : "(" dim ("," dim)* ")"
 extent_tuple_list : extent_tuple ("," extent_tuple)*
