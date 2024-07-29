@@ -25,6 +25,7 @@ class ScalarType(enum.Enum):
 
 
 class ComputationType(enum.Enum):
+    # We are using numbers to ensure compatibility with GT4Py's AST values
     PARALLEL = 0
     FORWARD = 1
     BACKWARD = 2

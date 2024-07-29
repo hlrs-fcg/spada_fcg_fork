@@ -11,11 +11,23 @@ class GTVisitor(ast.NodeVisitor):
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> GTProgram:
         fields = [arg.arg for arg in node.args.args]
+        field_types = [self._parse_annotation(arg) for arg in node.args.args]
         computations = []
         for subnode in node.body:
             if isinstance(subnode, ast.With):
                 computations.append(self.visit_With(subnode))
-        return GTProgram(node.name, fields, computations)
+        return GTProgram(node.name, fields, field_types, computations)
+
+    def _parse_annotation(self, arg: ast.arg) -> FieldType:
+        if arg.annotation is None:
+            raise ValueError(f'Argument "{arg.arg}" is missing a type annotation')
+        if not isinstance(arg.annotation, ast.Name):
+            raise TypeError(f'Argument "{arg.arg}" has an unsupported annotation type: {type(arg.annotation)}')
+        if arg.annotation.id not in FieldType.__members__:
+            raise TypeError(
+                f'Argument "{arg.arg}" has an unsupported type: {arg.annotation.id}. Use one of {", ".join(FieldType.__members__.keys())}'
+            )
+        return getattr(FieldType, arg.annotation.id)
 
     def visit_With(self, node: ast.With):
         assert isinstance(node.items[0].context_expr, ast.Call)

@@ -8,9 +8,21 @@ from dataclasses import dataclass
 
 
 class ComputationType(enum.Enum):
+    # We are using numbers to ensure compatibility with Stencil IR's values
     PARALLEL = 0
     FORWARD = 1
     BACKWARD = 2
+
+
+class FieldType(enum.Enum):
+    Field3D = enum.auto()
+    FieldIJK = Field3D
+    FieldIJ = enum.auto()
+    FieldI = enum.auto()
+    FieldJ = enum.auto()
+    FieldK = enum.auto()
+    int = enum.auto()
+    float = enum.auto()
 
 
 class GTree:
@@ -90,10 +102,12 @@ class GTComputation(GTree):
 class GTProgram(GTree):
     name: str
     fields: list[str]
+    field_types: list[FieldType]
     computations: list[GTComputation]
 
     def pretty(self, indent: int = 0) -> str:
         newline = '\n'
         indent_str = indent * '  '
-        return (f'{indent_str}program {self.name} ({", ".join(self.fields)}):\n' +
+        args = [f'{field}: {dtype.name}' for field, dtype in zip(self.fields, self.field_types)]
+        return (f'{indent_str}program {self.name}({", ".join(args)}):\n' +
                 f'{newline.join(c.pretty(indent + 1) for c in self.computations)}')
