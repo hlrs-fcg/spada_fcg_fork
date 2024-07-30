@@ -138,10 +138,13 @@ class FieldType(Node):
         return f'spst.field<{self.domain.as_ir()}, {self.extent.as_ir()}, {self.dtype.as_ir()}>'
 
 
+DataType = FieldType | ScalarType
+
+
 @dataclass
 class TypeInfo(Node):
-    source: FieldType | list[FieldType] = field(default_factory=FieldType.empty)
-    destination: FieldType | list[FieldType] | None = None
+    source: DataType | list[DataType] = field(default_factory=FieldType.empty)
+    destination: DataType | list[DataType] | None = None
 
     def as_ir(self, indent: int = 0) -> str:
         if isinstance(self.source, list):

@@ -2,12 +2,26 @@ import ast
 from collections import defaultdict
 from spatialstencil.syntax.gt4py import astnodes as gtast
 from spatialstencil.syntax.helpers import ASTFindReplace
-from spatialstencil.syntax.stencil_ir import astnodes
+from spatialstencil.syntax.stencil_ir import astnodes as sast, type_inference
 
 
-def lower_gt4py_to_stencil_ir(program: gtast.GTProgram) -> astnodes.Program:
+def lower_gt4py_to_stencil_ir(program: gtast.GTProgram,
+                              default_float_dtype: sast.ScalarType = sast.ScalarType.f32,
+                              default_int_dtype: sast.ScalarType = sast.ScalarType.i32,
+                              domain: tuple[int] | None = None,
+                              halo: tuple[int] | None = None) -> sast.Program:
     """
     Takes a GT4Py program (as AST) and returns a logical IR program.
+
+    :param program: The GT4Py AST to lower.
+    :param default_float_dtype: The float type to use for float literals (e.g. 0.0) and fields that do not have an
+                                explicit type.
+    :param default_int_dtype: The integer type to use for integer literals and integral fields that do not have an
+                              explicit type.
+    :param domain: An optional domain size to compute the stencil on. If not given, keeps shapes unknown for
+                   future shape inference.
+    :param halo: An existing boundary area that this program must compute (in addition to internal halos
+                 derived by the computation), if given. 
     """
 
     # Constant propagation
