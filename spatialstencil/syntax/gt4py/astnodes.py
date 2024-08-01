@@ -72,6 +72,11 @@ class GTIfStatement(GTStatement):
 
         return '\n'.join(result)
 
+    @property
+    def target(self):
+        # Maintains compatibility with GTComputeStatement
+        return None
+
 
 @dataclass
 class GTInterval(GTree):

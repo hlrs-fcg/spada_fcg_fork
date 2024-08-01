@@ -7,21 +7,16 @@ Field3D = np.ndarray
 
 
 # See https://github.com/GridTools/gt4py/blob/1caca893034a18d5df1522ed251486659f846589/tests/test_integration/stencil_definitions.py#L194
-def horizontal_diffusion(in_field: Field3D, out_field: Field3D,
-                         coeff: Field3D):
+def horizontal_diffusion(in_field: Field3D, out_field: Field3D, coeff: Field3D):
     with computation(PARALLEL), interval(...):
         lap_field = 4.0 * in_field[0, 0, 0] - (
-            in_field[1, 0, 0] + in_field[-1, 0, 0] + in_field[0, 1, 0] +
-            in_field[0, -1, 0])
+            in_field[1, 0, 0] + in_field[-1, 0, 0] + in_field[0, 1, 0] + in_field[0, -1, 0])
         res = lap_field[1, 0, 0] - lap_field[0, 0, 0]
-        flx_field = 0 if (res *
-                          (in_field[1, 0, 0] - in_field[0, 0, 0])) > 0 else res
+        flx_field = 0 if (res * (in_field[1, 0, 0] - in_field[0, 0, 0])) > 0 else res
         res = lap_field[0, 1, 0] - lap_field[0, 0, 0]
-        fly_field = 0 if (res *
-                          (in_field[0, 1, 0] - in_field[0, 0, 0])) > 0 else res
+        fly_field = 0 if (res * (in_field[0, 1, 0] - in_field[0, 0, 0])) > 0 else res
         out_field = in_field[0, 0, 0] - coeff[0, 0, 0] * (
-            flx_field[0, 0, 0] - flx_field[-1, 0, 0] + fly_field[0, 0, 0] -
-            fly_field[0, -1, 0])
+            flx_field[0, 0, 0] - flx_field[-1, 0, 0] + fly_field[0, 0, 0] - fly_field[0, -1, 0])
 
 
 # See https://github.com/GridTools/gt4py/blob/1caca893034a18d5df1522ed251486659f846589/tests/test_integration/stencil_definitions.py#L111
@@ -43,8 +38,7 @@ def vertical_advection(
 
             # update the d column
             correction_term = -cs * (u_stage[0, 0, 1] - u_stage[0, 0, 0])
-            dcol = (dtr_stage * u_pos[0, 0, 0] + utens[0, 0, 0] +
-                    utens_stage[0, 0, 0] + correction_term)
+            dcol = (dtr_stage * u_pos[0, 0, 0] + utens[0, 0, 0] + utens_stage[0, 0, 0] + correction_term)
 
             # Thomas forward
             divided = 1.0 / bcol[0, 0, 0]
@@ -63,10 +57,8 @@ def vertical_advection(
             bcol = dtr_stage - acol[0, 0, 0] - ccol[0, 0, 0]
 
             # update the d column
-            correction_term = -as_ * (u_stage[0, 0, -1] - u_stage[
-                0, 0, 0]) - cs * (u_stage[0, 0, 1] - u_stage[0, 0, 0])
-            dcol = (dtr_stage * u_pos[0, 0, 0] + utens[0, 0, 0] +
-                    utens_stage[0, 0, 0] + correction_term)
+            correction_term = -as_ * (u_stage[0, 0, -1] - u_stage[0, 0, 0]) - cs * (u_stage[0, 0, 1] - u_stage[0, 0, 0])
+            dcol = (dtr_stage * u_pos[0, 0, 0] + utens[0, 0, 0] + utens_stage[0, 0, 0] + correction_term)
 
             # Thomas forward
             divided = 1.0 / (bcol[0, 0, 0] - ccol[0, 0, -1] * acol[0, 0, 0])
@@ -81,8 +73,7 @@ def vertical_advection(
 
             # update the d column
             correction_term = -as_ * (u_stage[0, 0, -1] - u_stage[0, 0, 0])
-            dcol = (dtr_stage * u_pos[0, 0, 0] + utens[0, 0, 0] +
-                    utens_stage[0, 0, 0] + correction_term)
+            dcol = (dtr_stage * u_pos[0, 0, 0] + utens[0, 0, 0] + utens_stage[0, 0, 0] + correction_term)
 
             # Thomas forward
             divided = 1.0 / (bcol[0, 0, 0] - ccol[0, 0, -1] * acol[0, 0, 0])
@@ -101,8 +92,7 @@ def vertical_advection(
 
 
 # See https://github.com/spcl/open-earth-compiler/blob/1e48dee6a1a021bc11d6621432450406349b3733/test/Examples/hdiffsa.mlir
-def hdiffsa(arg0: Field3D, arg1: Field3D, arg2: Field3D, arg3: Field3D,
-            arg4: Field3D):
+def hdiffsa(arg0: Field3D, arg1: Field3D, arg2: Field3D, arg3: Field3D, arg4: Field3D):
     with computation(PARALLEL), interval(...):
         i15 = arg0[0, 0, 0]
         i16 = arg0[-1, 0, 0] + arg0[1, 0, 0]
@@ -132,9 +122,8 @@ def hdiffsa(arg0: Field3D, arg1: Field3D, arg2: Field3D, arg3: Field3D,
 
 
 # See https://github.com/spcl/open-earth-compiler/blob/1e48dee6a1a021bc11d6621432450406349b3733/test/Examples/hdiffsmag.mlir
-def hdiffsmag(arg0: Field3D, arg1: Field3D, arg2: Field3D, arg3: Field3D,
-              arg4: Field3D, arg5: Field3D, arg6: Field3D, arg7: Field3D,
-              arg8: Field3D, arg9: Field3D):
+def hdiffsmag(arg0: Field3D, arg1: Field3D, arg2: Field3D, arg3: Field3D, arg4: Field3D, arg5: Field3D, arg6: Field3D,
+              arg7: Field3D, arg8: Field3D, arg9: Field3D):
     with computation(PARALLEL), interval(...):
         cst = 1.000000e+00
         cst_0 = 6.371229e+06
@@ -244,8 +233,7 @@ def hdiffsmag(arg0: Field3D, arg1: Field3D, arg2: Field3D, arg3: Field3D,
         arg4 = i44 + i43
 
 
-def uvbke(arg0: Field3D, arg1: Field3D, arg2: Field3D, arg3: Field3D,
-          arg4: Field3D, arg5: Field3D):
+def uvbke(arg0: Field3D, arg1: Field3D, arg2: Field3D, arg3: Field3D, arg4: Field3D, arg5: Field3D):
     with computation(PARALLEL), interval(...):
         i16 = (arg1[-1, 0, 0] + arg1[0, 0, 0]) * arg2[0, 0, 0]
         i19 = arg0[0, -1, 0] + arg0[0, 0, 0]

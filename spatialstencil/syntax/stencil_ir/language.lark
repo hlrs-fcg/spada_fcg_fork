@@ -96,7 +96,7 @@ multi_interval_type : "[" interval_type ("," interval_type)* "]"
 ?power: atom_expr ("**" factor)+ -> binary_op_pow
       | atom_expr
 
-?atom_expr: bare_id "(" [arguments] ")"         -> call
+?atom_expr: bare_id "(" [call_arguments] ")"         -> call
           | identifier "[" subscript_slice "]"  -> subscript
           | atom_expr "." bare_id               -> getattr
           | atom
@@ -105,7 +105,7 @@ multi_interval_type : "[" interval_type ("," interval_type)* "]"
      | constant_literal
      | "(" test ")"
 
-arguments: test ("," test)*
+call_arguments: test ("," test)*
 
 ////////////////////////////////////////////////////
 // Common syntactic elements

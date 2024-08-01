@@ -38,17 +38,54 @@ class TestStencilIRParser(unittest.TestCase):
 
         # Branch 1
         assert isinstance(comp.body[0], stast.IfBlock)
-        assert comp.body[0].result.as_ir() == '%b'
+        assert len(comp.body[0].results) == 1
+        assert comp.body[0].results[0].as_ir() == '%b'
         assert comp.body[0].condition.as_ir() == '%inp'
         assert len(comp.body[0].else_ifs) == 1
         assert comp.body[0].orelse is not None
 
         # Branch 2
         assert isinstance(comp.body[1], stast.IfBlock)
-        assert comp.body[1].result.as_ir() == '%out'
+        assert len(comp.body[1].results) == 1
+        assert comp.body[1].results[0].as_ir() == '%out'
         assert comp.body[1].condition.as_ir() == '%b'
         assert len(comp.body[1].else_ifs) == 0
         assert comp.body[1].orelse is not None
+
+    def test_mathcall(self):
+        """
+        Tests parsing a math call
+        """
+        src = '''
+        %out = spst.program (%inp) {} : 
+          field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
+          field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
+            %out = spst.computation(%inp) {
+              schedule = PARALLEL,
+              interval = [interval<?, ?>, interval<?, ?>, interval<?, ?>]
+            } : field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
+                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {                    
+                    %out = spst.statement (%inp) {} : 
+                      spst.field<spst.cartesian<?, ?, ?>, spst.extent<(?, ?, ?)>, f32> -> 
+                      spst.field<spst.cartesian<?, ?, ?>, spst.extent<(?, ?, ?)>, f32> {
+                          spst.return sqrt(%inp) : f32
+                    }  
+            }
+        }
+        '''
+        program = parser.parse_string(src)
+        comp = program.computations[0]
+
+        assert isinstance(comp.body[0], stast.StatementBlock)
+        stmt = comp.body[0]
+        assert len(stmt.body) == 1
+        assert isinstance(stmt.body[0], stast.ReturnOp)
+        retop = stmt.body[0]
+        assert len(retop.values) == 1
+        assert isinstance(retop.values[0].value, stast.MathCall)
+        mathcall = retop.values[0].value
+        assert mathcall.func == 'sqrt'
+        assert [arg.as_ir() for arg in mathcall.arguments] == ['%inp']
 
     def test_roundtrip_hdiff(self):
         """

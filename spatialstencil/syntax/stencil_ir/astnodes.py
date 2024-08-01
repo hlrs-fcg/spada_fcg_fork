@@ -183,7 +183,7 @@ class StringLiteral(Node):
         return f'"{self.value}"'
 
 
-@dataclass
+@dataclass(unsafe_hash=True)
 class Identifier(Node):
     """
     A field/scalar identifier (``%abc``).
@@ -232,7 +232,7 @@ class TernaryOperator(Node):
     false_value: 'Expression'
 
     def as_ir(self, indent: int = 0) -> str:
-        return f'{self.true_value.as_ir()} if ({self.test.as_ir()}) else {self.false_value.as_ir()}'
+        return f'{self.true_value.as_ir()} if {self.test.as_ir()} else {self.false_value.as_ir()}'
 
 
 @dataclass
@@ -247,7 +247,19 @@ class Subscript(Node):
         return f'{self.value.as_ir()}[{", ".join(str(s) for s in self.subscript)}]'
 
 
-# TODO(later): Call nodes (e.g., for math calls)
+@dataclass
+class MathCall(Node):
+    """
+    A mathematical function call operation for stateless calls
+    """
+    func: str
+    arguments: list['Expression']
+
+    def validate(self) -> None:
+        assert self.func in {'sqrt', 'cbrt'}
+
+    def as_ir(self, indent: int = 0) -> str:
+        return f'{self.func}({", ".join(a.as_ir() for a in self.arguments)})'
 
 
 @dataclass
@@ -255,12 +267,12 @@ class Expression(Node):
     """
     An expression that can take the form of an identifier, literal, subscript, or a unary/binary/ternary operator.
     """
-    value: Identifier | int | float | Subscript | UnaryOperator | BinaryOperator | TernaryOperator
+    value: Identifier | int | float | Subscript | UnaryOperator | BinaryOperator | TernaryOperator | MathCall
 
     def as_ir(self, indent: int = 0) -> str:
         if isinstance(self.value, (int, float)):
             return str(self.value)
-        if isinstance(self.value, (Identifier, Subscript, UnaryOperator)):
+        if isinstance(self.value, (Identifier, Subscript, UnaryOperator, MathCall)):
             return self.value.as_ir(indent)
         return f'({self.value.as_ir(indent)})'
 
@@ -355,7 +367,7 @@ class IfBlock(Block, Operation):
     """
     If/elif/else block operating on a mask tensor.
     """
-    result: Identifier
+    results: list[Identifier]
     condition: Identifier
     typeinfo: TypeInfo
     body: list[Operation]
@@ -363,7 +375,8 @@ class IfBlock(Block, Operation):
     orelse: list[Operation] | None
 
     def validate(self) -> None:
-        assert isinstance(self.result, Identifier)
+        assert isinstance(self.results, list)
+        assert all(isinstance(r, Identifier) for r in self.results)
         assert isinstance(self.condition, Identifier)
         if self.else_ifs:
             assert isinstance(self.else_ifs, list)
@@ -378,7 +391,7 @@ class IfBlock(Block, Operation):
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
-        result = f'{indent_str}{self.result.as_ir()} = spst.if ({self.condition.as_ir()})'
+        result = f'{indent_str}{", ".join(res.as_ir() for res in self.results)} = spst.if ({self.condition.as_ir()})'
         result += f' : {self.typeinfo.as_ir()} '
         result += '{\n'
         result += '\n'.join(stmt.as_ir(indent + 1) for stmt in self.body)

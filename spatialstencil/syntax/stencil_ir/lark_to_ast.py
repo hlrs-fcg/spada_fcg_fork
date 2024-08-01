@@ -50,6 +50,7 @@ class TreeToAST(lark.Transformer):
     subscript_slice = tuple
     multi_interval_type = list
     attr = tuple
+    call_arguments = list
 
     statement_body = list
     computation_body = list
@@ -92,6 +93,7 @@ class TreeToAST(lark.Transformer):
     # Basic types
     identifier = astnodes.Identifier.from_lark
     subscript = astnodes.Subscript.from_lark
+    call = astnodes.MathCall.from_lark
     type_info = lambda self, args: astnodes.TypeInfo(*args)
     type_list_info = lambda self, args: astnodes.TypeInfo(*args)
 
@@ -165,7 +167,7 @@ class TreeToAST(lark.Transformer):
             elif isinstance(arg, lark.Tree) and arg.data == 'else_block':
                 orelse = arg.children[0]
 
-        return astnodes.IfBlock(results[0], test, typeinfo, body, else_ifs, orelse)
+        return astnodes.IfBlock(results, test, typeinfo, body, else_ifs, orelse)
 
     def statement(self, args, meta=None):
         results, inputs, attributes, typeinfo, body = args
