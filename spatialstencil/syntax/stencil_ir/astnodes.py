@@ -421,7 +421,7 @@ class ComputationBlock(Block):
     schedule: ComputationType
     interval: tuple[Interval, Interval, Interval]
     typeinfo: TypeInfo
-    body: list[StatementBlock | IfBlock | MaterializeOp | ReturnOp]
+    body: list[StatementBlock | IfBlock | MaterializeOp]
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent

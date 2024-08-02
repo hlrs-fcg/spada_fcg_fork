@@ -36,8 +36,8 @@ def lower_gt4py_to_stencil_ir(program: gtast.GTProgram,
     # Perform type/shape inference in stencil IR language
     type_inference.infer_types(new_ast, default_float_dtype, default_int_dtype, domain, halo)
 
-    # TODO: Insert materialize for all fields
-    # materialize_intermediates(new_ast)
+    # Insert materialize for all fields
+    new_ast = MaterializeIntermediates().visit(new_ast)
 
     return new_ast
 
@@ -110,6 +110,43 @@ def constant_propagation(program: gtast.GTProgram):
             # After looping over statements, remove constants
             for i in reversed(statements_to_remove):
                 intvl.statements.pop(i)
+
+
+class MaterializeIntermediates(sast.NodeTransformer):
+
+    def __init__(self):
+        super().__init__()
+        self.do_not_materialize: set[str] = set()
+
+    def visit_Program(self, node: sast.Program):
+        # Input/output fields are always materialized
+        self.do_not_materialize |= set(n.name for n in node.inputs)
+        self.do_not_materialize |= set(n.name for n in node.outputs)
+        return self.generic_visit(node)
+
+    def visit_ComputationBlock(self, node: sast.ComputationBlock):
+        new_body = []
+        for stmt in node.body:
+            # Add statement to new body
+            stmt = self.visit(stmt)
+            new_body.append(stmt)
+
+            # Try to find results
+            results: list[sast.Identifier] | None = None
+            if hasattr(stmt, 'output'):
+                results = [stmt.output]
+            elif hasattr(stmt, 'result'):
+                results = [stmt.result]
+            elif hasattr(stmt, 'results'):
+                results = stmt.results
+
+            # Append materialize after statement
+            if results:
+                results = [r for r in results if r.name not in self.do_not_materialize]
+                for result in results:
+                    # TODO: Not the right extents/name, discuss
+                    new_body.append(sast.MaterializeOp(result, result))
+        return new_body
 
 
 def convert_gt4py_ast_to_stencil_ast(program: gtast.GTProgram, default_float_dtype: sast.ScalarType,
