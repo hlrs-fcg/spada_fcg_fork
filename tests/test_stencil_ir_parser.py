@@ -1,5 +1,5 @@
 import unittest
-from spatialstencil.syntax.stencil_ir import parser, astnodes as stast
+from spatialstencil.syntax.stencil_ir import parser, astnodes as sast
 import os
 
 
@@ -37,7 +37,7 @@ class TestStencilIRParser(unittest.TestCase):
         comp = program.computations[0]
 
         # Branch 1
-        assert isinstance(comp.body[0], stast.IfBlock)
+        assert isinstance(comp.body[0], sast.IfBlock)
         assert len(comp.body[0].results) == 1
         assert comp.body[0].results[0].as_ir() == '%b'
         assert comp.body[0].condition.as_ir() == '%inp'
@@ -45,7 +45,7 @@ class TestStencilIRParser(unittest.TestCase):
         assert comp.body[0].orelse is not None
 
         # Branch 2
-        assert isinstance(comp.body[1], stast.IfBlock)
+        assert isinstance(comp.body[1], sast.IfBlock)
         assert len(comp.body[1].results) == 1
         assert comp.body[1].results[0].as_ir() == '%out'
         assert comp.body[1].condition.as_ir() == '%b'
@@ -76,13 +76,13 @@ class TestStencilIRParser(unittest.TestCase):
         program = parser.parse_string(src)
         comp = program.computations[0]
 
-        assert isinstance(comp.body[0], stast.StatementBlock)
+        assert isinstance(comp.body[0], sast.StatementBlock)
         stmt = comp.body[0]
         assert len(stmt.body) == 1
-        assert isinstance(stmt.body[0], stast.ReturnOp)
+        assert isinstance(stmt.body[0], sast.ReturnOp)
         retop = stmt.body[0]
         assert len(retop.values) == 1
-        assert isinstance(retop.values[0].value, stast.MathCall)
+        assert isinstance(retop.values[0].value, sast.MathCall)
         mathcall = retop.values[0].value
         assert mathcall.func == 'sqrt'
         assert [arg.as_ir() for arg in mathcall.arguments] == ['%inp']
@@ -108,6 +108,31 @@ class TestStencilIRParser(unittest.TestCase):
         program2 = parser.parse_string(ir_1)
         ir_2 = program2.as_ir()
         assert ir_1 == ir_2
+
+    def test_visitor(self):
+        """
+        Tests the IR node visitor for the stencil IR.
+        """
+        file = os.path.join(os.path.dirname(__file__), '..', 'samples', 'spst', 'vadv.spst')
+        program = parser.parse_file(file)
+
+        visitor = IntervalCounter()
+        visitor.visit(program)
+        assert visitor.counter == 5
+
+
+class IntervalCounter(sast.NodeVisitor):
+    """
+    Test helper class that counts computation blocks
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.counter = 0
+
+    def visit_ComputationBlock(self, node: sast.ComputationBlock):
+        self.counter += 1
+        return self.generic_visit(node)
 
 
 if __name__ == '__main__':

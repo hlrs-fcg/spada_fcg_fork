@@ -6,6 +6,8 @@ import enum
 from typing import Literal
 import pprint
 
+from spatialstencil.syntax import helpers
+
 
 class ScalarType(enum.Enum):
     UNKNOWN = enum.auto()  # Not yet type-inferred
@@ -31,7 +33,7 @@ class ComputationType(enum.Enum):
     BACKWARD = 2
 
 
-class Node:
+class Node(helpers.BaseNode):
     """
     Abstract class representing an AST node for spatial stencils.
     """
@@ -465,3 +467,15 @@ class Program(Node):
                 '{\n'
                 f'{newline.join(c.as_ir(indent + 1) for c in self.computations)}'
                 '\n' + indent_str + '}')
+
+
+class NodeVisitor(helpers.IRNodeVisitor[Node]):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(Node, *args, **kwargs)
+
+
+class NodeTransformer(helpers.IRNodeTransformer[Node]):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(Node, *args, **kwargs)
