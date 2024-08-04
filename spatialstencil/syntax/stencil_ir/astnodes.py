@@ -26,6 +26,21 @@ class ScalarType(enum.Enum):
         return self.name
 
 
+BIT_WIDTH = {
+    ScalarType.UNKNOWN: 0,
+    ScalarType.i8: 8,
+    ScalarType.i16: 16,
+    ScalarType.i32: 32,
+    ScalarType.u8: 8,
+    ScalarType.u16: 16,
+    ScalarType.u32: 32,
+    ScalarType.f16: 16,
+    ScalarType.f32: 32,
+    ScalarType.f64: 64,
+    ScalarType.bool: 1,
+}
+
+
 class ComputationType(enum.Enum):
     # We are using numbers to ensure compatibility with GT4Py's AST values
     PARALLEL = 0

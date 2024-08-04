@@ -93,7 +93,6 @@ class TreeToAST(lark.Transformer):
     # Basic types
     identifier = astnodes.Identifier.from_lark
     subscript = astnodes.Subscript.from_lark
-    call = astnodes.MathCall.from_lark
     type_info = lambda self, args: astnodes.TypeInfo(*args)
     type_list_info = lambda self, args: astnodes.TypeInfo(*args)
 
@@ -130,6 +129,9 @@ class TreeToAST(lark.Transformer):
 
     def ternary_op(self, args, meta=None):
         return astnodes.TernaryOperator(_expr(args[0]), _expr(args[1]), _expr(args[2]))
+
+    def call(self, args, meta=None):
+        return astnodes.MathCall(args[0], [_expr(arg) for arg in args[1]])
 
     # Operations
     def return_expr(self, args, meta=None):
