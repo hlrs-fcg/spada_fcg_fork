@@ -1,5 +1,5 @@
 """
-Native class definitions for the spatial stencil Abstract Syntax Tree (AST).
+Native class definitions for the spatial stencil Intermediate Representation (IR).
 """
 from dataclasses import dataclass, field
 import enum
@@ -50,20 +50,20 @@ class ComputationType(enum.Enum):
 
 class Node(helpers.BaseNode):
     """
-    Abstract class representing an AST node for spatial stencils.
+    Abstract class representing an IR node for spatial stencils.
     """
 
     @classmethod
     def from_lark(cls, args):
         """
-        Simple constructor that calls the AST node object constructor with the
-        AST children in order. See ``lark_to_ast.py`` for usage.
+        Simple constructor that calls the IR node object constructor with the
+        IR children in order. See ``lark_to_ast.py`` for usage.
         """
         return cls(*args)
 
     def as_ir(self, indent: int = 0) -> str:
         """
-        Returns the AST node as a parseable Stencil IR version.
+        Returns the node as a parseable Stencil IR version.
 
         :param indent: Indentation for the IR node.
         """
@@ -209,7 +209,7 @@ class StringLiteral(Node):
         return f'"{self.value}"'
 
 
-@dataclass(unsafe_hash=True)
+@dataclass
 class Identifier(Node):
     """
     A field/scalar identifier (``%abc``).
@@ -222,6 +222,9 @@ class Identifier(Node):
             return f'%{self.name}#{self.version}'
         return f'%{self.name}'
 
+    def __hash__(self):
+        return hash((self.name, self.version))
+
 
 @dataclass
 class UnaryOperator(Node):
@@ -230,6 +233,9 @@ class UnaryOperator(Node):
     """
     op: str
     value: 'Expression'
+
+    def validate(self) -> None:
+        assert self.op in ('+', '-', '~', 'not')
 
     def as_ir(self, indent: int = 0) -> str:
         return f'{self.op}{self.value.as_ir()}'
@@ -243,6 +249,10 @@ class BinaryOperator(Node):
     left: 'Expression'
     op: str
     right: 'Expression'
+
+    def validate(self) -> None:
+        assert self.op in ('or', 'and', '|', '^', '&', '>>', '<<', '+', '-', '*', '/', '%', '>', '<', '==', '>=', '<=',
+                           '!=', '**')
 
     def as_ir(self, indent: int = 0) -> str:
         return f'{self.left.as_ir()} {self.op} {self.right.as_ir()}'
@@ -303,29 +313,19 @@ class Expression(Node):
         return f'({self.value.as_ir(indent)})'
 
 
-@dataclass
-class Operation(Node):
+class Operation:
     """
-    Base class for an single operation.
+    Interface for an operation.
+
+    An Operation *must* have a field called ``typeinfo`` defined.
     """
-    pass
+    typeinfo: TypeInfo
 
 
 @dataclass
-class Block(Node):
-    """
-    Base class for a block of operations.
-    """
-    pass
-
-
-@dataclass
-class ReturnOp(Operation):
+class ReturnOp(Node, Operation):
     values: list[Expression]
-    typeinfo: TypeInfo = field(default_factory=TypeInfo)
-
-    def validate(self) -> None:
-        assert isinstance(self.values[0].value, Identifier)
+    typeinfo: TypeInfo = field(default_factory=lambda: TypeInfo(ScalarType.UNKNOWN))
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
@@ -334,7 +334,7 @@ class ReturnOp(Operation):
 
 
 @dataclass
-class MaterializeOp(Operation):
+class MaterializeOp(Node, Operation):
     result: Identifier
     value: Identifier
     typeinfo: TypeInfo = field(default_factory=TypeInfo)
@@ -350,10 +350,10 @@ class MaterializeOp(Operation):
 
 
 @dataclass
-class AssignOp(Operation):
+class AssignOp(Node, Operation):
     result: Identifier
     value: Expression
-    typeinfo: TypeInfo = field(default_factory=TypeInfo)
+    typeinfo: TypeInfo = field(default_factory=lambda: TypeInfo(ScalarType.UNKNOWN, ScalarType.UNKNOWN))
 
     def validate(self) -> None:
         assert isinstance(self.result, Identifier)
@@ -365,21 +365,25 @@ class AssignOp(Operation):
 
 
 @dataclass
-class StatementBlock(Block):
+class StatementBlock(Node, Operation):
     """
     A single statement in a Stencil IR computation.
     """
-    output: Identifier
+    outputs: list[Identifier]
     inputs: list[Identifier]
-    attributes: dict[str, Node]
+    attributes: list[tuple[str, Node]]
     typeinfo: TypeInfo
     body: list[AssignOp | ReturnOp]
+
+    def validate(self) -> None:
+        assert isinstance(self.body[-1], ReturnOp)
+        assert len(self.body[-1].values) == len(self.outputs)
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
         inputs = ', '.join(i.as_ir() for i in self.inputs)
-        output = self.output.as_ir()
-        result = f'{indent_str}{output} = spst.statement ({inputs})'
+        outputs = ', '.join(o.as_ir() for o in self.outputs)
+        result = f'{indent_str}{outputs} = spst.statement ({inputs})'
         result += ' {}'
         result += f' : {self.typeinfo.as_ir()} '
         result += '{\n'
@@ -389,20 +393,20 @@ class StatementBlock(Block):
 
 
 @dataclass
-class IfBlock(Block, Operation):
+class IfBlock(Node, Operation):
     """
     If/elif/else block operating on a mask tensor.
     """
-    results: list[Identifier]
+    outputs: list[Identifier]
     condition: Identifier
     typeinfo: TypeInfo
-    body: list[Operation]
-    else_ifs: list[tuple[Identifier, list[Operation]]] | None  # List of (condition, body)
-    orelse: list[Operation] | None
+    body: list[StatementBlock | ReturnOp]
+    else_ifs: list[tuple[Identifier, list[StatementBlock | ReturnOp]]] | None  # List of (condition, body)
+    orelse: list[StatementBlock | ReturnOp] | None
 
     def validate(self) -> None:
-        assert isinstance(self.results, list)
-        assert all(isinstance(r, Identifier) for r in self.results)
+        assert isinstance(self.outputs, list)
+        assert all(isinstance(r, Identifier) for r in self.outputs)
         assert isinstance(self.condition, Identifier)
         if self.else_ifs:
             assert isinstance(self.else_ifs, list)
@@ -417,7 +421,7 @@ class IfBlock(Block, Operation):
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
-        result = f'{indent_str}{", ".join(res.as_ir() for res in self.results)} = spst.if ({self.condition.as_ir()})'
+        result = f'{indent_str}{", ".join(res.as_ir() for res in self.outputs)} = spst.if ({self.condition.as_ir()})'
         result += f' : {self.typeinfo.as_ir()} '
         result += '{\n'
         result += '\n'.join(stmt.as_ir(indent + 1) for stmt in self.body)
@@ -436,7 +440,7 @@ class IfBlock(Block, Operation):
 
 
 @dataclass
-class ComputationBlock(Block):
+class ComputationBlock(Node, Operation):
     """
     A computational block with an interval in a stencil IR computation.
     """
@@ -468,14 +472,14 @@ class ComputationBlock(Block):
 
 
 @dataclass
-class Program(Node):
+class Program(Node, Operation):
     """
     Root node of a stencil program AST.
     """
     outputs: list[Identifier]
     name: str | None
     inputs: list[Identifier]
-    attributes: dict[str, Node]
+    attributes: list[tuple[str, Node]]
     typeinfo: TypeInfo
     computations: list[ComputationBlock]
 

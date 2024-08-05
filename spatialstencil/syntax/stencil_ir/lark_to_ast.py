@@ -91,7 +91,11 @@ class TreeToAST(lark.Transformer):
     interval_type = astnodes.Interval.from_lark
 
     # Basic types
-    identifier = astnodes.Identifier.from_lark
+    def identifier(self, args, meta=None):
+        if len(args) == 2 and args[1] == 0:
+            raise SyntaxError('Explicit version 0 (%x#0) is not allowed, please use %x')
+        return astnodes.Identifier(*args)
+
     subscript = astnodes.Subscript.from_lark
     type_info = lambda self, args: astnodes.TypeInfo(*args)
     type_list_info = lambda self, args: astnodes.TypeInfo(*args)
@@ -173,7 +177,7 @@ class TreeToAST(lark.Transformer):
 
     def statement(self, args, meta=None):
         results, inputs, attributes, typeinfo, body = args
-        return astnodes.StatementBlock(results[0], inputs, attributes, typeinfo, body)
+        return astnodes.StatementBlock(results, inputs, attributes, typeinfo, body)
 
     def computation(self, args, meta=None):
         results, inputs, attributes, typeinfo, body = args

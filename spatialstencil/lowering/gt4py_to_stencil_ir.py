@@ -8,8 +8,7 @@ from spatialstencil.syntax.stencil_ir import astnodes as sast, type_inference
 def lower_gt4py_to_stencil_ir(program: gtast.GTProgram,
                               default_float_dtype: sast.ScalarType = sast.ScalarType.f32,
                               default_int_dtype: sast.ScalarType = sast.ScalarType.i32,
-                              domain: tuple[int] | None = None,
-                              halo: tuple[int] | None = None) -> sast.Program:
+                              domain: tuple[int] | None = None) -> sast.Program:
     """
     Takes a GT4Py program (as AST) and returns a logical IR program.
 
@@ -20,8 +19,6 @@ def lower_gt4py_to_stencil_ir(program: gtast.GTProgram,
                               explicit type.
     :param domain: An optional domain size to compute the stencil on. If not given, keeps shapes unknown for
                    future shape inference.
-    :param halo: An existing boundary area that this program must compute (in addition to internal halos
-                 derived by the computation), if given. 
     """
 
     # Constant propagation
@@ -33,11 +30,13 @@ def lower_gt4py_to_stencil_ir(program: gtast.GTProgram,
     # Build new tree structure (that matches the language)
     new_ast = convert_gt4py_ast_to_stencil_ast(program, default_float_dtype, default_int_dtype)
 
-    # Perform type/shape inference in stencil IR language
-    type_inference.infer_types(new_ast, default_float_dtype, default_int_dtype, domain, halo)
-
     # Insert materialize for all fields
     new_ast = MaterializeIntermediates().visit(new_ast)
+
+    # Perform type/shape inference in stencil IR language
+    type_inference.infer_types(new_ast, default_float_dtype, default_int_dtype, domain)
+
+    # TODO(later): Remove extraneous (0,0,0) materialize?
 
     return new_ast
 
@@ -117,6 +116,7 @@ class MaterializeIntermediates(sast.NodeTransformer):
     def __init__(self):
         super().__init__()
         self.do_not_materialize: set[str] = set()
+        self.name_translation: dict[str, tuple[str, int]] = {}
 
     def visit_Program(self, node: sast.Program):
         # Input/output fields are always materialized
@@ -144,7 +144,7 @@ class MaterializeIntermediates(sast.NodeTransformer):
             if results:
                 results = [r for r in results if r.name not in self.do_not_materialize]
                 for result in results:
-                    # TODO: Not the right extents/name, discuss
+                    # TODO: Not the right extents/name, assign new NAME not VERSION
                     new_body.append(sast.MaterializeOp(result, result))
         return sast.ComputationBlock(node.outputs, node.inputs, node.schedule, node.interval, node.typeinfo, new_body)
 
@@ -267,9 +267,9 @@ def _convert_interval_to_computation_body(
             # Construct statement
             body.append(
                 sast.StatementBlock(
-                    output=_parse_field(stmt.target),
+                    outputs=[_parse_field(stmt.target)],
                     inputs=stmt_inputs,
-                    attributes={},
+                    attributes=[],
                     typeinfo=sast.TypeInfo([sast.FieldType.empty() for _ in stmt_inputs], [sast.FieldType.empty()]),
                     body=[
                         sast.ReturnOp([sast.Expression(OperationConverter().visit(stmt.body))]),

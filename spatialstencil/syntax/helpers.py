@@ -33,7 +33,7 @@ class BaseNode:
         for _, field in self.iter_fields():
             if isinstance(field, BaseNode):
                 yield field
-            elif isinstance(field, list):
+            elif isinstance(field, (tuple, list)):
                 for item in field:
                     if isinstance(item, BaseNode):
                         yield item
@@ -46,7 +46,8 @@ BaseNodeT = TypeVar('BaseNodeT', bound=BaseNode)
 def walk(node: BaseNode):
     """
     Recursively yield all descendant nodes in the tree starting at ``node``
-    (including ``node`` itself). This function is based on ``ast.walk``.
+    (including ``node`` itself), in breadth-first order. This function is
+    based on ``ast.walk``.
     """
     from collections import deque
     todo = deque([node])

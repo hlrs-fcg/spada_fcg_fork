@@ -38,16 +38,16 @@ class TestStencilIRParser(unittest.TestCase):
 
         # Branch 1
         assert isinstance(comp.body[0], sast.IfBlock)
-        assert len(comp.body[0].results) == 1
-        assert comp.body[0].results[0].as_ir() == '%b'
+        assert len(comp.body[0].outputs) == 1
+        assert comp.body[0].outputs[0].as_ir() == '%b'
         assert comp.body[0].condition.as_ir() == '%inp'
         assert len(comp.body[0].else_ifs) == 1
         assert comp.body[0].orelse is not None
 
         # Branch 2
         assert isinstance(comp.body[1], sast.IfBlock)
-        assert len(comp.body[1].results) == 1
-        assert comp.body[1].results[0].as_ir() == '%out'
+        assert len(comp.body[1].outputs) == 1
+        assert comp.body[1].outputs[0].as_ir() == '%out'
         assert comp.body[1].condition.as_ir() == '%b'
         assert len(comp.body[1].else_ifs) == 0
         assert comp.body[1].orelse is not None

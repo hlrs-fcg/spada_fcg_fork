@@ -84,6 +84,8 @@ def _result_type_of(*args: sast.ScalarType, optype: str | None = None) -> sast.S
     assert len(args) >= 1
     if optype == 'not':  # Boolean not
         return sast.ScalarType.bool
+    if optype in ('>', '>=', '<', '<=', '==', '!='):  # Comparison operators
+        return sast.ScalarType.bool
 
     # Generic upcasting of types
     max_bit_width_float = None, None
