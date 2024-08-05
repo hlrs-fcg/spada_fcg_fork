@@ -90,6 +90,9 @@ class Domain(Node):
     def as_ir(self, indent: int = 0) -> str:
         return 'spst.domain'
 
+    def is_unknown(self) -> bool:
+        raise NotImplementedError('Abstract class. Method implemented in subclasses')
+
 
 def _val_or_unk(val: int | None) -> str:
     """
@@ -122,6 +125,9 @@ class Cartesian(Domain):
     def as_ir(self, indent: int = 0) -> str:
         return f'spst.cartesian<{_val_or_unk(self.x)}, {_val_or_unk(self.y)}, {_val_or_unk(self.z)}>'
 
+    def is_unknown(self) -> bool:
+        return self.x is None or self.y is None or self.z is None
+
 
 @dataclass
 class Extent(Node):
@@ -132,6 +138,9 @@ class Extent(Node):
 
     def as_ir(self, indent: int = 0) -> str:
         return f'spst.extent<{", ".join(e.as_ir() for e in self.extents)}>'
+
+    def is_unknown(self) -> bool:
+        return all(dim is None for extent in self.extents for dim in extent.values)
 
 
 @dataclass

@@ -146,7 +146,7 @@ class MaterializeIntermediates(sast.NodeTransformer):
                 for result in results:
                     # TODO: Not the right extents/name, discuss
                     new_body.append(sast.MaterializeOp(result, result))
-        return new_body
+        return sast.ComputationBlock(node.outputs, node.inputs, node.schedule, node.interval, node.typeinfo, new_body)
 
 
 def convert_gt4py_ast_to_stencil_ast(program: gtast.GTProgram, default_float_dtype: sast.ScalarType,
@@ -175,7 +175,8 @@ def convert_gt4py_ast_to_stencil_ast(program: gtast.GTProgram, default_float_dty
             # Types will be refined by type inference later
             computations.append(
                 sast.ComputationBlock(
-                    coutputs, cinputs, computation.computation_type, (xintvl, yintvl, zintvl),
+                    coutputs, cinputs, sast.ComputationType[computation.computation_type.name],
+                    (xintvl, yintvl, zintvl),
                     sast.TypeInfo([sast.FieldType.empty() for _ in cinputs],
                                   [sast.FieldType.empty() for _ in coutputs]), cbody))
 
@@ -444,5 +445,5 @@ if __name__ == '__main__':
         for fname, func in out.items():
             print('\n====================================')
             print('Function', fname)
-            new_ast = lower_gt4py_to_stencil_ir(func)
+            new_ast = lower_gt4py_to_stencil_ir(func, domain=(128, 128, 80))
             print(new_ast.as_ir(), flush=True)
