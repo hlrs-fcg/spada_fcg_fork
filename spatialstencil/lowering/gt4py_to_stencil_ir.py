@@ -2,7 +2,7 @@ import ast
 from collections import defaultdict
 from spatialstencil.syntax.gt4py import astnodes as gtast
 from spatialstencil.syntax.helpers import ASTFindReplace
-from spatialstencil.syntax.stencil_ir import astnodes as sast, type_inference
+from spatialstencil.syntax.stencil_ir import irnodes as sast, type_inference
 
 
 def lower_gt4py_to_stencil_ir(program: gtast.GTProgram,

@@ -1,5 +1,5 @@
 import unittest
-from spatialstencil.syntax.stencil_ir import parser, astnodes as sast
+from spatialstencil.syntax.stencil_ir import irnodes as sast, parser
 import os
 
 

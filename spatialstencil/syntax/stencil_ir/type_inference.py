@@ -1,7 +1,7 @@
 """
 Contains type/extent inference functionality for the Stencil IR.
 """
-from spatialstencil.syntax.stencil_ir import astnodes as sast
+from spatialstencil.syntax.stencil_ir import irnodes as sast
 
 
 def infer_types(program: sast.Program,

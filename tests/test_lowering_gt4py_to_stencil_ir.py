@@ -1,6 +1,6 @@
 import unittest
 from spatialstencil.syntax.gt4py import parser
-from spatialstencil.syntax.stencil_ir import astnodes as sast
+from spatialstencil.syntax.stencil_ir import irnodes as sast, analysis
 from spatialstencil.lowering import gt4py_to_stencil_ir
 import numpy as np
 
@@ -16,14 +16,40 @@ class TestStencilIRParser(unittest.TestCase):
         program = self.gtfuncs['simple']
         irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program)
         assert irprogram.name == 'simple'
-        assert len(irprogram.inputs) == 1
-        assert len(irprogram.outputs) == 1
+        assert [inp.name for inp in irprogram.inputs] == ['inp']
+        assert [out.name for out in irprogram.outputs] == ['out']
         assert len(irprogram.computations) == 1
 
         # Test computation
         comp = irprogram.computations[0]
         assert comp.schedule == sast.ComputationType.PARALLEL
         assert comp.interval == (sast.Interval(0, None), sast.Interval(0, None), sast.Interval(0, None))
+
+        # Test input/output collection
+        assert [inp.name for inp in comp.inputs] == ['inp']
+        assert [out.name for out in comp.outputs] == ['out']
+        extents = analysis.collect_extents(comp)
+        assert extents['inp'] == {(0, 0, 0)}
+        assert extents['out'] == {(0, 0, 0)}
+
+    def test_lower_gt4py_intermediates_2(self):
+        program = self.gtfuncs['unused']
+        irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program)
+        assert irprogram.name == 'unused'
+        assert [inp.name for inp in irprogram.inputs] == ['inp']
+        assert [out.name for out in irprogram.outputs] == ['out']
+        assert len(irprogram.computations) == 2
+
+        # Test computation
+        comps = irprogram.computations
+        assert comps[0].schedule == sast.ComputationType.PARALLEL
+        assert comps[0].interval == (sast.Interval(0, None), sast.Interval(0, None), sast.Interval(0, None))
+
+        # Test input/output collection
+        assert [inp.name for inp in comps[0].inputs] == ['inp']
+        assert [out.name for out in comps[0].outputs] == ['used']
+        assert [inp.name for inp in comps[1].inputs] == ['used']
+        assert [out.name for out in comps[1].outputs] == ['out']
 
     def test_lower_gt4py_if(self):
         program = self.gtfuncs['satadjust_specific_humidity']
@@ -37,14 +63,24 @@ class TestStencilIRParser(unittest.TestCase):
             gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program)
 
 
+# GT4Py stencils for the test
 def simple(inp: Field3D, out: Field3D):
     with computation(PARALLEL), interval(...):
         tmp = inp + 1
         out = tmp + 1
 
 
-# GT4Py stencils for the test
-# See https://github.com/NOAA-GFDL/PyFV3/blob/fcaf36e6b3101ec655d4c728d573267c52d42132/pyFV3/stencils/saturation_adjustment.py#L883
+def unused(inp: Field3D, out: Field3D):
+    with computation(PARALLEL), interval(...):
+        used = inp + 1
+        unused = inp + 2
+
+    with computation(PARALLEL), interval(...):
+        out = used + 1
+
+
+# Adapted saturation adjustment subset code from PyFV3, see:
+# https://github.com/NOAA-GFDL/PyFV3/blob/fcaf36e6b3101ec655d4c728d573267c52d42132/pyFV3/stencils/saturation_adjustment.py#L883
 
 
 # Simplified version without nested conditionals

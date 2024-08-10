@@ -1,6 +1,6 @@
 import unittest
 from spatialstencil.syntax.stencil_ir import type_inference, parser
-from spatialstencil.syntax.stencil_ir.astnodes import ScalarType
+from spatialstencil.syntax.stencil_ir.irnodes import ScalarType
 
 
 class TestTypeInference(unittest.TestCase):

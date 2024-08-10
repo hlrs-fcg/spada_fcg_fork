@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import lark
 
-from spatialstencil.syntax.stencil_ir import astnodes
+from spatialstencil.syntax.stencil_ir import irnodes
 
 
 class TreeToAST(lark.Transformer):
@@ -31,7 +31,7 @@ class TreeToAST(lark.Transformer):
 
     @lark.v_args(inline=True)
     def string_literal(self, s):
-        return astnodes.StringLiteral(s[1:-1].replace('\\"', '"'))
+        return irnodes.StringLiteral(s[1:-1].replace('\\"', '"'))
 
     @lark.v_args(inline=True)
     def bare_id(self, *elements):
@@ -64,8 +64,8 @@ class TreeToAST(lark.Transformer):
 
     # Scalar types
     float_type = int_type = uint_type = bool_type = unknown_type = lambda self, args: getattr(
-        astnodes.ScalarType, str(args[0]))
-    schedule_type = lambda self, args: getattr(astnodes.ComputationType, str(args[0]))
+        irnodes.ScalarType, str(args[0]))
+    schedule_type = lambda self, args: getattr(irnodes.ComputationType, str(args[0]))
 
     def dim_or_end(self, args, meta=None):
         dim = args[0]
@@ -78,88 +78,88 @@ class TreeToAST(lark.Transformer):
         # Contract/inline value expressions that only contain another value expression
         if len(args) == 1 and isinstance(args[0], lark.Tree) and args[0].data == 'value_expr':
             return args[0]
-        return astnodes.Expression(*args)
+        return irnodes.Expression(*args)
 
     # Data types
     def domain_type(self, args, meta=None):
-        return astnodes.Cartesian(*_make_dimtuple(args[0]))
+        return irnodes.Cartesian(*_make_dimtuple(args[0]))
 
     def extent_type(self, args, meta=None):
-        return astnodes.Extent([astnodes.DimTuple(_make_dimtuple(a)) for a in args[0]])
+        return irnodes.Extent([irnodes.DimTuple(_make_dimtuple(a)) for a in args[0]])
 
-    field_type = astnodes.FieldType.from_lark
-    interval_type = astnodes.Interval.from_lark
+    field_type = irnodes.FieldType.from_lark
+    interval_type = irnodes.Interval.from_lark
 
     # Basic types
     def identifier(self, args, meta=None):
         if len(args) == 2 and args[1] == 0:
             raise SyntaxError('Explicit version 0 (%x#0) is not allowed, please use %x')
-        return astnodes.Identifier(*args)
+        return irnodes.Identifier(*args)
 
-    subscript = astnodes.Subscript.from_lark
-    type_info = lambda self, args: astnodes.TypeInfo(*args)
-    type_list_info = lambda self, args: astnodes.TypeInfo(*args)
+    subscript = irnodes.Subscript.from_lark
+    type_info = lambda self, args: irnodes.TypeInfo(*args)
+    type_list_info = lambda self, args: irnodes.TypeInfo(*args)
 
     # Operators
     def unary_op(self, args, meta=None):
-        return astnodes.UnaryOperator(str(args[0]), _expr(args[1]))
+        return irnodes.UnaryOperator(str(args[0]), _expr(args[1]))
 
     def not_test(self, args, meta=None):
-        return astnodes.UnaryOperator('not', _expr(args[0]))
+        return irnodes.UnaryOperator('not', _expr(args[0]))
 
     def binary_op(self, args, meta=None):
-        return astnodes.BinaryOperator(_expr(args[0]), str(args[1]), _expr(args[2]))
+        return irnodes.BinaryOperator(_expr(args[0]), str(args[1]), _expr(args[2]))
 
     def binary_op_logical_or(self, args, meta=None):
-        return astnodes.BinaryOperator(_expr(args[0]), 'or', _expr(args[1]))
+        return irnodes.BinaryOperator(_expr(args[0]), 'or', _expr(args[1]))
 
     def binary_op_or(self, args, meta=None):
-        return astnodes.BinaryOperator(_expr(args[0]), '|', _expr(args[1]))
+        return irnodes.BinaryOperator(_expr(args[0]), '|', _expr(args[1]))
 
     def binary_op_logical_and(self, args, meta=None):
-        return astnodes.BinaryOperator(_expr(args[0]), 'and', _expr(args[1]))
+        return irnodes.BinaryOperator(_expr(args[0]), 'and', _expr(args[1]))
 
     def binary_op_and(self, args, meta=None):
-        return astnodes.BinaryOperator(_expr(args[0]), '&', _expr(args[1]))
+        return irnodes.BinaryOperator(_expr(args[0]), '&', _expr(args[1]))
 
     def binary_op_xor(self, args, meta=None):
-        return astnodes.BinaryOperator(_expr(args[0]), '^', _expr(args[1]))
+        return irnodes.BinaryOperator(_expr(args[0]), '^', _expr(args[1]))
 
     def binary_op_pow(self, args, meta=None):
-        return astnodes.BinaryOperator(_expr(args[0]), '**', _expr(args[1]))
+        return irnodes.BinaryOperator(_expr(args[0]), '**', _expr(args[1]))
 
     def comparison(self, args, meta=None):
-        return astnodes.BinaryOperator(_expr(args[0]), str(args[1]), _expr(args[2]))
+        return irnodes.BinaryOperator(_expr(args[0]), str(args[1]), _expr(args[2]))
 
     def ternary_op(self, args, meta=None):
-        return astnodes.TernaryOperator(_expr(args[0]), _expr(args[1]), _expr(args[2]))
+        return irnodes.TernaryOperator(_expr(args[0]), _expr(args[1]), _expr(args[2]))
 
     def call(self, args, meta=None):
-        return astnodes.MathCall(args[0], [_expr(arg) for arg in args[1]])
+        return irnodes.MathCall(args[0], [_expr(arg) for arg in args[1]])
 
     # Operations
     def return_expr(self, args, meta=None):
-        if isinstance(args[-1], astnodes.TypeInfo):
-            return astnodes.ReturnOp(args[:-1], args[-1])
-        return astnodes.ReturnOp(args)
+        if isinstance(args[-1], irnodes.TypeInfo):
+            return irnodes.ReturnOp(args[:-1], args[-1])
+        return irnodes.ReturnOp(args)
 
-    materialize_op = astnodes.MaterializeOp.from_lark
+    materialize_op = irnodes.MaterializeOp.from_lark
 
     def assign_expr(self, args, meta=None):
         if len(args) == 3:  # With type info
-            return astnodes.AssignOp(args[0][0], args[1], args[2])
-        return astnodes.AssignOp(args[0][0], args[1])
+            return irnodes.AssignOp(args[0][0], args[1], args[2])
+        return irnodes.AssignOp(args[0][0], args[1])
 
     # Blocks
     def if_op(self, args, meta=None):
         results = args[0]
         test = args[1]
         offset = 2
-        if isinstance(args[offset], astnodes.TypeInfo):
+        if isinstance(args[offset], irnodes.TypeInfo):
             typeinfo = args[offset]
             offset += 1
         else:
-            typeinfo = astnodes.TypeInfo(astnodes.FieldType.empty(), astnodes.FieldType.empty())
+            typeinfo = irnodes.TypeInfo(irnodes.FieldType.empty(), irnodes.FieldType.empty())
 
         body = args[offset]
         offset += 1
@@ -173,11 +173,11 @@ class TreeToAST(lark.Transformer):
             elif isinstance(arg, lark.Tree) and arg.data == 'else_block':
                 orelse = arg.children[0]
 
-        return astnodes.IfBlock(results, test, typeinfo, body, else_ifs, orelse)
+        return irnodes.IfBlock(results, test, typeinfo, body, else_ifs, orelse)
 
     def statement(self, args, meta=None):
         results, inputs, attributes, typeinfo, body = args
-        return astnodes.StatementBlock(results, inputs, attributes, typeinfo, body)
+        return irnodes.StatementBlock(results, inputs, attributes, typeinfo, body)
 
     def computation(self, args, meta=None):
         results, inputs, attributes, typeinfo, body = args
@@ -193,7 +193,7 @@ class TreeToAST(lark.Transformer):
             raise ValueError('spst.computation is missing the "schedule" attribute')
         if interval is None:
             raise ValueError('spst.computation is missing the "interval" attribute')
-        return astnodes.ComputationBlock(results, inputs, schedule, interval, typeinfo, body)
+        return irnodes.ComputationBlock(results, inputs, schedule, interval, typeinfo, body)
 
     def program(self, args, meta=None):
         outputs = args[0]
@@ -204,7 +204,7 @@ class TreeToAST(lark.Transformer):
         else:
             name = None
         inputs, attributes, typeinfo, computations = args[offset:]
-        return astnodes.Program(outputs, name, inputs, attributes, typeinfo, computations)
+        return irnodes.Program(outputs, name, inputs, attributes, typeinfo, computations)
 
 
 # Helper functions
@@ -212,7 +212,7 @@ def _make_dimtuple(tup):
     return tuple((None if dim == '?' else dim) for dim in tup)
 
 
-def _expr(val: astnodes.Node | int | float | str) -> astnodes.Expression:
-    if isinstance(val, astnodes.Expression):
+def _expr(val: irnodes.Node | int | float | str) -> irnodes.Expression:
+    if isinstance(val, irnodes.Expression):
         return val
-    return astnodes.Expression(val)
+    return irnodes.Expression(val)
