@@ -2,6 +2,11 @@
 Contains type/extent inference functionality for the Stencil IR.
 """
 from spatialstencil.syntax.stencil_ir import irnodes as sast
+from spatialstencil.syntax.stencil_ir import analysis
+from spatialstencil.syntax import helpers
+import copy
+import itertools
+import warnings
 
 
 def infer_types(program: sast.Program,
@@ -22,7 +27,51 @@ def infer_types(program: sast.Program,
                               explicit type.
     :param domain: An optional 3-tuple representing domain size (x, y, z).
     """
-    pass
+    infer_inputs_and_outputs(program)
+    infer_scalar_types(program, default_float_dtype, default_int_dtype)
+    infer_domain_and_extents(program, domain)
+
+
+def infer_inputs_and_outputs(program: sast.Program):
+    """
+    Modifies all inputs and outputs of statements and computation blocks in a Stencil IR program.
+    Operates in-place.
+
+    :param program: The Stencil IR program to traverse.
+    """
+    # Programs' inputs and outputs are defined by their arguments
+    # Computation block inputs and outputs are defined by their statements and whether the fields are used in
+    # future computations.
+    # Conditional blocks are the intersection of their respective bodies' inputs and outputs.
+    # Statement blocks are defined locally based on their inputs and outputs
+    inputs_per_computation: list[set[sast.Identifier]] = []
+    outputs_per_computation: list[set[sast.Identifier]] = []
+
+    # Collect statement blocks locally
+    for node in helpers.walk(program):
+        if isinstance(node, sast.StatementBlock):
+            collector = analysis.InputOutputCollector()
+            collector.visit(node)
+            node.inputs = list(sorted(collector.inputs, key=lambda k: k.name))
+
+    # Collect inputs/outputs per computation and only include globally-necessary fields in a second pass
+    for comp in program.computations:
+        collector = analysis.InputOutputCollector()
+        collector.visit(comp)
+        inputs_per_computation.append(collector.inputs)
+        outputs_per_computation.append(collector.outputs)
+
+    # Reduce outputs based on subsequent computations
+    subsequent_names = set(k.name for k in program.outputs)
+    for i, comp in reversed(list(enumerate(program.computations))):
+        outputs = outputs_per_computation[i]
+        outputs = set(k for k in outputs if k.name in subsequent_names)
+        comp.outputs = list(sorted(outputs, key=lambda k: k.name))
+
+        # Figure out intermediate outputs by omission, then remove them from global inputs too
+        intermediates = outputs_per_computation[i] - outputs
+        comp.inputs = list(sorted(inputs_per_computation[i] - intermediates, key=lambda k: k.name))
+        subsequent_names.update(set(k.name for k in inputs_per_computation[i]))
 
 
 def infer_scalar_types(program: sast.Program, default_float_dtype: sast.ScalarType, default_int_dtype: sast.ScalarType):

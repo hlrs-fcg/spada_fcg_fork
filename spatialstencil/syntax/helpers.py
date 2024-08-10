@@ -69,7 +69,7 @@ class IRNodeVisitor(Generic[BaseNodeT]):
         self.base_node = ir_node_class
 
     def _validate_node_type(self, node: BaseNodeT):
-        if self.base_node is not BaseNode and not isinstance(node, self.base_node):
+        if self.base_node is not BaseNode and isinstance(node, BaseNode) and not isinstance(node, self.base_node):
             raise TypeError(f'Node {node} does not match the IR language with base node {self.base_node}')
 
     def visit(self, node: BaseNodeT):
@@ -81,13 +81,14 @@ class IRNodeVisitor(Generic[BaseNodeT]):
 
     def generic_visit(self, node: BaseNodeT):
         """Called if no explicit visitor function exists for a node."""
-        for _, value in node.iter_fields():
-            if isinstance(value, list):
-                for item in value:
-                    if isinstance(item, BaseNode):
-                        self.visit(item)
-            elif isinstance(value, BaseNode):
-                self.visit(value)
+        if isinstance(node, BaseNode):
+            for _, value in node.iter_fields():
+                if isinstance(value, list):
+                    for item in value:
+                        if isinstance(item, BaseNode):
+                            self.visit(item)
+                elif isinstance(value, BaseNode):
+                    self.visit(value)
 
 
 class IRNodeTransformer(IRNodeVisitor[BaseNodeT]):
