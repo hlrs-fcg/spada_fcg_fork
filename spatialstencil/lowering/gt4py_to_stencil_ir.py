@@ -259,8 +259,13 @@ def _convert_interval_to_computation_body(
         if isinstance(stmt, gtast.GTComputeStatement):
             # Collect I/O information
             stmt_inputs = []
+            ignore = set()
             outputs.add(_parse_field(stmt.target))
             for node in ast.walk(stmt.body):
+                if node in ignore:
+                    continue
+                if isinstance(node, ast.Call):
+                    ignore.add(node.func)
                 if isinstance(node, ast.Name):
                     identifier = _parse_field(node.id)
                     inputs.add(identifier)

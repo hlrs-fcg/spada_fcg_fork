@@ -51,6 +51,13 @@ class TestStencilIRParser(unittest.TestCase):
         assert [inp.name for inp in comps[1].inputs] == ['used']
         assert [out.name for out in comps[1].outputs] == ['out']
 
+    def test_lower_mathcall(self):
+        program = self.gtfuncs['simple_mathcall']
+        irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program)
+        comp = irprogram.computations[0]
+        assert [inp.name for inp in comp.inputs] == ['inp']
+        assert [out.name for out in comp.outputs] == ['out']
+
     def test_lower_gt4py_if(self):
         program = self.gtfuncs['satadjust_specific_humidity']
         self.skipTest('Predication pass not yet implemented')
@@ -77,6 +84,11 @@ def unused(inp: Field3D, out: Field3D):
 
     with computation(PARALLEL), interval(...):
         out = used + 1
+
+
+def simple_mathcall(inp: Field3D, out: Field3D):
+    with computation(PARALLEL), interval(...):
+        out = sqrt(inp[1, 0, 0] + 1)
 
 
 # Adapted saturation adjustment subset code from PyFV3, see:
