@@ -27,7 +27,6 @@ def infer_types(program: sast.Program,
                               explicit type.
     :param domain: An optional 3-tuple representing domain size (x, y, z).
     """
-    infer_inputs_and_outputs(program)
     infer_scalar_types(program, default_float_dtype, default_int_dtype)
     infer_domain_and_extents(program, domain)
 

@@ -30,6 +30,9 @@ def lower_gt4py_to_stencil_ir(program: gtast.GTProgram,
     # Build new tree structure (that matches the language)
     new_ast = convert_gt4py_ast_to_stencil_ast(program, default_float_dtype, default_int_dtype)
 
+    # Infer which fields are intermediate (before materialize pass)
+    type_inference.infer_inputs_and_outputs(new_ast)
+
     # Insert materialize for all fields
     new_ast = MaterializeIntermediates().visit(new_ast)
 
