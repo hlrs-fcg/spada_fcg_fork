@@ -7,8 +7,7 @@ from spatialstencil.syntax.stencil_ir import irnodes as sast
 def infer_types(program: sast.Program,
                 default_float_dtype: sast.ScalarType = sast.ScalarType.f32,
                 default_int_dtype: sast.ScalarType = sast.ScalarType.i32,
-                domain: tuple[int] | None = None,
-                halo: tuple[int] | None = None):
+                domain: tuple[int] | None = None):
     """
     Infers all types in a Stencil IR program with optional domain size or halo extents.
     If domain size is not given, shapes will remain unknown ("?"). If halo is not given,
@@ -22,7 +21,6 @@ def infer_types(program: sast.Program,
     :param default_int_dtype: The integer type to use for integer literals and integral fields that do not have an
                               explicit type.
     :param domain: An optional 3-tuple representing domain size (x, y, z).
-    :param halo: An optional 3-tuple representing halo extents (x, y, z).
     """
     pass
 
@@ -42,7 +40,6 @@ def infer_scalar_types(program: sast.Program, default_float_dtype: sast.ScalarTy
 
     # Hierarchy of statements and data types:
     # <Node type>: <Input types> -> <Output types>
-
     # Program: Fields -> Fields
     #   Computation: Fields -> Fields
     #     Materialize (Identifier): Field -> Field
@@ -54,17 +51,18 @@ def infer_scalar_types(program: sast.Program, default_float_dtype: sast.ScalarTy
     pass
 
 
-def infer_domain_and_extents(program: sast.Program, halo: tuple[int] | None = None):
+
+def infer_domain_and_extents(program: sast.Program, domain: tuple[int] | None = None):
     """
     Infers the domain size and extents of a Stencil IR program by traversing it backwards.
     Operates in-place.
 
     :param program: The Stencil IR program to traverse.
-    :param halo: Initial extents to compute for the outputs. If not given, assumes (0, 0, 0).
+    :param domain: An optional 3-tuple representing domain size (x, y, z). If not given, existing domain size will
+                   be used or "?" will remain.
     """
-    halo = halo or (0, 0, 0)
-    field_extents: dict[str, list[tuple[int]]] = {}
-    # TODO: Materialize stops extent propagation
+    halo = (0, 0, 0)
+    field_types: dict[str, sast.FieldType] = {}
 
     pass
 
