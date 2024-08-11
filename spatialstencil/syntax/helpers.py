@@ -133,10 +133,12 @@ class ASTFindReplace(ast.NodeTransformer):
         """
         self.replace_count = 0
         self.repldict = repldict
+        self.encountered_names: set[str] = set()
         # If ast.Names were given, use them as keys as well
         self.repldict.update({k.id: v for k, v in self.repldict.items() if isinstance(k, ast.Name)})
 
     def visit_Name(self, node: ast.Name):
+        self.encountered_names.add(node.id)
         if node.id in self.repldict:
             val = self.repldict[node.id]
             if isinstance(val, ast.AST):

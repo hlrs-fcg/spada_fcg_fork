@@ -50,6 +50,7 @@ def field_versioning(program: gtast.GTProgram):
     """
     names = set(program.fields)
     name_to_version = defaultdict(int)
+    used_identifiers: set[str] = set()
     replacements = {}
     for comp in program.computations:
         for intvl in comp.intervals:
@@ -58,10 +59,18 @@ def field_versioning(program: gtast.GTProgram):
                     continue
 
                 # First, replace elements in body (to avoid self-reference clashes)
-                stmt.body = ASTFindReplace(replacements).visit(stmt.body)
+                replacer = ASTFindReplace(replacements)
+                stmt.body = replacer.visit(stmt.body)
+                used_identifiers.update(replacer.encountered_names)
 
                 # Name clash, add version
                 if stmt.target in names:
+                    # Special case: if the target is an output is never read/overwritten, keep version zero
+                    if (stmt.target in program.fields and stmt.target not in name_to_version and
+                            stmt.target not in used_identifiers):
+                        name_to_version[stmt.target] = 0
+                        continue
+
                     # TODO(later): Do not make new version if intervals do not overlap?
                     old_name = stmt.target
                     name_to_version[stmt.target] += 1
