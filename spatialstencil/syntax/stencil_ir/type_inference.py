@@ -51,7 +51,7 @@ def infer_inputs_and_outputs(program: sast.Program):
         if isinstance(node, sast.StatementBlock):
             collector = analysis.InputOutputCollector()
             collector.visit(node)
-            node.inputs = list(sorted(collector.inputs, key=lambda k: k.name))
+            node.inputs = _unique_id_list(collector.inputs, False)
 
     # Collect inputs/outputs per computation and only include globally-necessary fields in a second pass
     for comp in program.computations:
@@ -60,17 +60,17 @@ def infer_inputs_and_outputs(program: sast.Program):
         inputs_per_computation.append(collector.inputs)
         outputs_per_computation.append(collector.outputs)
 
-    # Reduce outputs based on subsequent computations
+        # Set the inputs to be anything that is used and defined outside (i.e., not overridden)
+        comp.inputs = _unique_id_list(collector.inputs - collector.outputs, False)
+
+        # Initialize outputs to final outputs of the block
+        comp.outputs = _unique_id_list(collector.outputs, True)
+
+    # Reduce outputs based on usage in subsequent computations
     subsequent_names = set(k.name for k in program.outputs)
     for i, comp in reversed(list(enumerate(program.computations))):
-        outputs = outputs_per_computation[i]
-        outputs = set(k for k in outputs if k.name in subsequent_names)
-        comp.outputs = list(sorted(outputs, key=lambda k: k.name))
-
-        # Figure out intermediate outputs by omission, then remove them from global inputs too
-        intermediates = outputs_per_computation[i] - outputs
-        comp.inputs = list(sorted(inputs_per_computation[i] - intermediates, key=lambda k: k.name))
-        subsequent_names.update(set(k.name for k in inputs_per_computation[i]))
+        comp.outputs = [out for out in comp.outputs if out.name in subsequent_names]
+        subsequent_names.update(set(k.name for k in comp.inputs + comp.outputs))
 
 
 def infer_scalar_types(program: sast.Program, default_float_dtype: sast.ScalarType, default_int_dtype: sast.ScalarType):
@@ -208,3 +208,24 @@ def _infer_expression(expr: sast.Expression, field_types: dict[str, sast.ScalarT
         return _result_type_of(*(nested_infer_expression(arg) for arg in val.arguments), optype=val.func)
 
     raise TypeError(f'Unidentified AST type {type(val)}')
+
+
+def _unique_id_list(identifiers: set[sast.Identifier], latest_version: bool) -> list[sast.Identifier]:
+    """
+    Makes a list of uniquely-named identifiers from a set thereof. The ordering is deterministic (sorted)
+    and can use either the earliest or latest version.
+
+    :param identifiers: Set of identifiers.
+    :param latest_version: If True, keeps the latest identifier version. Otherwise, uses the earliest one.
+    """
+    names = set()
+    versions = {}
+    func = max if latest_version else min
+    for k in identifiers:
+        names.add(k.name)
+        if k.name not in versions:
+            versions[k.name] = k.version
+        else:
+            versions[k.name] = func(k.version, versions[k.name])
+
+    return [sast.Identifier(name, versions[name]) for name in sorted(names)]

@@ -225,6 +225,26 @@ class Identifier(Node):
     def __hash__(self):
         return hash((self.name, self.version))
 
+    def __lt__(self, other: 'Identifier'):
+        if self.name < other.name:
+            return True
+        if self.name == other.name:
+            return self.version < other.version
+        return False
+
+    def __gt__(self, other: 'Identifier'):
+        if self.name > other.name:
+            return True
+        if self.name == other.name:
+            return self.version > other.version
+        return False
+
+    def __le__(self, other: 'Identifier'):
+        return self < other or self == other
+
+    def __ge__(self, other: 'Identifier'):
+        return self > other or self == other
+
 
 @dataclass
 class UnaryOperator(Node):

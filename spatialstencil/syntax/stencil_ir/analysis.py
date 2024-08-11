@@ -14,6 +14,18 @@ class ExtentCollector(sast.NodeVisitor):
         super().__init__()
         self.extents: dict[str, set[tuple[int]]] = defaultdict(set)
 
+    def visit_ComputationBlock(self, node: sast.ComputationBlock):
+        # Skip arguments and outputs
+        for stmt in node.body:
+            self.visit(stmt)
+
+    def visit_StatementBlock(self, node: sast.StatementBlock):
+        # Skip arguments
+        for stmt in node.body:
+            self.visit(stmt)
+        for out in node.outputs:
+            self.visit(out)
+
     def visit_Identifier(self, node: sast.Identifier):
         # If a bare identifier (i.e., no subscript) is used, the extent (0, 0, 0) should be added
         self.extents[node.name].add((0, 0, 0))
@@ -27,6 +39,8 @@ class ExtentCollector(sast.NodeVisitor):
 def collect_extents(node: sast.Node) -> dict[str, set[tuple[int]]]:
     """
     Collects all input and output extents from field accesses in this block.
+    
+    :param node: The node to traverse.
     """
     collector = ExtentCollector()
     collector.visit(node)

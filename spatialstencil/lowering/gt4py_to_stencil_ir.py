@@ -269,8 +269,8 @@ def _convert_interval_to_computation_body(
                 if isinstance(node, ast.Name):
                     identifier = _parse_field(node.id)
                     inputs.add(identifier)
-                    if sast.Identifier(identifier.name) not in stmt_inputs:
-                        stmt_inputs.append(sast.Identifier(identifier.name))
+                    if identifier not in stmt_inputs:
+                        stmt_inputs.append(identifier)
 
             # Construct statement
             body.append(
