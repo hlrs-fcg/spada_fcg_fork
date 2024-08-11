@@ -34,7 +34,7 @@ class TestStencilIRParser(unittest.TestCase):
 
     def test_lower_gt4py_intermediates_2(self):
         program = self.gtfuncs['unused']
-        irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program)
+        irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program, materialize=False)
         assert irprogram.name == 'unused'
         assert [inp.name for inp in irprogram.inputs] == ['inp']
         assert [out.name for out in irprogram.outputs] == ['out']
@@ -53,7 +53,7 @@ class TestStencilIRParser(unittest.TestCase):
 
     def test_lower_gt4py_intermediates_3(self):
         program = self.gtfuncs['intermediates_versioning']
-        irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program)
+        irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program, materialize=False)
         assert irprogram.name == 'intermediates_versioning'
         assert [inp.name for inp in irprogram.inputs] == ['inp']
         assert [out.name for out in irprogram.outputs] == ['out']
@@ -75,7 +75,7 @@ class TestStencilIRParser(unittest.TestCase):
 
     def test_lower_gt4py_intermediates_4(self):
         program = self.gtfuncs['intermediates_versioning_2']
-        irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program)
+        irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program, materialize=False)
         assert irprogram.name == 'intermediates_versioning_2'
         assert [inp.name for inp in irprogram.inputs] == ['inp']
         assert [out.name for out in irprogram.outputs] == ['out']
@@ -97,7 +97,7 @@ class TestStencilIRParser(unittest.TestCase):
 
     def test_lower_gt4py_intermediates_5(self):
         program = self.gtfuncs['intermediates_versioning_3']
-        irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program)
+        irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program, materialize=False)
         assert irprogram.name == 'intermediates_versioning_3'
         assert [inp.name for inp in irprogram.inputs] == ['inp']
         assert [out.name for out in irprogram.outputs] == ['out']

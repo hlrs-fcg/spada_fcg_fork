@@ -166,7 +166,7 @@ class TypeInference(sast.NodeTransformer):
     # Non-leaf blocks
     def visit_StatementBlock(self, node: sast.StatementBlock):
         # First traverse children
-        self.generic_visit(node)
+        node = self.generic_visit(node)
 
         # Input types should aleady exist
         for src, src_type in zip(node.inputs, node.typeinfo.source):
@@ -183,7 +183,7 @@ class TypeInference(sast.NodeTransformer):
 
     def visit_IfBlock(self, node: sast.IfBlock):
         # First traverse children
-        self.generic_visit(node)
+        node = self.generic_visit(node)
 
         # Input type should aleady exist
         # TODO(later): Verify that condition / return types match across branches in a separate validation pass
@@ -199,7 +199,7 @@ class TypeInference(sast.NodeTransformer):
         return node
 
     def visit_ComputationBlock(self, node: sast.ComputationBlock):
-        self.generic_visit(node)
+        node = self.generic_visit(node)
         self._modify_typeinfo(node.typeinfo, node.inputs, node.outputs)
         return node
 

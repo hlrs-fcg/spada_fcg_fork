@@ -1,14 +1,15 @@
 import ast
 from collections import defaultdict
 from spatialstencil.syntax.gt4py import astnodes as gtast
-from spatialstencil.syntax.helpers import ASTFindReplace
+from spatialstencil.syntax import helpers
 from spatialstencil.syntax.stencil_ir import irnodes as sast, type_inference
 
 
 def lower_gt4py_to_stencil_ir(program: gtast.GTProgram,
                               default_float_dtype: sast.ScalarType = sast.ScalarType.f32,
                               default_int_dtype: sast.ScalarType = sast.ScalarType.i32,
-                              domain: tuple[int] | None = None) -> sast.Program:
+                              domain: tuple[int] | None = None,
+                              materialize: bool = True) -> sast.Program:
     """
     Takes a GT4Py program (as AST) and returns a logical IR program.
 
@@ -19,6 +20,8 @@ def lower_gt4py_to_stencil_ir(program: gtast.GTProgram,
                               explicit type.
     :param domain: An optional domain size to compute the stencil on. If not given, keeps shapes unknown for
                    future shape inference.
+    :param materialize: If True, runs a pass that materializes all intermediate values.
+    :return: A Stencil IR node representing the lowered program.
     """
 
     # Constant propagation
@@ -34,7 +37,8 @@ def lower_gt4py_to_stencil_ir(program: gtast.GTProgram,
     type_inference.infer_inputs_and_outputs(new_ast)
 
     # Insert materialize for all fields
-    new_ast = MaterializeIntermediates().visit(new_ast)
+    if materialize:
+        new_ast = MaterializeIntermediates().visit(new_ast)
 
     # Perform type/shape inference in stencil IR language
     type_inference.infer_types(new_ast, default_float_dtype, default_int_dtype, domain)
@@ -59,7 +63,7 @@ def field_versioning(program: gtast.GTProgram):
                     continue
 
                 # First, replace elements in body (to avoid self-reference clashes)
-                replacer = ASTFindReplace(replacements)
+                replacer = helpers.ASTFindReplace(replacements)
                 stmt.body = replacer.visit(stmt.body)
                 used_identifiers.update(replacer.encountered_names)
 
@@ -107,7 +111,7 @@ def constant_propagation(program: gtast.GTProgram):
                     continue
 
                 # Find constants within expression and replace
-                stmt.body = ASTFindReplace(constants).visit(stmt.body)
+                stmt.body = helpers.ASTFindReplace(constants).visit(stmt.body)
 
                 # If this statement is now a constant, make it so
                 try:
@@ -129,14 +133,45 @@ class MaterializeIntermediates(sast.NodeTransformer):
         super().__init__()
         self.do_not_materialize: set[str] = set()
         self.name_translation: dict[str, tuple[str, int]] = {}
+        self.allnames: set[str] = set()
+
+    def _find_new_name(self, name: str):
+        """
+        Finds a new name that is not used by the rest of the program.
+        """
+        new_name = f'{name}_mat'
+        i = 1
+        while new_name in self.allnames:
+            new_name = f'{name}_mat{i}'
+            i += 1
+        self.allnames.add(new_name)
+        return new_name
 
     def visit_Program(self, node: sast.Program):
         # Input/output fields are always materialized
         self.do_not_materialize |= set(n.name for n in node.inputs)
         self.do_not_materialize |= set(n.name for n in node.outputs)
+
+        # Collect all used identifier names (to assign a new name)
+        for subnode in helpers.walk(node):
+            if isinstance(subnode, sast.Identifier):
+                self.allnames.add(subnode.name)
+
+        return self.generic_visit(node)
+
+    def visit_Identifier(self, node: sast.Identifier):
+        cur_node = node
+        while cur_node.name in self.name_translation:
+            new_name, version_diff = self.name_translation[cur_node.name]
+            cur_node = sast.Identifier(name=new_name, version=cur_node.version - version_diff)
+        if cur_node is not node:
+            return cur_node
         return self.generic_visit(node)
 
     def visit_ComputationBlock(self, node: sast.ComputationBlock):
+        for i, inp in enumerate(node.inputs):
+            node.inputs[i] = self.visit(inp)
+
         new_body = []
         for stmt in node.body:
             # Add statement to new body
@@ -145,19 +180,27 @@ class MaterializeIntermediates(sast.NodeTransformer):
 
             # Try to find results
             results: list[sast.Identifier] | None = None
-            if hasattr(stmt, 'output'):
-                results = [stmt.output]
+            if hasattr(stmt, 'outputs'):
+                results = stmt.outputs
             elif hasattr(stmt, 'result'):
                 results = [stmt.result]
-            elif hasattr(stmt, 'results'):
-                results = stmt.results
 
             # Append materialize after statement
             if results:
                 results = [r for r in results if r.name not in self.do_not_materialize]
                 for result in results:
-                    # TODO: Not the right extents/name, assign new NAME not VERSION
-                    new_body.append(sast.MaterializeOp(result, result))
+                    # Find a new name and version difference to assign
+                    materialized = sast.Identifier(self._find_new_name(result.name), version=0)
+                    self.name_translation[result.name] = (materialized.name, result.version)
+                    new_body.append(
+                        sast.MaterializeOp(
+                            result=materialized,
+                            value=result,
+                            typeinfo=sast.TypeInfo([sast.FieldType.empty()], [sast.FieldType.empty()])))
+
+        for i, out in enumerate(node.outputs):
+            node.outputs[i] = self.visit(out)
+
         return sast.ComputationBlock(node.outputs, node.inputs, node.schedule, node.interval, node.typeinfo, new_body)
 
 
