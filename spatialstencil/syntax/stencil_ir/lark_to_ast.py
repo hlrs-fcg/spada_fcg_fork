@@ -97,7 +97,7 @@ class TreeToAST(lark.Transformer):
         return irnodes.Identifier(*args)
 
     subscript = irnodes.Subscript.from_lark
-    type_info = lambda self, args: irnodes.TypeInfo(*args)
+    type_info = lambda self, args: irnodes.TypeInfo(*([arg] for arg in args))
     type_list_info = lambda self, args: irnodes.TypeInfo(*args)
 
     # Operators
@@ -159,7 +159,7 @@ class TreeToAST(lark.Transformer):
             typeinfo = args[offset]
             offset += 1
         else:
-            typeinfo = irnodes.TypeInfo(irnodes.FieldType.empty(), irnodes.FieldType.empty())
+            typeinfo = irnodes.TypeInfo([irnodes.FieldType.empty()], [irnodes.FieldType.empty()])
 
         body = args[offset]
         offset += 1

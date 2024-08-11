@@ -343,7 +343,8 @@ def _convert_interval_to_computation_body(
                     body=body,
                     else_ifs=else_ifs,
                     orelse=orelse,
-                    typeinfo=sast.TypeInfo(sast.FieldType.empty(), [sast.FieldType.empty() for _ in all_stmt_outputs]),
+                    typeinfo=sast.TypeInfo([sast.FieldType.empty()],
+                                           [sast.FieldType.empty() for _ in all_stmt_outputs]),
                 ))
         else:
             raise TypeError(f'Unsupported statement type "{type(stmt)}"')

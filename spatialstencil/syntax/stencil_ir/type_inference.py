@@ -52,6 +52,8 @@ def infer_inputs_and_outputs(program: sast.Program):
             collector = analysis.InputOutputCollector()
             collector.visit(node)
             node.inputs = _unique_id_list(collector.inputs, False)
+            node.typeinfo.source = node.typeinfo.source[:len(node.inputs)]  # Adjust type information
+            node.typeinfo.destination = node.typeinfo.destination[:len(node.body[-1].values)]
 
     # Collect inputs/outputs per computation and only include globally-necessary fields in a second pass
     for comp in program.computations:
@@ -62,6 +64,7 @@ def infer_inputs_and_outputs(program: sast.Program):
 
         # Set the inputs to be anything that is used and defined outside (i.e., not overridden)
         comp.inputs = _unique_id_list(collector.inputs - collector.outputs, False)
+        comp.typeinfo.source = comp.typeinfo.source[:len(comp.inputs)]  # Adjust type information
 
         # Initialize outputs to final outputs of the block
         comp.outputs = _unique_id_list(collector.outputs, True)
@@ -70,6 +73,7 @@ def infer_inputs_and_outputs(program: sast.Program):
     subsequent_names = set(k.name for k in program.outputs)
     for i, comp in reversed(list(enumerate(program.computations))):
         comp.outputs = [out for out in comp.outputs if out.name in subsequent_names]
+        comp.typeinfo.destination = comp.typeinfo.destination[:len(comp.outputs)]  # Adjust type information
         subsequent_names.update(set(k.name for k in comp.inputs + comp.outputs))
 
 

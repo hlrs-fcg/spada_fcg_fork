@@ -169,8 +169,8 @@ DataType = FieldType | ScalarType
 
 @dataclass
 class TypeInfo(Node):
-    source: DataType | list[DataType] = field(default_factory=FieldType.empty)
-    destination: DataType | list[DataType] | None = None
+    source: list[DataType] = field(default_factory=lambda: [FieldType.empty()])
+    destination: list[DataType] | None = None
 
     def as_ir(self, indent: int = 0) -> str:
         if isinstance(self.source, list):
@@ -345,7 +345,7 @@ class Operation:
 @dataclass
 class ReturnOp(Node, Operation):
     values: list[Expression]
-    typeinfo: TypeInfo = field(default_factory=lambda: TypeInfo(ScalarType.UNKNOWN))
+    typeinfo: TypeInfo = field(default_factory=lambda: TypeInfo([ScalarType.UNKNOWN]))
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
@@ -373,7 +373,7 @@ class MaterializeOp(Node, Operation):
 class AssignOp(Node, Operation):
     result: Identifier
     value: Expression
-    typeinfo: TypeInfo = field(default_factory=lambda: TypeInfo(ScalarType.UNKNOWN, ScalarType.UNKNOWN))
+    typeinfo: TypeInfo = field(default_factory=lambda: TypeInfo([ScalarType.UNKNOWN], [ScalarType.UNKNOWN]))
 
     def validate(self) -> None:
         assert isinstance(self.result, Identifier)
