@@ -88,8 +88,6 @@ def infer_scalar_types(program: sast.Program, default_float_dtype: sast.ScalarTy
     :param default_int_dtype: The integer type to use for integer literals and integral fields that do not have an
                               explicit type.
     """
-    field_types: dict[str, sast.ScalarType] = {}  # Stores already inferred types
-
     # Hierarchy of statements and data types:
     # <Node type>: <Input types> -> <Output types>
     # Program: Fields -> Fields
@@ -100,8 +98,110 @@ def infer_scalar_types(program: sast.Program, default_float_dtype: sast.ScalarTy
     #       Return (Expression): Scalars -> Scalar
     #     IfBlock: Fields -> Fields
     #       Statement (As above)
-    pass
+    inferrer = TypeInference(default_float_dtype, default_int_dtype)
 
+    # Collect program global fields. If type is unknown, use default float type
+    for field, dtype in zip(program.inputs, program.typeinfo.source):
+        if dtype.dtype == sast.ScalarType.UNKNOWN:
+            dtype.dtype = default_float_dtype
+        inferrer.field_types[field.name] = dtype.dtype
+    for field, dtype in zip(program.outputs, program.typeinfo.destination):
+        if dtype.dtype == sast.ScalarType.UNKNOWN:
+            dtype.dtype = default_float_dtype
+        inferrer.field_types[field.name] = dtype.dtype
+
+    # Run type inference throughout program
+    inferrer.visit(program)
+
+
+class TypeInference(sast.NodeTransformer):
+
+    def __init__(self, default_float_dtype: sast.ScalarType, default_int_dtype: sast.ScalarType):
+        super().__init__()
+        self.field_types: dict[str, sast.ScalarType] = {}  # Types that were already inferred
+        self.float_dtype = default_float_dtype
+        self.int_dtype = default_int_dtype
+
+    def _modify_typeinfo(self, typeinfo: sast.TypeInfo, inputs: list[sast.Identifier], outputs: list[sast.Identifier]):
+        """
+        Helper function that updates the type information based on inferred types.
+        """
+        for i, (name, src) in enumerate(zip(inputs, typeinfo.source)):
+            scalartype = self.field_types[name.name]
+            if isinstance(src, sast.FieldType):
+                src.dtype = scalartype
+            else:  # Scalar type
+                typeinfo.source[i] = scalartype
+
+        if typeinfo.destination:
+            for i, (name, dst) in enumerate(zip(outputs, typeinfo.destination)):
+                scalartype = self.field_types[name.name]
+                if isinstance(dst, sast.FieldType):
+                    dst.dtype = scalartype
+                else:  # Scalar type
+                    typeinfo.destination[i] = scalartype
+
+    # Scalar operations
+    def visit_ReturnOp(self, node: sast.ReturnOp):
+        for i, val in enumerate(node.values):
+            node.typeinfo.source[i] = _infer_expression(val, self.field_types, self.float_dtype, self.int_dtype)
+        return node
+
+    def visit_AssignOp(self, node: sast.AssignOp):
+        output_type = _infer_expression(node.value, self.field_types, self.float_dtype, self.int_dtype)
+        node.typeinfo.source[0] = output_type
+        if node.result.name not in self.field_types:
+            self.field_types[node.result.name] = output_type
+        node.typeinfo.destination[0] = output_type
+        return node
+
+    # Field operations
+    def visit_MaterializeOp(self, node: sast.MaterializeOp):
+        assert node.value.name in self.field_types
+        node.typeinfo.source[0].dtype = self.field_types[node.value.name]
+        node.typeinfo.destination[0].dtype = self.field_types[node.value.name]
+        self.field_types[node.result.name] = self.field_types[node.value.name]
+        return node
+
+    # Non-leaf blocks
+    def visit_StatementBlock(self, node: sast.StatementBlock):
+        # First traverse children
+        self.generic_visit(node)
+
+        # Input types should aleady exist
+        for src, src_type in zip(node.inputs, node.typeinfo.source):
+            src_type.dtype = self.field_types[src.name]
+
+        # Use return value to infer output types
+        assert isinstance(node.body[-1], sast.ReturnOp)
+        retvals = node.body[-1].typeinfo.source
+        for dst, retval, dst_type in zip(node.outputs, retvals, node.typeinfo.destination):
+            dst_type.dtype = retval
+            self.field_types[dst.name] = retval
+
+        return node
+
+    def visit_IfBlock(self, node: sast.IfBlock):
+        # First traverse children
+        self.generic_visit(node)
+
+        # Input type should aleady exist
+        # TODO(later): Verify that condition / return types match across branches in a separate validation pass
+        node.typeinfo.source[0].dtype = self.field_types[node.condition.name]
+
+        # Use return value to infer output types
+        assert isinstance(node.body[-1], sast.ReturnOp)
+        retvals = node.body[-1].typeinfo.source
+        for dst, retval, dst_type in zip(node.outputs, retvals, node.typeinfo.destination):
+            dst_type.dtype = retval
+            self.field_types[dst.name] = retval
+
+        return node
+
+    def visit_ComputationBlock(self, node: sast.ComputationBlock):
+        self.generic_visit(node)
+        self._modify_typeinfo(node.typeinfo, node.inputs, node.outputs)
+        return node
 
 
 def infer_domain_and_extents(program: sast.Program, domain: tuple[int] | None = None):
@@ -132,7 +232,7 @@ def _result_type_of(*args: sast.ScalarType, optype: str | None = None) -> sast.S
     :return: The resulting scalar type.
     """
     assert len(args) >= 1
-    if optype == 'not':  # Boolean not
+    if optype in ('not', 'and', 'or'):  # Boolean operators
         return sast.ScalarType.bool
     if optype in ('>', '>=', '<', '<=', '==', '!='):  # Comparison operators
         return sast.ScalarType.bool
