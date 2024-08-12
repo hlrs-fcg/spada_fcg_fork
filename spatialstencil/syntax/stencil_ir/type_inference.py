@@ -28,7 +28,8 @@ def infer_types(program: sast.Program,
     :param domain: An optional 3-tuple representing domain size (x, y, z).
     """
     infer_scalar_types(program, default_float_dtype, default_int_dtype)
-    infer_domain_and_extents(program, domain)
+    infer_field_extents(program)
+    infer_field_domains(program, domain)
 
 
 def infer_inputs_and_outputs(program: sast.Program):
@@ -204,17 +205,41 @@ class TypeInference(sast.NodeTransformer):
         return node
 
 
-def infer_domain_and_extents(program: sast.Program, domain: tuple[int] | None = None):
+def infer_field_extents(program: sast.Program):
     """
-    Infers the domain size and extents of a Stencil IR program by traversing it backwards.
+    Infers the extents of a Stencil IR program by traversing it twice.
+    Operates in-place.
+
+    :param program: The Stencil IR program to traverse.
+    """
+    field_extents: dict[str, set[tuple[int]]] = {}
+
+    # Start with outputs. Extents always start at (0, 0, 0)
+    assert isinstance(program.typeinfo.destination, list)
+    for field, dtype in zip(program.outputs, program.typeinfo.destination):
+        if dtype.extent.is_unknown():
+            dtype.extent.extents = [sast.DimTuple((0, 0, 0))]
+        field_extents[field.name] = dtype.extent
+
+    # Visit entire program and collect extents
+    field_extents.update(analysis.collect_extents(program))
+
+    # Transform the program by assigning extents to field types
+    ExtentAssigner(field_extents).visit(program)
+
+
+def infer_field_domains(program: sast.Program, domain: tuple[int] | None = None):
+    """
+    Infers the domain size of a Stencil IR program by traversing it backwards.
     Operates in-place.
 
     :param program: The Stencil IR program to traverse.
     :param domain: An optional 3-tuple representing domain size (x, y, z). If not given, existing domain size will
                    be used or "?" will remain.
     """
-    halo = (0, 0, 0)
-    field_types: dict[str, sast.FieldType] = {}
+    if domain is None:  # Nothing to do
+        return
+    field_domains: dict[str, sast.Cartesian] = {}
 
     pass
 
@@ -333,3 +358,50 @@ def _unique_id_list(identifiers: set[sast.Identifier], latest_version: bool) -> 
             versions[k.name] = func(k.version, versions[k.name])
 
     return [sast.Identifier(name, versions[name]) for name in sorted(names)]
+
+
+class ExtentAssigner(sast.NodeTransformer):
+    """
+    Sets extents based on given dictionary.
+    """
+
+    def __init__(self, field_extents: dict[str, set[tuple[int]]]):
+        super().__init__()
+        self.field_extents = field_extents
+
+    def _modify_typeinfo(self, typeinfo: sast.TypeInfo, inputs: list[sast.Identifier], outputs: list[sast.Identifier]):
+        """
+        Helper function that updates the type information based on inferred types.
+        """
+        for name, src in zip(inputs, typeinfo.source):
+            if name.name in self.field_extents:
+                extent_set = self.field_extents[name.name]
+                if isinstance(src, sast.FieldType):
+                    src.extent.extents = [sast.DimTuple(ex) for ex in sorted(extent_set)]
+
+        if typeinfo.destination:
+            for name, dst in zip(outputs, typeinfo.destination):
+                if name.name in self.field_extents:
+                    extent_set = self.field_extents[name.name]
+                    if isinstance(dst, sast.FieldType):
+                        dst.extent.extents = [sast.DimTuple(ex) for ex in sorted(extent_set)]
+
+    def visit_MaterializeOp(self, node: sast.MaterializeOp):
+        self._modify_typeinfo(node.typeinfo, [node.value], [node.result])
+        return self.generic_visit(node)
+
+    def visit_StatementBlock(self, node: sast.StatementBlock):
+        self._modify_typeinfo(node.typeinfo, node.inputs, node.outputs)
+        return self.generic_visit(node)
+
+    def visit_IfBlock(self, node: sast.IfBlock):
+        self._modify_typeinfo(node.typeinfo, [node.condition], node.outputs)
+        return self.generic_visit(node)
+
+    def visit_ComputationBlock(self, node: sast.ComputationBlock):
+        self._modify_typeinfo(node.typeinfo, node.inputs, node.outputs)
+        return self.generic_visit(node)
+
+    def visit_Program(self, node: sast.Program):
+        self._modify_typeinfo(node.typeinfo, node.inputs, node.outputs)
+        return self.generic_visit(node)
