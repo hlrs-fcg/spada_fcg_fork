@@ -241,7 +241,21 @@ def infer_field_domains(program: sast.Program, domain: tuple[int] | None = None)
         return
     field_domains: dict[str, sast.Cartesian] = {}
 
-    pass
+    # Start with outputs. Use halo for extents.
+    assert isinstance(program.typeinfo.destination, list)
+    for field, dtype in zip(program.outputs, program.typeinfo.destination):
+        if dtype.domain.is_unknown():
+            dtype.domain = sast.Cartesian(*domain)
+        field_domains[field.name] = dtype.domain
+
+    for field, dtype in zip(program.inputs, program.typeinfo.source):
+        field_domains[field.name] = sast.Cartesian(*_infer_domain_from_extents(domain, dtype.extent))
+
+    # TODO: Also infer extents from computation interval (e.g., don't allow z > 80 in vadv)
+    # TODO: Propagate backwards through statements from end of program
+
+    # Assign inferred domain sizes across Stencil IR program
+    DomainAssigner(field_domains).visit(program)
 
 
 #########################################################################################
@@ -339,6 +353,15 @@ def _infer_expression(expr: sast.Expression, field_types: dict[str, sast.ScalarT
     raise TypeError(f'Unidentified AST type {type(val)}')
 
 
+def _infer_domain_from_extents(base_domain: tuple[int, int, int], extents: sast.Extent) -> tuple[int, int, int]:
+    output = list(base_domain)
+    for dim in range(len(output)):
+        min_extent = min(ex.values[dim] for ex in extents.extents)
+        max_extent = max(ex.values[dim] for ex in extents.extents)
+        output[dim] += max_extent - min_extent
+    return tuple(output)
+
+
 def _unique_id_list(identifiers: set[sast.Identifier], latest_version: bool) -> list[sast.Identifier]:
     """
     Makes a list of uniquely-named identifiers from a set thereof. The ordering is deterministic (sorted)
@@ -385,6 +408,49 @@ class ExtentAssigner(sast.NodeTransformer):
                     extent_set = self.field_extents[name.name]
                     if isinstance(dst, sast.FieldType):
                         dst.extent.extents = [sast.DimTuple(ex) for ex in sorted(extent_set)]
+
+    def visit_MaterializeOp(self, node: sast.MaterializeOp):
+        self._modify_typeinfo(node.typeinfo, [node.value], [node.result])
+        return self.generic_visit(node)
+
+    def visit_StatementBlock(self, node: sast.StatementBlock):
+        self._modify_typeinfo(node.typeinfo, node.inputs, node.outputs)
+        return self.generic_visit(node)
+
+    def visit_IfBlock(self, node: sast.IfBlock):
+        self._modify_typeinfo(node.typeinfo, [node.condition], node.outputs)
+        return self.generic_visit(node)
+
+    def visit_ComputationBlock(self, node: sast.ComputationBlock):
+        self._modify_typeinfo(node.typeinfo, node.inputs, node.outputs)
+        return self.generic_visit(node)
+
+    def visit_Program(self, node: sast.Program):
+        self._modify_typeinfo(node.typeinfo, node.inputs, node.outputs)
+        return self.generic_visit(node)
+
+
+class DomainAssigner(sast.NodeTransformer):
+    """
+    Sets domain based on given dictionary.
+    """
+
+    def __init__(self, field_domains: dict[str, sast.Cartesian]):
+        super().__init__()
+        self.field_domains = field_domains
+
+    def _modify_typeinfo(self, typeinfo: sast.TypeInfo, inputs: list[sast.Identifier], outputs: list[sast.Identifier]):
+        """
+        Helper function that updates the type information based on inferred types.
+        """
+        for name, src in zip(inputs, typeinfo.source):
+            if name.name in self.field_domains and isinstance(src, sast.FieldType) and src.domain.is_unknown():
+                src.domain = copy.deepcopy(self.field_domains[name.name])
+
+        if typeinfo.destination:
+            for name, dst in zip(outputs, typeinfo.destination):
+                if name.name in self.field_domains and isinstance(dst, sast.FieldType) and dst.domain.is_unknown():
+                    dst.domain = copy.deepcopy(self.field_domains[name.name])
 
     def visit_MaterializeOp(self, node: sast.MaterializeOp):
         self._modify_typeinfo(node.typeinfo, [node.value], [node.result])
