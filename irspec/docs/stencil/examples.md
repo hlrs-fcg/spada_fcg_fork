@@ -19,8 +19,8 @@ A direct translation results in the following computation:
 // Version with ? extents.
 %res = spst.computation (%in) 
 {
-    schedule: spst.schedule<PARALLEL>,
-    interval: [x: spsp.interval<?, ?> , y: spsp.interval<?, ?>, z: spst.interval<0, None>]
+    schedule: PARALLEL,
+    interval: [spst.interval<?, ?> , spst.interval<?, ?>, spst.interval<0, None>]
 } :
 spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)>, f32> -> spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)>, f32> {
     %out_1 = spst.statement(%in) : spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)> -> spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)> {
@@ -39,8 +39,8 @@ Performing type inference on the extents results in the following:
 // Version with inferred extents.
 %res = spst.computation (%in) 
 {
-    schedule: spst.schedule<PARALLEL>,
-    interval: [x: spst.interval<?, ?> , y: spst.interval<?, ?>, z: spst.interval<0, None>]
+    schedule: PARALLEL,
+    interval: [spst.interval<?, ?>, spst.interval<?, ?>, spst.interval<0, None>]
 } : spst.field<spst.cartesian<?,?,?>,
     spst.extent<(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0)
                 (0, 1, 0), (-1, 1, 0), (1, 1, 0), (0, 2, 0)>, f32>
@@ -54,7 +54,7 @@ Performing type inference on the extents results in the following:
             spst.return -4.0 * %in[0, 0, 0] + %in[-1, 0, 0] + %in[1, 0, 0] + %in[0, -1, 0] + %in[0, 1, 0]
         }
     %out_2 = spst.statement(%out_1) 
-            : spst.field<spst.cartesian<?,?,?>, extent<(0, 0, 0), (0, 1, 0)>, f32>
+            : spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0), (0, 1, 0)>, f32>
             -> spst.field<D, spst.extent<(0, 0, 0)>, f32> 
         {
             spst.return %out_1[0, 0, 0] + %out_1[0, 1, 0]
@@ -72,8 +72,8 @@ Instead, the values are explicitly communicated.
 // Version with materialize to prevent recomputation
 %res = spst.computation (%in) 
 {
-    schedule: spst.schedule<PARALLEL>,
-    interval: [x: spst.interval<?, ?> , y: spst.interval<?, ?>, z: spst.interval<0, None>]
+    schedule: PARALLEL,
+    interval: [spst.interval<?, ?> , spst.interval<?, ?>, spst.interval<0, None>]
 } : spst.field<spst.cartesian<?,?,?>,
                spst.extent<(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0)
                            (0, 1, 0), (-1, 1, 0), (1, 1, 0), (0, 2, 0)>, f32>
