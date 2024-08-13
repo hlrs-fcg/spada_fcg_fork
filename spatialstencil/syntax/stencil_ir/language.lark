@@ -44,7 +44,7 @@ identifier : "%" suffix_id ("#" digits)?
 !dim_or_end : dim | "None"
 dim_list: dim ("," dim)*
 extent_offset_tuple : "(" dim ("," dim)* ")"
-extent_interval_tuple : "[" dim ":" dim ("," dim ":" dim)* "]"
+extent_interval_tuple : "[" dim_or_end ":" dim_or_end ("," dim_or_end ":" dim_or_end)* "]"
 extent_tuple : extent_offset_tuple ("in" extent_interval_tuple)?
 extent_tuple_list : extent_tuple ("," extent_tuple)*
 extent_type : ("spst.")? "extent" "<" extent_tuple_list ">"
