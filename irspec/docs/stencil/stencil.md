@@ -135,7 +135,7 @@ This sequence must *contain no duplicates*.
 An extent `E_sub` where every access is a subtype of an access of another extent `E_sup` is a sub-type of `E_sup`.
 As such, values of type `E_sub` may be consumed everywhere that values of type `E_sup` may be consumed.
 
-??? example "Extent Subtyping"
+??? example "Example: Extent Subtyping"
     ```mlir
     %x_sup : spst.extent<(0, 0, 0)>
     %x_sub : spst.extent<(0, 0, 0), (0, 0, 1)>
@@ -144,7 +144,7 @@ As such, values of type `E_sub` may be consumed everywhere that values of type `
     // y is a super-type of both x_sup and x_sub
     ```
 
-??? example "Extent Types"
+??? example "Example: Extent Types"
     For example, in the following expression:
 
     ```mlir
@@ -403,7 +403,7 @@ The types of the yielded values must match the result types of the spst.if.
 
 !!! danger "No Side Effects"
     The spst.if operation and any nested operations are not allowed to have side effects. 
-    The operation must not modify any state or memory that is accessed outside of the operation itself.
+    The operation must not modify any state or memory that is accessed outside the operation itself.
     This is necessary to ensure that the operation can be executed in parallel.
 
 ### spst.while
