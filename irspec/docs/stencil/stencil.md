@@ -74,7 +74,10 @@ The purpose of placeholders is to allow type-inference to deduce the
 domain sizes. To lower the representation, we require all dimensions
 of the iteration domain have been inferred at compile time.
 
-When clear from context, the shorthand notation `[x, y, z]` may be used instead.
+!!! abstract "Domain Shorthand Notation"
+    When clear from context, the shorthand notation `[x, y, z]` may be used instead.
+
+    For example, `spst.cartesian<1, ?, 3>` is equivalent to `spst.cartesian<1, ?, 3>`
 
 #### Interval Types
 
@@ -156,8 +159,9 @@ As such, values of type `E_sub` may be consumed everywhere that values of type `
     in : spst.extent<(-1, 0, 0), (0, 0, 0), (0, -1, 0), (0, 1, 0), (1, 0, 0)>
     ```
 
-When clear from context, the shorthand notation `{(i, j, k) in [is:ie, js:je, ks:ke], ...}` 
-or `{(i, j, k), ...}` may be used instead.
+!!! abstract "Extent Shorthand Notation"
+    When clear from context, the shorthand notation `{(i, j, k) in [is:ie, js:je, ks:ke], ...}` 
+    or `{(i, j, k), ...}` may be used instead.
 
 #### Field Types
 
@@ -171,11 +175,12 @@ that models a multi-dimensional array (field) over iteration domain D with exten
 A field type `spst.field<D, E1, T>` is a subtype of a type `spst.field<D, E2, T>` if `E1` is a subtype of `E2`.
 The domains and scalar types must match.
 
-There is a shorthand field type notation, which omits some of the boilerplate syntax from the nested types:
-`field<[x, y, z], {(i, j, k) in [is:ie, js:je, ks:ke], ...}, f32>`
-
-is equivalent to
-`spst.field<spst.cartesian<x, y, z>, spst.extent<(i, j, k) in [is:ie, js:je, ks:ke], ...>, f32>`
+!!! abstract "Field Shorthand Notation"
+    There is a shorthand field type notation, which omits some of the boilerplate syntax from the nested types:
+    `field<[x, y, z], {(i, j, k) in [is:ie, js:je, ks:ke], ...}, f32>`
+    
+    is equivalent to
+    `spst.field<spst.cartesian<x, y, z>, spst.extent<(i, j, k) in [is:ie, js:je, ks:ke], ...>, f32>`
 
 
 #### Schedule Type
