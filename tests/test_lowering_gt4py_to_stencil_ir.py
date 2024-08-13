@@ -132,12 +132,17 @@ class TestStencilIRParser(unittest.TestCase):
 
     def test_lower_gt4py_if(self):
         program = self.gtfuncs['satadjust_specific_humidity']
-        self.skipTest('Predication pass not yet implemented')
         irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program)
+        comp = irprogram.computations[0]
+        assert comp.outputs == [sast.Identifier('rh')]
+        assert isinstance(comp.body[2], sast.IfBlock)
+        ifblock = comp.body[2]
+        assert len(ifblock.else_ifs) == 1
+        assert ifblock.orelse
+        assert ifblock.outputs == [sast.Identifier('qstar')]
 
     def test_lower_gt4py_nested_if(self):
         program = self.gtfuncs['satadjust_specific_humidity_nestedif']
-        self.skipTest('Predication pass not yet implemented')
         with self.assertRaises(SyntaxError):
             gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program)
 
@@ -240,9 +245,11 @@ def output_overwrite(inp: Field3D, out: Field3D):
 def satadjust_specific_humidity(tin: Field3D, iqs1: Field3D, wqs1: Field3D, q_cond: Field3D, q_sol: Field3D,
                                 qpz: Field3D, rh: Field3D):
     with computation(PARALLEL), interval(...):
-        if tin < 233.16:
+        pred1 = tin < 233.16
+        pred2 = tin >= 273.16
+        if pred1:
             qstar = iqs1
-        elif tin >= 273.16:
+        elif pred2:
             qstar = wqs1
         else:
             rqi = q_sol / q_cond
@@ -254,13 +261,16 @@ def satadjust_specific_humidity(tin: Field3D, iqs1: Field3D, wqs1: Field3D, q_co
 def satadjust_specific_humidity_nestedif(tin: Field3D, iqs1: Field3D, wqs1: Field3D, q_cond: Field3D, q_sol: Field3D,
                                          qpz: Field3D, rh: Field3D):
     with computation(PARALLEL), interval(...):
-        if tin < 233.16:  # Homogeneous freezing temperature
+        pred1 = tin < 233.16
+        pred2 = tin >= 273.16
+        if pred1:  # Homogeneous freezing temperature
             # ice phase
             qstar = iqs1
-        elif tin >= 273.16:  # Freezing temperature
+        elif pred2:  # Freezing temperature
             qstar = wqs1
         else:
-            if q_cond > 1e-6:
+            pred3 = q_cond > 1e-6
+            if pred3:
                 rqi = q_sol / q_cond
             else:
                 rqi = (273.16 - tin) / -40.0

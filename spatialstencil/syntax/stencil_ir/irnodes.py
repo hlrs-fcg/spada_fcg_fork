@@ -457,7 +457,7 @@ class IfBlock(Node, Operation):
         result += f' : {self.typeinfo.as_ir()} '
         result += '{\n'
         result += '\n'.join(stmt.as_ir(indent + 1) for stmt in self.body)
-        result += indent_str + '}'
+        result += '\n' + indent_str + '}'
         if self.else_ifs:
             for elif_cond, elif_body in self.else_ifs:
                 result += f' elif ({elif_cond.as_ir()}) '

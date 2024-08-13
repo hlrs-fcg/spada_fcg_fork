@@ -356,45 +356,49 @@ def _convert_interval_to_computation_body(
             all_stmt_outputs: set[sast.Identifier]
 
             # if block
-            stmt_body, _, all_stmt_outputs = _convert_interval_to_computation_body(stmt.body, True)
+            stmt_body, stmt_inputs, all_stmt_outputs = _convert_interval_to_computation_body(stmt.body, True)
 
             # elif blocks
             else_ifs = None
             if stmt.else_ifs:
                 else_ifs: list[tuple[sast.Identifier, list[sast.StatementBlock]]] = []
                 for elif_cond, elif_body in stmt.else_ifs:
-                    elif_body, _, elif_outputs = _convert_interval_to_computation_body(elif_body, True)
+                    elif_body, elif_inputs, elif_outputs = _convert_interval_to_computation_body(elif_body, True)
+                    stmt_inputs.update(elif_inputs)
                     assert isinstance(elif_cond, ast.Name), 'Else-if conditional must only apply on a mask field'
-                    else_ifs.append((_parse_field(elif_cond.id, elif_body)))
+                    else_ifs.append((_parse_field(elif_cond.id), elif_body))
                     # Intersect outputs
                     all_stmt_outputs &= elif_outputs
 
             # else block
             orelse = None
             if stmt.orelse:
-                orelse, _, else_outputs = _convert_interval_to_computation_body(stmt.orelse, True)
+                orelse, else_inputs, else_outputs = _convert_interval_to_computation_body(stmt.orelse, True)
+                stmt_inputs.update(else_inputs)
                 all_stmt_outputs &= else_outputs
+
+            inputs.update(stmt_inputs)
 
             # Add overall return values to each branch
             stmt_body.append(
                 sast.ReturnOp([sast.Expression(so) for so in sorted(all_stmt_outputs)],
-                              [sast.FieldType.empty() for _ in outputs]))
+                              sast.TypeInfo([sast.FieldType.empty() for _ in outputs])))
             if else_ifs:
                 for _, elif_body in else_ifs:
                     elif_body.append(
                         sast.ReturnOp([sast.Expression(so) for so in sorted(all_stmt_outputs)],
-                                      [sast.FieldType.empty() for _ in outputs]))
+                                      sast.TypeInfo([sast.FieldType.empty() for _ in outputs])))
             if orelse:
                 orelse.append(
                     sast.ReturnOp([sast.Expression(so) for so in sorted(all_stmt_outputs)],
-                                  [sast.FieldType.empty() for _ in outputs]))
+                                  sast.TypeInfo([sast.FieldType.empty() for _ in outputs])))
 
             # Create IR node
             body.append(
                 sast.IfBlock(
-                    result=list(sorted(all_stmt_outputs)),
+                    outputs=list(sorted(all_stmt_outputs)),
                     condition=_parse_field(stmt.condition.id),
-                    body=body,
+                    body=stmt_body,
                     else_ifs=else_ifs,
                     orelse=orelse,
                     typeinfo=sast.TypeInfo([sast.FieldType.empty()],
