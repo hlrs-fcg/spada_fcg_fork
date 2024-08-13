@@ -6,3 +6,4 @@ igraph~=0.11.4
 numpy~=1.24.4
 matplotlib~=3.7.5
 hilbertcurve~=2.0.5
+pycairo==1.26.1
