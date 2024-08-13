@@ -77,12 +77,12 @@ We utilize the type system to represent the access offsets of a stencil operatio
 The goal is that the type encapsulates the data layout and data movement.
 
 An extent defines the access offsets of a stencil operation. It is defined by an offset and an interval, having
-the syntax `(i, j, k) in [is:ie, js:je, ks:ke]`, where `*s` is the beginning of the dimension and `*e` is the end. The
-interval in the brackets uses the same interval type as defined below. Every offset `(i, j, k)` without an interval
+the syntax `(i, j, k) in [is:ie, js:je, ks:ke]`, where `*s` is the beginning of the dimension (inclusive) 
+and `*e` is the end (exclusive). Negative end values mean that the end is relative to the end of the domain.
+The interval in the brackets uses the same interval type as defined below. Every offset `(i, j, k)` without an interval
 is implicitly defined over the entire space, that is `(i, j, k)` is equivalent to
 `(i, j, k) in [0:None, 0:None, 0:None]`.
 
-For every integer triple `i, j, k` there is an extent access.
 If an extent is unknown, it can contain the placeholder extent `?`. The purpose of placeholders is to allow
 type-inference to deduce the extent accesses. We require the extent accesses to be compile-time inferrable.
 Replacing a concrete value with a `?` creates a super-type. That is, the type `(?, ?, ?)` is a
@@ -97,23 +97,30 @@ This sequence must *contain no duplicates*.
 An extent `E_sub` where every access is a subtype of an access of another extent `E_sup` is a sub-type of `E_sup`.
 As such, values of type `E_sub` may be consumed everywhere that values of type `E_sup` may be consumed.
 
-Example:
-```
-%x_sup : spst.extent<(0, 0, 0)>
-%x_sub : spst.extent<(0, 0, 0), (0, 0, 1)>
-// x_sub is a sub-type of x_sup
-%y : spst.extent<(0, 0, ?)>
-// y is a super-type of both x_sup and x_sub
-```
+??? example "Extent Subtyping"
+    ```mlir
+    %x_sup : spst.extent<(0, 0, 0)>
+    %x_sub : spst.extent<(0, 0, 0), (0, 0, 1)>
+    // x_sub is a sub-type of x_sup
+    %y : spst.extent<(0, 0, ?)>
+    // y is a super-type of both x_sup and x_sub
+    ```
 
-For example, in the following program, the extent of `out` is `spst.extent<(0, 0, 0)>`:
-and valid extents of inp are:
 
-```
-inp : extent<(?, ?, ?)>
-inp : extent<(?, ?, 0)>
-inp : extent< (-1, 0, 0), (0, 0, 0), (0, -1, 0), (0, 1, 0), (1, 0, 0)>
-```
+??? example "Extent Types"
+    For example, in the following expression:
+
+    ```mlir
+    -4.0 * %in[0, 0, 0] + %in[-1, 0, 0] + %in[1, 0, 0] + %in[0, -1, 0] + %in[0, 1, 0]
+    ```
+
+    valid extents of `in` are:
+    
+    ```mlir
+    in : spst.extent<(?, ?, ?)>
+    in : spst.extent<(?, ?, 0)>
+    in : spst.extent<(-1, 0, 0), (0, 0, 0), (0, -1, 0), (0, 1, 0), (1, 0, 0)>
+    ```
 
 
 #### Field Types
@@ -157,7 +164,7 @@ After type-inference all placeholders must have been removed.
 There are three possible schedules
 
 ```
-spst.schedule<PARALLEL | FORWARD | BACKWARD>
+spst.schedule :== PARALLEL | FORWARD | BACKWARD
 ```
 
 ## Operations
@@ -264,17 +271,17 @@ field is re-computed for each of its (distinct) consuming accesses.
 A `spst.materialize` may interrupt this propagation of extent type by 
 means of a type-cast.
     
-Example:
-```
-%mat = spst.materialize(%intermediate) : spst.field<D, spst.extent<(0, 0, 0)>, T> -> spst.field<D, spst.extent<(1, 1, 0)>, T>
-```
-In the example, consuming statement of `%mat` may access `%mat[1, 1, 0]` without affecting the type of `%intermediate`.
-
-Semantically, this has the effect that whenever `%mat` is consumed,
-it corresponds to reading information about `%intermediate` from other grid
-points at the appropriately translated offsets.
-In other words, the intermediate field `%intermediate` becomes materialized
-and accessible via the `mat` variable.
+???+ example "Example: Materialize"
+    ```
+    %mat = spst.materialize(%intermediate) : spst.field<D, spst.extent<(0, 0, 0)>, T> -> spst.field<D, spst.extent<(1, 1, 0)>, T>
+    ```
+    In the example, consuming statement of `%mat` may access `%mat[1, 1, 0]` without affecting the type of `%intermediate`.
+    
+    Semantically, this has the effect that whenever `%mat` is consumed,
+    it corresponds to reading information about `%intermediate` from other grid
+    points at the appropriately translated offsets.
+    In other words, the intermediate field `%intermediate` becomes materialized
+    and accessible via the `mat` variable.
 
 Note that it is valid to use placeholder extents `?` in the types
 of a materialize, as the actual values can be inferred based on the
@@ -283,22 +290,21 @@ a materialize does not introduce any constraints on the input type.
 The output type is deduced as a sub-type that can be substituted
 into the consuming statements.
 
-Example:
-```
-%mat = spst.materialize(%intermediate) : spst.field<D, spst.extent<(?, ?, ?)>, T> -> spst.field<D, spst.extent<(?, ?, ?)>, T>
-...
-%mat[0, 1, 0]
-...
-%mat[1, 0, 0]
-...
+???+ example: "Example: Materialize"
+    ```
+    %mat = spst.materialize(%intermediate) : spst.field<D, spst.extent<(?, ?, ?)>, T> -> spst.field<D, spst.extent<(?, ?, ?)>, T>
+    ...
+    %mat[0, 1, 0]
+    ...
+    %mat[1, 0, 0]
+    ...
+    
+    // Type inference leads to 
+    
+    %mat = spst.materialize(%intermediate) : spst.field<D, spst.extent<(?, ?, ?)>, T>
+            -> spst.field<D, spst.extent<(0, 1, 0), (1, 0, 0)>, T>
 
-// Type inference leads to 
-
-%mat = spst.materialize(%intermediate) : spst.field<D, spst.extent<(?, ?, ?)>, T>
-        -> spst.field<D, spst.extent<(0, 1, 0), (1, 0, 0)>, T>
-
-
-```
+    ```
 
 ### spst.if
 
@@ -341,7 +347,7 @@ spst.if (%mask)  {
 The types of the yielded values must match the result types of the spst.if.
 
 
-??? example "Example: If-else"
+???+ example "Example: If-else"
     ```
     %x = spst.if (%mask): spst.field<D, extent<(0,0,0)>, bool> -> spst.field<D, E_1, T_1> {
       %x_1 = ...
