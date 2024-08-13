@@ -296,7 +296,7 @@ field is re-computed for each of its (distinct) consuming accesses.
 A `spst.materialize` may interrupt this propagation of extent type by 
 means of a type-cast.
     
-???+ example "Example: Materialize"
+??? example "Example: Materialize"
     ```
     %mat = spst.materialize(%intermediate) : spst.field<D, spst.extent<(0, 0, 0)>, T> -> spst.field<D, spst.extent<(1, 1, 0)>, T>
     ```
@@ -315,7 +315,7 @@ a materialize does not introduce any constraints on the input type.
 The output type is deduced as a sub-type that can be substituted
 into the consuming statements.
 
-???+ example: "Example: Materialize"
+??? example "Example: Materialize"
     ```
     %mat = spst.materialize(%intermediate) : spst.field<D, spst.extent<(?, ?, ?)>, T> -> spst.field<D, spst.extent<(?, ?, ?)>, T>
     ...
@@ -328,7 +328,6 @@ into the consuming statements.
     
     %mat = spst.materialize(%intermediate) : spst.field<D, spst.extent<(?, ?, ?)>, T>
             -> spst.field<D, spst.extent<(0, 1, 0), (1, 0, 0)>, T>
-
     ```
 
 ### spst.if
@@ -383,7 +382,7 @@ The types of the yielded values must match the result types of the spst.if.
     }
     ```
 
-???+ example "Example: Ternary Choice"
+??? example "Example: Ternary Choice"
     For example, to implement a ternary choice on the value of a field, the following pattern is used:
     
     ```
