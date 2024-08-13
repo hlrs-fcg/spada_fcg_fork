@@ -38,12 +38,13 @@ def lower_gt4py_to_stencil_ir(program: gtast.GTProgram,
 
     # Insert materialize for all fields
     if materialize:
+        # Perform a first round of shape inference to skip certain materializations
+        type_inference.infer_field_extents(new_ast)
+
         new_ast = MaterializeIntermediates().visit(new_ast)
 
     # Perform type/shape inference in stencil IR language
     type_inference.infer_types(new_ast, default_float_dtype, default_int_dtype, domain)
-
-    # TODO(later): Remove extraneous (0,0,0) materialize?
 
     return new_ast
 
@@ -178,16 +179,26 @@ class MaterializeIntermediates(sast.NodeTransformer):
             stmt = self.visit(stmt)
             new_body.append(stmt)
 
+            if isinstance(stmt, sast.MaterializeOp):
+                continue  # No need to rematerialize if applied more than once
+
             # Try to find results
             results: list[sast.Identifier] | None = None
-            if hasattr(stmt, 'outputs'):
-                results = stmt.outputs
-            elif hasattr(stmt, 'result'):
-                results = [stmt.result]
+            stmt: sast.StatementBlock | sast.IfBlock
+            results = stmt.outputs
+            result_typeinfo = stmt.typeinfo.destination
 
             # Append materialize after statement
             if results:
+                if result_typeinfo:
+                    # Do not materialize if horizontal offsets (i.e., [0:1]) are all zero
+                    results = [
+                        r for r, typeinfo in zip(results, result_typeinfo)
+                        if any(v != 0 for e in typeinfo.extent.extents for v in e.values[0:1])
+                    ]
+
                 results = [r for r in results if r.name not in self.do_not_materialize]
+
                 for result in results:
                     # Find a new name and version difference to assign
                     materialized = sast.Identifier(self._find_new_name(result.name), version=0)
