@@ -73,14 +73,23 @@ class IRNodeVisitor(Generic[BaseNodeT]):
             raise TypeError(f'Node {node} does not match the IR language with base node {self.base_node}')
 
     def visit(self, node: BaseNodeT):
-        """Visit a node."""
+        """
+        Visit a node.
+        If you have a node with a ``visit_NodeName`` method
+        where ``NodeName`` is the name of the node class, it will be called.
+        """
         self._validate_node_type(node)
         method = 'visit_' + node.__class__.__name__
         visitor = getattr(self, method, self.generic_visit)
         return visitor(node)
 
     def generic_visit(self, node: BaseNodeT):
-        """Called if no explicit visitor function exists for a node."""
+        """
+        Recursively visit all children of the node.
+        Called if no explicit visitor function exists for a node.
+        If a visitor function exists for a given
+        node type, it MUST call ``self.generic_visit(node)`` to visit its children.
+        """
         if isinstance(node, BaseNode):
             for _, value in node.iter_fields():
                 if isinstance(value, list):
