@@ -3,6 +3,7 @@ from spatialstencil.syntax.gt4py import parser
 from spatialstencil.syntax.stencil_ir import irnodes as sast, analysis
 from spatialstencil.lowering import gt4py_to_stencil_ir
 import numpy as np
+import os
 
 Field3D = np.ndarray
 
@@ -139,6 +140,39 @@ class TestStencilIRParser(unittest.TestCase):
         self.skipTest('Predication pass not yet implemented')
         with self.assertRaises(SyntaxError):
             gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program)
+
+    def test_domain_inference(self):
+        # Parse stencil samples file
+        gtfuncs = parser.parse_file(os.path.join(os.path.dirname(__file__), '..', 'samples', 'stencils.py'))
+        program = gtfuncs['horizontal_diffusion']
+
+        # Lower without a domain
+        irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program)
+        assert irprogram.inputs[1].name == 'in_field'
+        assert irprogram.typeinfo.source[1].domain == sast.Cartesian(None, None, None)
+
+        # Lower with a domain
+        irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program, domain=(128, 128, 80))
+        assert irprogram.typeinfo.source[1].domain == sast.Cartesian(132, 132, 80)
+
+    def test_domain_inference_vertical(self):
+        # Parse stencil samples file
+        gtfuncs = parser.parse_file(os.path.join(os.path.dirname(__file__), '..', 'samples', 'stencils.py'))
+        program = gtfuncs['vertical_advection']
+
+        # Lower without a domain
+        irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program)
+        assert irprogram.inputs[-1].name == 'wcon'
+        assert irprogram.typeinfo.source[-1].domain == sast.Cartesian(None, None, None)
+        assert irprogram.outputs[0].name == 'utens_stage'
+        assert irprogram.typeinfo.destination[0].domain == sast.Cartesian(None, None, None)
+
+        # Lower with a domain
+        irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program, domain=(128, 128, 80))
+        assert irprogram.inputs[-1].name == 'wcon'
+        assert irprogram.typeinfo.source[-1].domain == sast.Cartesian(129, 128, 80)
+        assert irprogram.outputs[0].name == 'utens_stage'
+        assert irprogram.typeinfo.destination[0].domain == sast.Cartesian(128, 128, 80)
 
 
 # GT4Py stencils for the test

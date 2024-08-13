@@ -7,6 +7,7 @@ from spatialstencil.syntax import helpers
 from collections import defaultdict
 import copy
 import math
+import warnings
 
 
 def infer_types(program: sast.Program,
@@ -253,7 +254,52 @@ def infer_field_domains(program: sast.Program, domain: tuple[int] | None = None)
     for field, dtype in zip(program.inputs, program.typeinfo.source):
         field_domains[field.name] = sast.Cartesian(*_infer_domain_from_extents(domain, dtype.extent))
 
-    # TODO: Propagate backwards through statements from end of program
+    # Gather failed identifiers for warnings
+    potentially_unknown_identifiers: set[str] = set()
+
+    # Propagate backwards through statements from end of program
+    for node in reversed(list(helpers.walk(program))):
+        if isinstance(node, sast.StatementBlock):
+            # Gather the local domain
+            stmt_domain = None
+            for out, outtype in zip(node.outputs, node.typeinfo.destination):
+                if stmt_domain is None:
+                    if not outtype.domain.is_unknown():
+                        stmt_domain = outtype.domain
+                    elif out.name in field_domains:
+                        stmt_domain = field_domains[out.name]
+                else:
+                    if not outtype.domain.is_unknown() and outtype.domain != stmt_domain:
+                        raise ValueError('Ambiguous domains found when processing multiple '
+                                         f'statement outputs: {stmt_domain} != {outtype.domain}')
+                    if out.name in field_domains and field_domains[out.name] != stmt_domain:
+                        raise ValueError('Ambiguous domains found when processing multiple '
+                                         f'statement outputs: {stmt_domain} != {field_domains[out.name]}')
+            if stmt_domain is None:
+                for out in node.outputs:
+                    potentially_unknown_identifiers.add(out.name)
+                continue
+
+            # Compute input domains based on extents and output
+            for inp, inptype in zip(node.inputs, node.typeinfo.source):
+                new_domain = _infer_domain_from_extents((stmt_domain.x, stmt_domain.y, stmt_domain.z), inptype.extent)
+                # Take max value from current domain if in dictionary
+                if inp.name in field_domains:
+                    dom = field_domains[inp.name]
+                    field_domains[inp.name] = sast.Cartesian(
+                        max(new_domain[0], dom.x), max(new_domain[1], dom.y), max(new_domain[2], dom.z))
+                else:
+                    field_domains[inp.name] = sast.Cartesian(*new_domain)
+        elif isinstance(node, sast.MaterializeOp):
+            if node.result.name not in field_domains:
+                warnings.warn(f'Cannot infer domain size from materialization of "%{node.value.name}"')
+                continue
+            field_domains[node.value.name] = field_domains[node.result.name]
+
+    # Warn on still-unknown identifiers
+    for identifier in potentially_unknown_identifiers:
+        if identifier not in field_domains:
+            warnings.warn(f'Could not infer domain size for "%{identifier}"')
 
     # Assign inferred domain sizes across Stencil IR program
     DomainAssigner(field_domains).visit(program)
@@ -362,7 +408,11 @@ def _infer_domain_from_extents(base_domain: tuple[int, int, int], extents: sast.
         max_extent: int = -math.inf
         for extent in extents.extents:
             int_start, int_end = extent.interval[2 * dim], extent.interval[2 * dim + 1]
+
+            # Wrap around and handle None values
             int_end = output[dim] if int_end is None else int_end
+            int_start = (output[dim] + int_start) if int_start < 0 else int_start
+            int_end = (output[dim] + int_end) if int_end < 0 else int_end
 
             extent_value = extent.values[dim]
             if extent_value + int_start < 0:  # Outside boundaries
