@@ -20,16 +20,16 @@ A direct translation results in the following computation:
 %res = spst.computation (%in) 
 {
     schedule: PARALLEL,
-    interval: [spst.interval<?, ?> , spst.interval<?, ?>, spst.interval<0, None>]
+    interval: [0:None, 0:None, 0:None]
 } :
-spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)>, f32> -> spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)>, f32> {
-    %out_1 = spst.statement(%in) : spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)> -> spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)> {
-            spst.return -4.0 * %in[0, 0, 0] + %in[-1, 0, 0] + %in[1, 0, 0] + %in[0, -1, 0] + %in[0, 1, 0]
+field<[?,?,?], {(?, ?, ?)}, f32> -> field<[?,?,?], {(?, ?, ?)}>, f32> {
+    %out_1 = spst.statement(%in) : field<[?,?,?], {(?, ?, ?), f32} -> field<[?,?,?], {(?, ?, ?), f32}> {
+            return -4.0 * %in[0, 0, 0] + %in[-1, 0, 0] + %in[1, 0, 0] + %in[0, -1, 0] + %in[0, 1, 0]
         }
-    %out_2 = spst.statement(%out_1) : spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)> -> spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)> {
-            spst.return %out_1[0, 0, 0] + %out_1[0, 1, 0]
+    %out_2 = spst.statement(%out_1) : field<[?,?,?], {(?, ?, ?), f32}> -> field<[?,?,?], {(?, ?, ?), f32}> {
+            return %out_1[0, 0, 0] + %out_1[0, 1, 0]
         }
-    spst.return %out_2
+    return %out_2
 }
 ```
 
@@ -40,61 +40,63 @@ Performing type inference on the extents results in the following:
 %res = spst.computation (%in) 
 {
     schedule: PARALLEL,
-    interval: [spst.interval<?, ?>, spst.interval<?, ?>, spst.interval<0, None>]
-} : spst.field<spst.cartesian<?,?,?>,
-    spst.extent<(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0)
-                (0, 1, 0), (-1, 1, 0), (1, 1, 0), (0, 2, 0)>, f32>
-  -> spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)>, f32>
+    interval: [0:None, 0:None, 0:None]
+} : field<[?,?,?],
+    {(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0)
+                (0, 1, 0), (-1, 1, 0), (1, 1, 0), (0, 2, 0)}, f32>
+  -> field<[?,?,?], {(?, ?, ?)}, f32>
 {
     %out_1 = spst.statement(%in)
-            : spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0)
-                                                            (0, 1, 0), (-1, 1, 0), (1, 1, 0), (0, 2, 0)>, f32>
-            -> spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0), (0, 1, 0)>, f32>
+            : field<[?,?,?], {(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0)
+                                                            (0, 1, 0), (-1, 1, 0), (1, 1, 0), (0, 2, 0)}, f32>
+            -> field<[?,?,?], {(0, 0, 0), (0, 1, 0)}, f32>
         {
-            spst.return -4.0 * %in[0, 0, 0] + %in[-1, 0, 0] + %in[1, 0, 0] + %in[0, -1, 0] + %in[0, 1, 0]
+            return -4.0 * %in[0, 0, 0] + %in[-1, 0, 0] + %in[1, 0, 0] + %in[0, -1, 0] + %in[0, 1, 0]
         }
     %out_2 = spst.statement(%out_1) 
-            : spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0), (0, 1, 0)>, f32>
-            -> spst.field<D, spst.extent<(0, 0, 0)>, f32> 
+            : field<[?,?,?], {(0, 0, 0), (0, 1, 0)}, f32>
+            -> field<[?, ?, ?], {(0, 0, 0)}, f32> 
         {
-            spst.return %out_1[0, 0, 0] + %out_1[0, 1, 0]
+            return %out_1[0, 0, 0] + %out_1[0, 1, 0]
         }
-    spst.return %out_2
+    return %out_2
 }
 ```
+Note the use of shorthand notation for the field types.
+
 
 If we insert a `materialize` in between the two statements,
 the extents no longer propagate across the boundaries.
 This indicates a schedule where no recomputation is done.
 Instead, the values are explicitly communicated.
 
-```
+```mlir
 // Version with materialize to prevent recomputation
 %res = spst.computation (%in) 
 {
     schedule: PARALLEL,
-    interval: [spst.interval<?, ?> , spst.interval<?, ?>, spst.interval<0, None>]
-} : spst.field<spst.cartesian<?,?,?>,
-               spst.extent<(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0)
-                           (0, 1, 0), (-1, 1, 0), (1, 1, 0), (0, 2, 0)>, f32>
-  -> spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)>, f32>
+    interval: [0:None, 0:None, 0: None]
+} : field<[?,?,?],
+          {(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0)
+           (0, 1, 0), (-1, 1, 0), (1, 1, 0), (0, 2, 0)}, f32>
+  -> field<[?,?,?], {(?, ?, ?)}, f32>
 {
     %out_1 = spst.statement(%in) 
-            : spst.field<spst.cartesian<?,?,?>,
-               spst.extent<(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0)>, f32>
-            -> spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0)>, f32>
+            : field<[?,?,?],
+              {(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0)}, f32>
+            -> field<[?,?,?], {(0, 0, 0)}, f32>
         {
-            spst.return -4.0 * %in[0, 0, 0] + %in[-1, 0, 0] + %in[1, 0, 0] + %in[0, -1, 0] + %in[0, 1, 0]
+            return -4.0 * %in[0, 0, 0] + %in[-1, 0, 0] + %in[1, 0, 0] + %in[0, -1, 0] + %in[0, 1, 0]
         }
-    %out_mat = spst.materialize(%out1) : spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0)>, f32>
-                                         -> spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 1, 0)>, f32>
+    %out_mat = spst.materialize(%out1) : field<[?,?,?], {(0, 0, 0)}, f32>
+                                         -> field<[?,?,?], {(0, 1, 0)}, f32>
     %out_2 = spst.statement(%out_1, %out_mat)
-        : spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0)>, f32>,
-          spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 1, 0)>, f32> 
-        -> spst.field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0)>, f32> {
-            spst.return %out_1[0, 0, 0] + %out_mat[0, 1, 0]
+        : field<[?,?,?], {(0, 0, 0)}, f32>,
+          field<[?,?,?], {(0, 1, 0)}>, f32> 
+        -> field<[?,?,?], {(0, 0, 0}>, f32> {
+            return %out_1[0, 0, 0] + %out_mat[0, 1, 0]
         }
-    spst.return %out_2
+    return %out_2
 }
 ```
 

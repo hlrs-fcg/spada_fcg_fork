@@ -14,6 +14,9 @@ type-name<type-arguments>
 ```
 The type arguments can either be literals or other types.
 
+Some types are prefixed with `spst`. If they are used within an enclosing `spst` operation,
+this prefix may be omited. Moreover, some types define a shorthand syntax that avoids the boilerplate of nested types.
+
 #### Scalar Types
 
 The scalar types include
@@ -71,6 +74,38 @@ The purpose of placeholders is to allow type-inference to deduce the
 domain sizes. To lower the representation, we require all dimensions
 of the iteration domain have been inferred at compile time.
 
+When clear from context, the shorthand notation `[x, y, z]` may be used instead.
+
+#### Interval Types
+
+An interval type defines an inclusive lower bound and exclusive upper bound for an iteration. Both upper and lower bound are optional.
+
+For every pair of integers `a` , `b` we have types:
+```
+spst.interval<a, b>
+spst.interval<a, None>
+spst.interval<None, b>
+spst.interval<None, None>
+```
+We may also use placeholder values `?` to indicate a fixed bound that has yet to be inferred:
+```
+spst.interval<?, ?>
+spst.interval<?, None>
+spst.interval<None, ?>
+spst.interval<None, None>
+```
+As before, a placeholder value creates a super-type.
+In particular, all intervals are subtypes of `spst.interval<?, ?>`.
+
+The purpose of this type system is to allow representation of both implicit padding and explicit padding.
+After type-inference all placeholders must have been removed.
+
+!!! abstract "Interval Shorthand Notation"
+    There is a shorthand notation for intervals, which omits some of the boilerplate syntax from the nested types:
+    For any `a` and `b`, `a:b` is equivalent to `spst.interval<a, b>`
+    
+    For example, `0:None` is equivalent to `spst.interval<0, None>`
+
 #### Extent types
 
 We utilize the type system to represent the access offsets of a stencil operation.
@@ -79,8 +114,8 @@ The goal is that the type encapsulates the data layout and data movement.
 An extent defines the access offsets of a stencil operation. It is defined by an offset and an interval, having
 the syntax `(i, j, k) in [is:ie, js:je, ks:ke]`, where `*s` is the beginning of the dimension (inclusive) 
 and `*e` is the end (exclusive). Negative end values mean that the end is relative to the end of the domain.
-The interval in the brackets uses the same interval type as defined below. Every offset `(i, j, k)` without an interval
-is implicitly defined over the entire space, that is `(i, j, k)` is equivalent to
+The interval in the brackets uses the [interval types](#interval-types).
+Every offset `(i, j, k)` without an interval is implicitly defined over the entire space, that is `(i, j, k)` is equivalent to
 `(i, j, k) in [0:None, 0:None, 0:None]`.
 
 If an extent is unknown, it can contain the placeholder extent `?`. The purpose of placeholders is to allow
@@ -106,7 +141,6 @@ As such, values of type `E_sub` may be consumed everywhere that values of type `
     // y is a super-type of both x_sup and x_sub
     ```
 
-
 ??? example "Extent Types"
     For example, in the following expression:
 
@@ -122,6 +156,8 @@ As such, values of type `E_sub` may be consumed everywhere that values of type `
     in : spst.extent<(-1, 0, 0), (0, 0, 0), (0, -1, 0), (0, 1, 0), (1, 0, 0)>
     ```
 
+When clear from context, the shorthand notation `{(i, j, k) in [is:ie, js:je, ks:ke], ...}` 
+or `{(i, j, k), ...}` may be used instead.
 
 #### Field Types
 
@@ -135,29 +171,12 @@ that models a multi-dimensional array (field) over iteration domain D with exten
 A field type `spst.field<D, E1, T>` is a subtype of a type `spst.field<D, E2, T>` if `E1` is a subtype of `E2`.
 The domains and scalar types must match.
 
-#### Interval Types
+There is a shorthand field type notation, which omits some of the boilerplate syntax from the nested types:
+`field<[x, y, z], {(i, j, k) in [is:ie, js:je, ks:ke], ...}, f32>`
 
-An interval type defines an inclusive lower bound and exclusive upper bound for an iteration. Both upper and lower bound are optional.
+is equivalent to
+`spst.field<spst.cartesian<x, y, z>, spst.extent<(i, j, k) in [is:ie, js:je, ks:ke], ...>, f32>`
 
-For every pair of integers `a` , `b` we have types:
-```
-spst.interval<a, b>
-spst.interval<a, None>
-spst.interval<None, b>
-spst.interval<None, None>
-```
-We may also use placeholder values `?` to indicate a fixed bound that has yet to be inferred:
-```
-spst.interval<?, ?>
-spst.interval<?, None>
-spst.interval<None, ?>
-spst.interval<None, None>
-```
-As before, a placeholder value creates a super-type.
-In particular, all intervals are subtypes of `spst.interval<?, ?>`.
-
-The purpose of this type system is to allow representation of both implicit padding and explicit padding.
-After type-inference all placeholders must have been removed.
 
 #### Schedule Type
 
@@ -189,6 +208,7 @@ The semantics depends on the containing operation.
 spst.return %value : T
 ```
 
+The `spst` prefix may be omitted when it is clear from the enclosing operation.
 
 ### spst.statement
 
@@ -196,7 +216,7 @@ spst.return %value : T
 %out = spst.statement(%in_1, ... %in_n) :
        spst.field<D, E1, T1> , ...,   spst.field<D, E_n, T_n> ->  spst.field<D, E_0, T_0> 
 {
-    spst.return expression : T
+    spst.return expression : T_0
 }
 ```
 A field that is the result of a stencil statement is an intermediate field.
@@ -237,7 +257,7 @@ _**Note**: This representation allows us to both handle implicitly padded domain
 ```
 %out_1, ..., %out_m = spst.computation(%in_1, ..., %in_n) {
            schedule = s : spst.schedule,
-           interval = [x: spst.interval, y: spst.interval, z: spst.interval]
+           interval = [spst.interval, spst.interval, spst.interval]
    } : spst.field<D, E_1, T_1> , ...,  spst.field<D, E_n, T_n>
  -> spst.field<D, E_n+1, T_N+1> , ...,  spst.field<D, E_n+m, T_n+m> {
    stencil-statement-block
