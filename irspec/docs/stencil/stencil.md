@@ -76,14 +76,16 @@ of the iteration domain have been inferred at compile time.
 We utilize the type system to represent the access offsets of a stencil operation.
 The goal is that the type encapsulates the data layout and data movement.
 
-An extent defines the access offsets of a stencil operation.
-For every integer triple `i, j, k` there is an extent access:
-```
-spst.access<i, j, k> ::= (i, j, k)
-```
+An extent defines the access offsets of a stencil operation. It is defined by an offset and an interval, having
+the syntax `(i, j, k) in [is:ie, js:je, ks:ke]`, where `*s` is the beginning of the dimension and `*e` is the end. The
+interval in the brackets uses the same interval type as defined below. Every offset `(i, j, k)` without an interval
+is implicitly defined over the entire space, that is `(i, j, k)` is equivalent to
+`(i, j, k) in [0:None, 0:None, 0:None]`.
+
+For every integer triple `i, j, k` there is an extent access.
 If an extent is unknown, it can contain the placeholder extent `?`. The purpose of placeholders is to allow
 type-inference to deduce the extent accesses. We require the extent accesses to be compile-time inferrable.
-Replacing a concrete value with a `?` creates a super-type. That is, the type `spst.access<?, ?, ? >` is a
+Replacing a concrete value with a `?` creates a super-type. That is, the type `(?, ?, ?)` is a
 super-type of all stencil accesses.
 
 A sequence of extent accesses forms the extent:

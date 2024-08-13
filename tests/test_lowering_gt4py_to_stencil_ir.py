@@ -29,8 +29,9 @@ class TestStencilIRParser(unittest.TestCase):
         assert [inp.name for inp in comp.inputs] == ['inp']
         assert [out.name for out in comp.outputs] == ['out']
         extents = analysis.collect_extents(comp)
-        assert extents['inp'] == {(0, 0, 0)}
-        assert extents['out'] == {(0, 0, 0)}
+        assert next(iter(extents['inp'].keys())) == (0, None, 0, None, 0, None)
+        assert next(iter(extents['inp'].values())) == {(0, 0, 0)}
+        assert next(iter(extents['out'].values())) == {(0, 0, 0)}
 
     def test_lower_gt4py_intermediates_2(self):
         program = self.gtfuncs['unused']
@@ -70,8 +71,8 @@ class TestStencilIRParser(unittest.TestCase):
         assert [inp.name for inp in comps[1].inputs] == ['interim']
         assert [out.name for out in comps[1].outputs] == ['out']
         extents = analysis.collect_extents(comps[0])
-        assert extents['inp'] == {(0, -1, 0)}
-        assert extents['tmp'] == {(1, 0, 0), (0, 0, 0)}
+        assert next(iter(extents['inp'].values())) == {(0, -1, 0)}
+        assert next(iter(extents['tmp'].values())) == {(1, 0, 0), (0, 0, 0)}
 
     def test_lower_gt4py_intermediates_4(self):
         program = self.gtfuncs['intermediates_versioning_2']
@@ -92,8 +93,8 @@ class TestStencilIRParser(unittest.TestCase):
         assert [inp.name for inp in comps[1].inputs] == ['interim', 'tmp']
         assert [out.name for out in comps[1].outputs] == ['out']
         extents = analysis.collect_extents(comps[0])
-        assert extents['inp'] == {(0, -1, 0)}
-        assert extents['tmp'] == {(1, 0, 0), (0, 0, 0)}
+        assert next(iter(extents['inp'].values())) == {(0, -1, 0)}
+        assert next(iter(extents['tmp'].values())) == {(1, 0, 0), (0, 0, 0)}
 
     def test_lower_gt4py_intermediates_5(self):
         program = self.gtfuncs['intermediates_versioning_3']

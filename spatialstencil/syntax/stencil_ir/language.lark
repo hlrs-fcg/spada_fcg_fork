@@ -43,7 +43,9 @@ identifier : "%" suffix_id ("#" digits)?
 ?dim : posneg_integer_literal | unknown_dim_literal
 !dim_or_end : dim | "None"
 dim_list: dim ("," dim)*
-extent_tuple : "(" dim ("," dim)* ")"
+extent_offset_tuple : "(" dim ("," dim)* ")"
+extent_interval_tuple : "[" dim ":" dim ("," dim ":" dim)* "]"
+extent_tuple : extent_offset_tuple ("in" extent_interval_tuple)?
 extent_tuple_list : extent_tuple ("," extent_tuple)*
 extent_type : ("spst.")? "extent" "<" extent_tuple_list ">"
 domain_type : ("spst.")? ("domain" | "cartesian") "<" dim_list ">"

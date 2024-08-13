@@ -4,9 +4,9 @@ Contains type/extent inference functionality for the Stencil IR.
 from spatialstencil.syntax.stencil_ir import irnodes as sast
 from spatialstencil.syntax.stencil_ir import analysis
 from spatialstencil.syntax import helpers
+from collections import defaultdict
 import copy
-import itertools
-import warnings
+import math
 
 
 def infer_types(program: sast.Program,
@@ -212,14 +212,16 @@ def infer_field_extents(program: sast.Program):
 
     :param program: The Stencil IR program to traverse.
     """
-    field_extents: dict[str, set[tuple[int]]] = {}
+    field_extents: dict[str, dict[tuple[int | None], set[tuple[int | None]]]] = {}
 
     # Start with outputs. Extents always start at (0, 0, 0)
     assert isinstance(program.typeinfo.destination, list)
     for field, dtype in zip(program.outputs, program.typeinfo.destination):
         if dtype.extent.is_unknown():
-            dtype.extent.extents = [sast.DimTuple((0, 0, 0))]
-        field_extents[field.name] = dtype.extent
+            dtype.extent.extents = [sast.OffsetAndInterval((0, 0, 0))]
+        field_extents[field.name] = defaultdict(set)
+        for oi in dtype.extent.extents:
+            field_extents[field.name][oi.interval].add(oi.values)
 
     # Visit entire program and collect extents
     field_extents.update(analysis.collect_extents(program))
@@ -388,9 +390,25 @@ class ExtentAssigner(sast.NodeTransformer):
     Sets extents based on given dictionary.
     """
 
-    def __init__(self, field_extents: dict[str, set[tuple[int]]]):
+    def __init__(self, field_extents: dict[str, dict[tuple[int | None], set[tuple[int | None]]]]):
         super().__init__()
         self.field_extents = field_extents
+
+    def _sort_extents(self, extent_set: dict[tuple[int | None], set[tuple[int | None]]]):
+        """
+        Yields a flat list of sorted extents as it should appear in a canonical Stencil IR.
+        Substitutes None entries for infinity.
+        """
+        # None means infinity in the dictionary keys
+        newdict = {tuple(math.inf if kk is None else kk for kk in k): v for k, v in extent_set.items()}
+        for k, tuples in sorted(newdict.items()):
+            oldkey = tuple(None if kk == math.inf else kk for kk in k)  # Recover old values
+
+            # None means "?" in the dictionary values, which must be last as well
+            newtuples = [tuple(math.inf if t is None else t for t in tup) for tup in tuples]
+            for tup in sorted(newtuples):
+                oldtup = tuple(None if kk == math.inf else kk for kk in tup)
+                yield oldkey, oldtup
 
     def _modify_typeinfo(self, typeinfo: sast.TypeInfo, inputs: list[sast.Identifier], outputs: list[sast.Identifier]):
         """
@@ -400,14 +418,18 @@ class ExtentAssigner(sast.NodeTransformer):
             if name.name in self.field_extents:
                 extent_set = self.field_extents[name.name]
                 if isinstance(src, sast.FieldType):
-                    src.extent.extents = [sast.DimTuple(ex) for ex in sorted(extent_set)]
+                    src.extent.extents = [
+                        sast.OffsetAndInterval(ex, interval) for interval, ex in self._sort_extents(extent_set)
+                    ]
 
         if typeinfo.destination:
             for name, dst in zip(outputs, typeinfo.destination):
                 if name.name in self.field_extents:
                     extent_set = self.field_extents[name.name]
                     if isinstance(dst, sast.FieldType):
-                        dst.extent.extents = [sast.DimTuple(ex) for ex in sorted(extent_set)]
+                        dst.extent.extents = [
+                            sast.OffsetAndInterval(ex, interval) for interval, ex in self._sort_extents(extent_set)
+                        ]
 
     def visit_MaterializeOp(self, node: sast.MaterializeOp):
         self._modify_typeinfo(node.typeinfo, [node.value], [node.result])

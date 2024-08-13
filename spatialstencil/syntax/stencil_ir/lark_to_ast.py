@@ -42,6 +42,8 @@ class TreeToAST(lark.Transformer):
         return ''.join(str(s) for s in suffix)
 
     # List types
+    extent_offset_tuple = tuple
+    extent_interval_tuple = tuple
     extent_tuple = tuple
     extent_tuple_list = list
     dim_list = list
@@ -85,7 +87,7 @@ class TreeToAST(lark.Transformer):
         return irnodes.Cartesian(*_make_dimtuple(args[0]))
 
     def extent_type(self, args, meta=None):
-        return irnodes.Extent([irnodes.DimTuple(_make_dimtuple(a)) for a in args[0]])
+        return irnodes.Extent([_make_offset_and_interval(a) for a in args[0]])
 
     field_type = irnodes.FieldType.from_lark
     interval_type = irnodes.Interval.from_lark
@@ -210,6 +212,12 @@ class TreeToAST(lark.Transformer):
 # Helper functions
 def _make_dimtuple(tup):
     return tuple((None if dim == '?' else dim) for dim in tup)
+
+
+def _make_offset_and_interval(extent_tuple):
+    if len(extent_tuple) == 2:
+        return irnodes.OffsetAndInterval(_make_dimtuple(extent_tuple[0]), extent_tuple[1])
+    return irnodes.OffsetAndInterval(_make_dimtuple(extent_tuple[0]))
 
 
 def _expr(val: irnodes.Node | int | float | str) -> irnodes.Expression:

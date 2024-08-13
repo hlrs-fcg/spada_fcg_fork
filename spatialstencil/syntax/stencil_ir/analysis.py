@@ -12,12 +12,25 @@ class ExtentCollector(sast.NodeVisitor):
 
     def __init__(self):
         super().__init__()
-        self.extents: dict[str, set[tuple[int]]] = defaultdict(set)
+        self._DEFAULT_INTERVAL = (sast.Interval(0, None), sast.Interval(0, None), sast.Interval(0, None))
+
+        self.extents: dict[str, dict[tuple[int | None], set[tuple[int | None]]]] = defaultdict(lambda: defaultdict(set))
+        self.interval: tuple[sast.Interval, sast.Interval, sast.Interval] = self._DEFAULT_INTERVAL
+
+    @property
+    def flat_interval(self) -> tuple[int | None]:
+        return tuple(item for dim in self.interval for item in (dim.start, dim.end))
 
     def visit_ComputationBlock(self, node: sast.ComputationBlock):
+        # Set current interval
+        self.interval = node.interval
+
         # Skip arguments and outputs
         for stmt in node.body:
             self.visit(stmt)
+
+        # Reset current interval
+        self.interval = self._DEFAULT_INTERVAL
 
     def visit_StatementBlock(self, node: sast.StatementBlock):
         # Skip arguments
@@ -28,12 +41,12 @@ class ExtentCollector(sast.NodeVisitor):
 
     def visit_Identifier(self, node: sast.Identifier):
         # If a bare identifier (i.e., no subscript) is used, the extent (0, 0, 0) should be added
-        self.extents[node.name].add((0, 0, 0))
+        self.extents[node.name][self.flat_interval].add((0, 0, 0))
 
     def visit_Subscript(self, node: sast.Subscript):
         # If a subscript is found, add its subscript to the extents.
         # Make sure not to recursively visit into the subscript to avoid adding (0, 0, 0)
-        self.extents[node.value.name].add(node.subscript)
+        self.extents[node.value.name][self.flat_interval].add(node.subscript)
 
 
 def collect_extents(node: sast.Node) -> dict[str, set[tuple[int]]]:

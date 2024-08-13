@@ -286,11 +286,11 @@ def _gt4py_to_stencil_ir_type(dtype: gtast.FieldType, default_float_dtype: sast.
     elif dtype == gtast.FieldType.int:
         result.dtype = default_int_dtype
         result.domain = sast.Cartesian(1, 1, 1)
-        result.extent = sast.Extent([sast.DimTuple((0, 0, 0))])
+        result.extent = sast.Extent([sast.OffsetAndInterval((0, 0, 0))])
     elif dtype == gtast.FieldType.float:
         result.dtype = default_float_dtype
         result.domain = sast.Cartesian(1, 1, 1)
-        result.extent = sast.Extent([sast.DimTuple((0, 0, 0))])
+        result.extent = sast.Extent([sast.OffsetAndInterval((0, 0, 0))])
     else:
         raise TypeError(f'Unsupported field type "{dtype}"')
 

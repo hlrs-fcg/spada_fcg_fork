@@ -104,14 +104,6 @@ def _val_or_unk(val: int | None) -> str:
 
 
 @dataclass
-class DimTuple(Node):
-    values: tuple[int | None]
-
-    def as_ir(self, indent: int = 0) -> str:
-        return f'({", ".join(_val_or_unk(v) for v in self.values)})'
-
-
-@dataclass
 class Cartesian(Domain):
     """
     Cartesian domain type in three dimensions.
@@ -130,11 +122,31 @@ class Cartesian(Domain):
 
 
 @dataclass
+class OffsetAndInterval(Node):
+    """
+    Dimension tuple containing an offset and an interval of an ``Extent``.
+    """
+    values: tuple[int | None]
+    interval: tuple[int | None] = field(default_factory=lambda: (0, None, 0, None, 0, None))
+
+    def validate(self) -> None:
+        # For every dimension, an interval has a start and end point
+        assert len(self.interval) == 2 * len(self.values)
+
+    def as_ir(self, indent: int = 0) -> str:
+        output = f'({", ".join(_val_or_unk(v) for v in self.values)})'
+        if self.interval != (0, None, 0, None, 0, None):
+            interval_str = [f'{start}:{end}' for start, end in zip(self.interval[::2], self.interval[1::2])]
+            output += f' in [{", ".join(interval_str)}]'
+        return output
+
+
+@dataclass
 class Extent(Node):
     """
     Extents of a field.
     """
-    extents: list[DimTuple]
+    extents: list[OffsetAndInterval]
 
     def as_ir(self, indent: int = 0) -> str:
         return f'spst.extent<{", ".join(e.as_ir() for e in self.extents)}>'
@@ -155,7 +167,7 @@ class FieldType(Node):
         Creates an empty (not type/shape-inferred) field type.
         """
         return FieldType(
-            domain=Cartesian(None, None, None), extent=Extent([DimTuple((None, None, None))]), dtype=ScalarType.UNKNOWN)
+            domain=Cartesian(None, None, None), extent=Extent([OffsetAndInterval((None, None, None))]), dtype=ScalarType.UNKNOWN)
 
     def validate(self) -> None:
         assert self.dtype != ScalarType.f64
