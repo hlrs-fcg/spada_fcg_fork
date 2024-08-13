@@ -253,7 +253,6 @@ def infer_field_domains(program: sast.Program, domain: tuple[int] | None = None)
     for field, dtype in zip(program.inputs, program.typeinfo.source):
         field_domains[field.name] = sast.Cartesian(*_infer_domain_from_extents(domain, dtype.extent))
 
-    # TODO: Also infer extents from computation interval (e.g., don't allow z > 80 in vadv)
     # TODO: Propagate backwards through statements from end of program
 
     # Assign inferred domain sizes across Stencil IR program
@@ -358,9 +357,24 @@ def _infer_expression(expr: sast.Expression, field_types: dict[str, sast.ScalarT
 def _infer_domain_from_extents(base_domain: tuple[int, int, int], extents: sast.Extent) -> tuple[int, int, int]:
     output = list(base_domain)
     for dim in range(len(output)):
-        min_extent = min(ex.values[dim] for ex in extents.extents)
-        max_extent = max(ex.values[dim] for ex in extents.extents)
+        # For each extent, collect the interval and offset and add new boundaries as necessary
+        min_extent: int = math.inf
+        max_extent: int = -math.inf
+        for extent in extents.extents:
+            int_start, int_end = extent.interval[2 * dim], extent.interval[2 * dim + 1]
+            int_end = output[dim] if int_end is None else int_end
+
+            extent_value = extent.values[dim]
+            if extent_value + int_start < 0:  # Outside boundaries
+                min_extent = min(min_extent, extent_value)
+            if extent_value + int_end > output[dim]:  # Outside boundaries
+                max_extent = max(max_extent, extent_value)
+        min_extent = 0 if min_extent == math.inf else min_extent
+        max_extent = 0 if max_extent == -math.inf else max_extent
+
+        # Add maximal overflowing extents to output dimensions
         output[dim] += max_extent - min_extent
+
     return tuple(output)
 
 
