@@ -77,7 +77,7 @@ of the iteration domain have been inferred at compile time.
 !!! abstract "Domain Shorthand Notation"
     When clear from context, the shorthand notation `[x, y, z]` may be used instead.
 
-    For example, `spst.cartesian<1, ?, 3>` is equivalent to `spst.cartesian<1, ?, 3>`
+    For example, `[1, ?, 3]` is equivalent to `spst.cartesian<1, ?, 3>`
 
 #### Interval Types
 
