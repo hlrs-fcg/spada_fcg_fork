@@ -6,7 +6,7 @@ functionality such as IR language testing and dataclass support.
 """
 import ast
 from dataclasses import dataclass
-from typing import Generic, TypeVar
+from typing import Generic, TypeVar, Sequence
 
 
 @dataclass
@@ -92,12 +92,17 @@ class IRNodeVisitor(Generic[BaseNodeT]):
         """
         if isinstance(node, BaseNode):
             for _, value in node.iter_fields():
-                if isinstance(value, list):
-                    for item in value:
-                        if isinstance(item, BaseNode):
-                            self.visit(item)
+                if isinstance(value, (list, tuple)):
+                    self.generic_visit_sequence(value)
                 elif isinstance(value, BaseNode):
                     self.visit(value)
+
+    def generic_visit_sequence(self, sequence: Sequence[BaseNodeT]):
+        for item in sequence:
+            if isinstance(item, (list, tuple)):
+                self.generic_visit_sequence(item)
+            elif isinstance(item, BaseNode):
+                self.visit(item)
 
 
 class IRNodeTransformer(IRNodeVisitor[BaseNodeT]):
@@ -108,18 +113,9 @@ class IRNodeTransformer(IRNodeVisitor[BaseNodeT]):
 
     def generic_visit(self, node: BaseNodeT):
         for field, old_value in node.iter_fields():
-            if isinstance(old_value, list):
-                new_values = []
-                for value in old_value:
-                    if isinstance(value, BaseNode):
-                        value = self.visit(value)
-                        if value is None:
-                            continue
-                        elif not isinstance(value, BaseNode):
-                            new_values.extend(value)
-                            continue
-                    new_values.append(value)
-                old_value[:] = new_values
+            if isinstance(old_value, (list, tuple)):
+                new_values = self.generic_visit_sequence(old_value)
+                setattr(node, field, new_values)
             elif isinstance(old_value, BaseNode):
                 new_node = self.visit(old_value)
                 if new_node is None:
@@ -127,6 +123,24 @@ class IRNodeTransformer(IRNodeVisitor[BaseNodeT]):
                 else:
                     setattr(node, field, new_node)
         return node
+
+    def generic_visit_sequence(self, sequence: Sequence[BaseNodeT]):
+        new_values = []
+        for value in sequence:
+            if isinstance(value, BaseNode):
+                value = self.visit(value)
+                if value is None:
+                    continue
+                elif isinstance(value, (list, tuple)):
+                    new_values.extend(value)
+                    continue
+            elif isinstance(value, (list, tuple)):
+                value = self.generic_visit_sequence(value)
+            new_values.append(value)
+
+        if isinstance(sequence, tuple):
+            return tuple(new_values)
+        return new_values
 
 
 class ASTFindReplace(ast.NodeTransformer):

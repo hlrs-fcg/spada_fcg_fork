@@ -42,6 +42,7 @@ class IncrementVisitor(IRNodeTransformer):
 
     def visit_SequenceNode(self, node: SequenceNode):
         node.f += 1
+        node = self.generic_visit(node)
         return node
 
 
@@ -54,7 +55,7 @@ class TestIRNode(unittest.TestCase):
         # Create a node transformer
         transformer = IRNodeTransformer()
         # Transform the node
-        transformer.generic_visit(node)
+        transformer.visit(node)
         # Check it is the same
         self.assertEqual(node, cp_node)
 
@@ -63,7 +64,7 @@ class TestIRNode(unittest.TestCase):
         golden = SequenceNode(2, (SimpleNode(2, 2), SimpleNode(3, 7)), [SimpleNode(4, 7), SimpleNode(5, 9)], [(SimpleNode(2, 2), SimpleNode(3, 7)), (SimpleNode(4, 7), SimpleNode(1, 1))])
 
         transformer = IncrementVisitor()
-        transformer.generic_visit(node)
+        transformer.visit(node)
 
         self.assertEqual(node, golden)
 
@@ -74,9 +75,9 @@ class TestIRNode(unittest.TestCase):
         visitor = SumVisitor()
         # Visit the node
         visitor.visit(node)
-        # expected result = 1 + 1 + 2 + 6 + 3 + 6 + 4 + 8 + 0 + 1 + 1 + 0 + 1 + 1 + 2 + 0 = 37
+        # expected result = 1 + 1 + 1 + 2 + 6 + 3 + 6 + 4 + 8 + 0 + 1 + 1 + 0 + 1 + 1 + 2 + 0 = 38
         # Check the sum
-        self.assertEqual(visitor.sum, 37)
+        self.assertEqual(visitor.sum, 38)
 
 
 if __name__ == '__main__':
