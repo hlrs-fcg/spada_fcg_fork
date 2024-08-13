@@ -104,7 +104,8 @@ The purpose of this type system is to allow representation of both implicit padd
 After type-inference all placeholders must have been removed.
 
 !!! abstract "Interval Shorthand Notation"
-    There is a shorthand notation for intervals, which omits some of the boilerplate syntax from the nested types:
+    When clear from context, the  shorthand notation for intervals may be used.
+    It omits some of the boilerplate syntax from the nested types:
     For any `a` and `b`, `a:b` is equivalent to `spst.interval<a, b>`
     
     For example, `0:None` is equivalent to `spst.interval<0, None>`
@@ -176,13 +177,12 @@ A field type `spst.field<D, E1, T>` is a subtype of a type `spst.field<D, E2, T>
 The domains and scalar types must match.
 
 !!! abstract "Field Shorthand Notation"
-    There is a shorthand field type notation, which omits some of the boilerplate syntax from the nested types:
+    One may use shorthand notation for the nested types:
     `field<[x, y, z], {(i, j, k) in [is:ie, js:je, ks:ke], ...}, f32>`
     
-    is equivalent to
-    `spst.field<spst.cartesian<x, y, z>, spst.extent<(i, j, k) in [is:ie, js:je, ks:ke], ...>, f32>`
-
-
+    For example, `field<[x, y, z], {(0, 0, 0)}, f32>`
+    is equivalent to `spst.field<spst.cartesian<x, y, z>, spst.extent<(0, 0, 0)>, f32>`
+    
 #### Schedule Type
 
 There are three possible schedules
