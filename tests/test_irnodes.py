@@ -17,6 +17,11 @@ class SequenceNode(BaseNode):
     lst_of_tuples: list[tuple[BaseNode, BaseNode]]
 
 
+@dataclass
+class MixedSequenceNode(BaseNode):
+    mixed_seq: list[tuple[int, BaseNode]]
+
+
 # Create a IRNodeVisitor that visits all nodes and adds the value of all integer fields
 class SumVisitor(IRNodeVisitor):
     def __init__(self):
@@ -58,6 +63,27 @@ class TestIRNode(unittest.TestCase):
         transformer.visit(node)
         # Check it is the same
         self.assertEqual(node, cp_node)
+
+    def test_mixed_sequence_node_transformer_identity(self):
+        # Create a sequence node
+        node = MixedSequenceNode([(1, SimpleNode(1, 1)), (2, SimpleNode(2, 6))])
+        # Create a copy
+        cp_node = MixedSequenceNode([(1, SimpleNode(1, 1)), (2, SimpleNode(2, 6))])
+        # Create a node transformer
+        transformer = IRNodeTransformer()
+        # Transform the node
+        transformer.visit(node)
+        # Check it is the same
+        self.assertEqual(node, cp_node)
+
+    def test_mixed_sequence_node_increment(self):
+        node = MixedSequenceNode([(1, SimpleNode(1, 1)), (2, SimpleNode(2, 6))])
+        golden = MixedSequenceNode([(1, SimpleNode(2, 2)), (2, SimpleNode(3, 7))])
+
+        transformer = IncrementVisitor()
+        transformer.visit(node)
+
+        self.assertEqual(node, golden)
 
     def test_ir_node_transformer_increment(self):
         node = SequenceNode(1, (SimpleNode(1, 1), SimpleNode(2, 6)), [SimpleNode(3, 6), SimpleNode(4, 8)], [(SimpleNode(1, 1), SimpleNode(2, 6)), (SimpleNode(3, 6), SimpleNode(0, 0))])
