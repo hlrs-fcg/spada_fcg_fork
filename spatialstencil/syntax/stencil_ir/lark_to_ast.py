@@ -43,7 +43,6 @@ class TreeToAST(lark.Transformer):
 
     # List types
     extent_offset_tuple = tuple
-    extent_interval_tuple = tuple
     extent_tuple = tuple
     extent_tuple_list = list
     dim_list = list
@@ -178,7 +177,13 @@ class TreeToAST(lark.Transformer):
         return irnodes.IfBlock(results, test, typeinfo, body, else_ifs, orelse)
 
     def statement(self, args, meta=None):
-        results, inputs, attributes, typeinfo, body = args
+        if len(args) == 5:
+            results, inputs, attributes, typeinfo, body = args
+        elif len(args) == 4:
+            results, inputs, typeinfo, body = args
+            attributes = {}
+        else:
+            raise ValueError(f'Unexpected number of arguments to spst.statement: {len(args)}')
         return irnodes.StatementBlock(results, inputs, attributes, typeinfo, body)
 
     def computation(self, args, meta=None):

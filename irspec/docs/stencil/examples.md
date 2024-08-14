@@ -19,8 +19,8 @@ A direct translation results in the following computation:
 // Version with ? extents.
 %res = spst.computation (%in) 
 {
-    schedule: PARALLEL,
-    interval: [0:None, 0:None, 0:None]
+    schedule = PARALLEL,
+    interval = [0:None, 0:None, 0:None]
 } :
 field<[?,?,?], {(?, ?, ?)}, f32> -> field<[?,?,?], {(?, ?, ?)}>, f32> {
     %out_1 = spst.statement(%in) : field<[?,?,?], {(?, ?, ?), f32} -> field<[?,?,?], {(?, ?, ?), f32}> {
@@ -39,12 +39,12 @@ Performing type inference on the extents results in the following:
 // Version with inferred extents.
 %res = spst.computation (%in) 
 {
-    schedule: PARALLEL,
-    interval: [0:None, 0:None, 0:None]
+    schedule = PARALLEL,
+    interval = [0:None, 0:None, 0:None]
 } : field<[?,?,?],
     {(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0)
                 (0, 1, 0), (-1, 1, 0), (1, 1, 0), (0, 2, 0)}, f32>
-  -> field<[?,?,?], {(?, ?, ?)}, f32>
+  -> field<[?,?,?], {(0, 0, 0)}, f32>
 {
     %out_1 = spst.statement(%in)
             : field<[?,?,?], {(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0)
@@ -74,12 +74,12 @@ Instead, the values are explicitly communicated.
 // Version with materialize to prevent recomputation
 %res = spst.computation (%in) 
 {
-    schedule: PARALLEL,
-    interval: [0:None, 0:None, 0: None]
+    schedule = PARALLEL,
+    interval = [0:None, 0:None, 0: None]
 } : field<[?,?,?],
           {(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0)
            (0, 1, 0), (-1, 1, 0), (1, 1, 0), (0, 2, 0)}, f32>
-  -> field<[?,?,?], {(?, ?, ?)}, f32>
+  -> field<[?,?,?], {(0, 0, 0)}, f32>
 {
     %out_1 = spst.statement(%in) 
             : field<[?,?,?],

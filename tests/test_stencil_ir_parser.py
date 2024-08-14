@@ -109,6 +109,14 @@ class TestStencilIRParser(unittest.TestCase):
         ir_2 = program2.as_ir()
         assert ir_1 == ir_2
 
+    def test_shorthand_notation(self):
+        file = os.path.join(os.path.dirname(__file__), '..', 'samples', 'spst', 'laplacian_3.spst')
+        program = parser.parse_file(file)
+        file2 = os.path.join(os.path.dirname(__file__), '..', 'samples', 'spst', 'laplacian_2.spst')
+        program2 = parser.parse_file(file2)
+        assert program.as_ir() == program2.as_ir()
+
+
     def test_visitor(self):
         """
         Tests the IR node visitor for the stencil IR.

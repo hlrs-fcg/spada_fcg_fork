@@ -43,15 +43,18 @@ identifier : "%" suffix_id ("#" digits)?
 ?dim : posneg_integer_literal | unknown_dim_literal
 !dim_or_end : dim | "None"
 dim_list: dim ("," dim)*
-extent_offset_tuple : "(" dim ("," dim)* ")"
-extent_interval_tuple : "[" dim_or_end ":" dim_or_end ("," dim_or_end ":" dim_or_end)* "]"
-extent_tuple : extent_offset_tuple ("in" extent_interval_tuple)?
-extent_tuple_list : extent_tuple ("," extent_tuple)*
-extent_type : ("spst.")? "extent" "<" extent_tuple_list ">"
-domain_type : ("spst.")? ("domain" | "cartesian") "<" dim_list ">"
-field_type : ("spst.")? "field" "<" domain_type "," extent_type "," standard_type ">"
-interval_type : ("spst.")? "interval" "<" dim_or_end "," dim_or_end ">"
+
+interval_type : ("spst.")? "interval" "<" dim_or_end "," dim_or_end ">" | dim_or_end ":" dim_or_end
 multi_interval_type : "[" interval_type ("," interval_type)* "]"
+
+extent_offset_tuple : "(" dim ("," dim)* ")"
+extent_tuple : extent_offset_tuple ("in" multi_interval_type)?
+extent_tuple_list : extent_tuple ("," extent_tuple)*
+extent_type : ("spst.")? "extent" "<" extent_tuple_list ">" | "{" extent_tuple_list "}"
+
+domain_type : ("spst.")? ("domain" | "cartesian") "<" dim_list ">" | "[" dim_list "]"
+field_type : ("spst.")? "field" "<" domain_type "," extent_type "," standard_type ">"
+
 ?builtin_type : field_type | domain_type | extent_type | interval_type | multi_interval_type
 ?field_or_scalar_type : field_type | standard_type
 
@@ -127,7 +130,7 @@ program : id_list "=" "spst.program" ("@" bare_id)? params attributes type_list_
 computation : id_list "=" "spst.computation" params attributes type_list_info computation_body
 
 // Define stencil statement
-statement : id_list "=" "spst.statement" params attributes type_list_info statement_body
+statement : id_list "=" "spst.statement" params (attributes)? type_list_info statement_body
 
 ////////////////////////////////////////////////////
 // Define contents of stencil statements
