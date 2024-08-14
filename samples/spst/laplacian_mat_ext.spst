@@ -1,13 +1,16 @@
 
 // Version 2, with cast_extent to prevent type-propagation
 
-%out = spst.program (%in) {} :  {
+%out = spst.program (%in) {} :
+    field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
+    -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
+{
     %res = spst.computation (%in)
     {
-        schedule: PARALLEL,
-        interval: [spst.interval<?, ?> , spst.interval<?, ?>, spst.interval<0, None>]
+        schedule = PARALLEL,
+        interval = [spst.interval<0, None> , spst.interval<0, None>, spst.interval<0, None>]
     } : spst.field<spst.cartesian<?,?,?>,
-                   spst.extent<(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0)
+                   spst.extent<(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0),
                                (0, 1, 0), (-1, 1, 0), (1, 1, 0), (0, 2, 0)>, f32>
       -> spst.field<spst.cartesian<?,?,?>, spst.extent<(?, ?, ?)>, f32>
     {

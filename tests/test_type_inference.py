@@ -1,6 +1,8 @@
 import unittest
+from pathlib import Path
+
 from spatialstencil.syntax.stencil_ir import type_inference, parser
-from spatialstencil.syntax.stencil_ir.irnodes import ScalarType
+from spatialstencil.syntax.stencil_ir.irnodes import ScalarType, Program
 
 
 class TestTypeInference(unittest.TestCase):
@@ -68,6 +70,40 @@ class TestTypeInference(unittest.TestCase):
 
         fields['d'] = ScalarType.i32
         assert type_inference._infer_expression(exprs[4], fields, ScalarType.f32, ScalarType.i32) == ScalarType.f32
+
+    def test_infer_extent_materialize(self):
+        file = Path('../samples/spst/laplacian_mat_sh.spst')
+        file2 = Path('../samples/spst/laplacian_mat_sh_ext.spst')
+        program: Program
+        program_w_extents: Program
+        with open(file, 'r') as f:
+            program = parser.parse_file(f)
+        with open(file2, 'r') as f:
+            program_w_extents = parser.parse_file(f)
+
+        # Infer extents for the program without extents
+        type_inference.infer_field_extents(program)
+
+        # Check that the extents are the same
+        # Note that this also checks the canonicalization of extents
+        self.assertEqual(program.as_ir(), program_w_extents.as_ir())
+
+    def test_infer_extent_no_materialize(self):
+        file = Path('../samples/spst/laplacian_no_mat.spst')
+        file2 = Path('../samples/spst/laplacian_no_mat_ext.spst')
+        program: Program
+        program_w_extents: Program
+        with open(file, 'r') as f:
+            program = parser.parse_file(f)
+        with open(file2, 'r') as f:
+            program_w_extents = parser.parse_file(f)
+
+        # Infer extents for the program without extents
+        type_inference.infer_field_extents(program)
+
+        # Check that the extents are the same
+        # Note that this also checks the canonicalization of extents
+        self.assertEqual(program.as_ir(), program_w_extents.as_ir())
 
 
 if __name__ == '__main__':
