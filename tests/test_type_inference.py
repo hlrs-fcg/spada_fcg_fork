@@ -72,8 +72,8 @@ class TestTypeInference(unittest.TestCase):
         assert type_inference._infer_expression(exprs[4], fields, ScalarType.f32, ScalarType.i32) == ScalarType.f32
 
     def test_infer_extent_materialize(self):
-        file = Path('../samples/spst/laplacian_mat_sh.spst')
-        file2 = Path('../samples/spst/laplacian_mat_sh_ext.spst')
+        file = Path(__file__).parent / Path('../samples/spst/laplacian_mat_sh.spst')
+        file2 = Path(__file__).parent / Path('../samples/spst/laplacian_mat_sh_ext.spst')
         program: Program
         program_w_extents: Program
         with open(file, 'r') as f:
@@ -89,8 +89,8 @@ class TestTypeInference(unittest.TestCase):
         self.assertEqual(program.as_ir(), program_w_extents.as_ir())
 
     def test_infer_extent_no_materialize(self):
-        file = Path('../samples/spst/laplacian_no_mat.spst')
-        file2 = Path('../samples/spst/laplacian_no_mat_ext.spst')
+        file = Path(__file__).parent / Path('../samples/spst/laplacian_no_mat.spst')
+        file2 = Path(__file__).parent / Path('../samples/spst/laplacian_no_mat_ext.spst')
         program: Program
         program_w_extents: Program
         with open(file, 'r') as f:
