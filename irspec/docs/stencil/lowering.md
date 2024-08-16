@@ -48,25 +48,44 @@ Each statement in the stencil IR is translated into a node in the field dataflow
 The edges into the node are given by the arguments to the statement.
 The edge annotations are determined by the type of the respective arguments.
 
-Note that nodes with the same name but different versions are represented as multiple nodes in the field dataflow graph.
-They may be merged later in the field placement process to ensure that the same field is not placed multiple times.
+!!! info "Note: Multi-line Statements"
+    A statement may contain multiple lines, each of which may access different fields.
+    The intermediate fields created inside the statement are not represented in the field dataflow graph.
+    Instead, they are treated as local to the resulting field.
 
-???+ info "Example: field dataflow graph"
+!!! info "Note: Field Versions"
+    Nodes with the same name but different versions are represented as multiple nodes in the field dataflow graph.
+    They may be merged later in the field placement process to ensure that the same field is not placed multiple times.
+
+???+ example "Example: Field Dataflow Graph"
 
     In the following example (taken from the uvbke kernel), we create nodes for each variable#version.
 
     ```mlir
-    %i16 = spst.statement (%arg1, %arg2) {} : spst.field<[129, 128, 80], {(-1, 0, 0), (0, 0, 0)}, f32>, spst.field<[128, 128, 80], {(0, 0, 0)}, f32> -> spst.field<[128, 128, 80], {(0, 0, 0)}, f32> {
-          spst.return ((%arg1[-1, 0, 0] + %arg1[0, 0, 0]) * %arg2[0, 0, 0]) : f32
+    %i16 = spst.statement (%arg1, %arg2) : 
+      field<[129, 128, 80], {(-1, 0, 0), (0, 0, 0)}, f32>, 
+      field<[128, 128, 80], {(0, 0, 0)}, f32> 
+      -> field<[128, 128, 80], {(0, 0, 0)}, f32> 
+    {
+      %a = %arg1[-1, 0, 0] + %arg1[0, 0, 0] : f32
+      return %a * %arg2[0, 0, 0] : f32
     }
-    %i19 = spst.statement (%arg0) {} : spst.field<[128, 129, 80], {(0, -1, 0), (0, 0, 0)}, f32> -> spst.field<[128, 128, 80], {(0, 0, 0)}, f32> {
-      spst.return (%arg0[0, -1, 0] + %arg0[0, 0, 0]) : f32
+    %i19 = spst.statement (%arg0) :
+      field<[128, 129, 80], {(0, -1, 0), (0, 0, 0)}, f32> 
+      -> field<[128, 128, 80], {(0, 0, 0)}, f32>
+    {
+      return (%arg0[0, -1, 0] + %arg0[0, 0, 0]) : f32
     }
-    %i21 = spst.statement (%i16, %i19) {} : spst.field<[128, 128, 80], {(0, 0, 0)}, f32>, spst.field<[128, 128, 80], {(0, 0, 0)}, f32> -> spst.field<[128, 128, 80], {(0, 0, 0)}, f32> {
-      spst.return (112.5 * (%i19 - %i16)) : f32
+    %i21 = spst.statement (%i16, %i19) : 
+      field<[128, 128, 80], {(0, 0, 0)}, f32>, 
+      field<[128, 128, 80], {(0, 0, 0)}, f32> 
+      -> field<[128, 128, 80], {(0, 0, 0)}, f32> 
+    {
+      return (112.5 * (%i19 - %i16)) : f32
     }
     ```
     There is an edge from %arg1 to %i16 and from %arg2 to %i16 with the respective extents, and so on.
+    The intermediate %a is not represented in the field dataflow graph.
 
     ```mermaid
 
