@@ -26,6 +26,60 @@ Within each phase, the lowering contains the following steps:
 2. **Lowering Communication**: Extract the streams from the stencil IR.
 3. **Lowering computations**: Lower the computations to Spatial IR.
 
+## Replacing Accesses to Intermediate Fields
+
+Intermediate fields that are not materialized are replaced by the equivalent accesses to non-intermediate fields.
+
+
+
+## Placement of Fields
+
+After field placement, each field $f$ is associated with an offset $o(f)=(o_x, o_y)$ and a stride $s(f)=(s_x, s_y)$.
+The offset and stride are determined by the placement strategy of the fields.
+It is based on the construction of a field dataflow graph, whose construction we describe in the following.
+
+### Field Dataflow Graph
+
+
+The field dataflow graph is a directed graph where each node represents a field and each edge represents a field access.
+The edges are annotated with the set of extents at which the access occurs.
+
+Each statement in the stencil IR is translated into a node in the field dataflow graph.
+The edges into the node are given by the arguments to the statement.
+The edge annotations are determined by the type of the respective arguments.
+
+Note that nodes with the same name but different versions are represented as multiple nodes in the field dataflow graph.
+They may be merged later in the field placement process to ensure that the same field is not placed multiple times.
+
+???+ info "Example: field dataflow graph"
+
+    In the following example (taken from the uvbke kernel), we create nodes for each variable#version.
+
+    ```mlir
+    %i16 = spst.statement (%arg1, %arg2) {} : spst.field<[129, 128, 80], {(-1, 0, 0), (0, 0, 0)}, f32>, spst.field<[128, 128, 80], {(0, 0, 0)}, f32> -> spst.field<[128, 128, 80], {(0, 0, 0)}, f32> {
+          spst.return ((%arg1[-1, 0, 0] + %arg1[0, 0, 0]) * %arg2[0, 0, 0]) : f32
+    }
+    %i19 = spst.statement (%arg0) {} : spst.field<[128, 129, 80], {(0, -1, 0), (0, 0, 0)}, f32> -> spst.field<[128, 128, 80], {(0, 0, 0)}, f32> {
+      spst.return (%arg0[0, -1, 0] + %arg0[0, 0, 0]) : f32
+    }
+    %i21 = spst.statement (%i16, %i19) {} : spst.field<[128, 128, 80], {(0, 0, 0)}, f32>, spst.field<[128, 128, 80], {(0, 0, 0)}, f32> -> spst.field<[128, 128, 80], {(0, 0, 0)}, f32> {
+      spst.return (112.5 * (%i19 - %i16)) : f32
+    }
+    ```
+    There is an edge from %arg1 to %i16 and from %arg2 to %i16 with the respective extents, and so on.
+
+    ```mermaid
+
+    graph TD
+        %arg1[%arg1 \n 129, 128, 80] -- {(-1, 0, 0), (0, 0, 0)} --> %i16
+        %arg2[%arg2 \n 128, 128, 80] -- {(0, 0, 0)} --> %i16
+        %arg0[%arg1 \n 128, 129, 80] -- {(0, -1, 0), (0, 0, 0)} --> %i19
+        %i16[%i16 \n 128, 128, 80] -- {(0, 0, 0}) --> %i21
+        %i19[%i19 \n 128, 128, 80] -- {(0, 0, 0)} --> %i21[%i21 \n 128, 128, 80]
+    ```
+
+
+
 ## Lowering spst.program
 
 An spst.program is lowered to a Spatial IR kernel.
