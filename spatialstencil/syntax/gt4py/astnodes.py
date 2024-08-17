@@ -6,7 +6,7 @@ import ast
 import enum
 from dataclasses import dataclass
 
-from spatialstencil.syntax.common.node import BaseNode
+from spatialstencil.syntax.common.basenode import BaseNode
 from spatialstencil.syntax.common import visitor
 
 

@@ -137,8 +137,7 @@ class TestStencilIRParser(unittest.TestCase):
         assert comp.outputs == [sast.Identifier('rh')]
         assert isinstance(comp.body[2], sast.IfBlock)
         ifblock = comp.body[2]
-        assert len(ifblock.else_ifs) == 1
-        assert ifblock.orelse
+        assert len(ifblock.else_ifs) == 2
         assert ifblock.outputs == [sast.Identifier('qstar')]
 
     def test_lower_gt4py_nested_if(self):

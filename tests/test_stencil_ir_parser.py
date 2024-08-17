@@ -41,16 +41,16 @@ class TestStencilIRParser(unittest.TestCase):
         assert len(comp.body[0].outputs) == 1
         assert comp.body[0].outputs[0].as_ir() == '%b'
         assert comp.body[0].condition.as_ir() == '%inp'
-        assert len(comp.body[0].else_ifs) == 1
-        assert comp.body[0].orelse is not None
+        assert len(comp.body[0].else_ifs) == 2
+        assert comp.body[0].else_ifs[-1].condition is None
 
         # Branch 2
         assert isinstance(comp.body[1], sast.IfBlock)
         assert len(comp.body[1].outputs) == 1
         assert comp.body[1].outputs[0].as_ir() == '%out'
         assert comp.body[1].condition.as_ir() == '%b'
-        assert len(comp.body[1].else_ifs) == 0
-        assert comp.body[1].orelse is not None
+        assert len(comp.body[1].else_ifs) == 1
+        assert comp.body[1].else_ifs[0].condition is None
 
     def test_mathcall(self):
         """
@@ -115,7 +115,6 @@ class TestStencilIRParser(unittest.TestCase):
         file2 = os.path.join(os.path.dirname(__file__), '..', 'samples', 'spst', 'laplacian_2.spst')
         program2 = parser.parse_file(file2)
         assert program.as_ir() == program2.as_ir()
-
 
     def test_visitor(self):
         """

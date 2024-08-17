@@ -87,16 +87,16 @@ class GTVisitor(ast.NodeVisitor):
         while current_branch.orelse:
             if len(current_branch.orelse) == 1 and isinstance(current_branch.orelse[0], ast.If):
                 current_branch = current_branch.orelse[0]
-                else_ifs.append((current_branch.test, self._parse_statements(current_branch.body)))
+                else_ifs.append(GTElseIfBlock(current_branch.test, self._parse_statements(current_branch.body)))
             else:
                 break
-        orelse = current_branch.orelse
 
-        return GTIfStatement(
-            condition=stmt.test,
-            body=self._parse_statements(stmt.body),
-            else_ifs=else_ifs if else_ifs else None,
-            orelse=self._parse_statements(orelse) if orelse else None)
+        # Parse "else"
+        orelse = current_branch.orelse
+        if orelse:
+            else_ifs.append(GTElseIfBlock(condition=None, body=self._parse_statements(orelse)))
+
+        return GTIfStatement(condition=stmt.test, body=self._parse_statements(stmt.body), else_ifs=else_ifs)
 
 
 def parse_function(func: ast.FunctionDef) -> GTProgram:

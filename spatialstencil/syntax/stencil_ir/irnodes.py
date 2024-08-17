@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 import enum
 from typing import Literal
 
-from spatialstencil.syntax.common.node import BaseNode
+from spatialstencil.syntax.common.basenode import BaseNode
 from spatialstencil.syntax.common import visitor
 
 
@@ -127,8 +127,9 @@ class OffsetAndInterval(Node):
     """
     Dimension tuple containing an offset and an interval of an ``Extent``.
     """
-    values: list[int | None]
-    interval: list[int | None] = field(default_factory=lambda: [0, None, 0, None, 0, None])
+    # NOTE: We are using variable-length tuples here so that this type is hashable.
+    values: tuple[int | None]
+    interval: tuple[int | None] = field(default_factory=lambda: (0, None, 0, None, 0, None))
 
     def validate(self) -> None:
         # For every dimension, an interval has a start and end point
@@ -444,6 +445,7 @@ class StatementBlock(Node, Operation, Block):
         return result
 
 
+@dataclass
 class ElseIfBlock(Node, Block):
     """
     A single "else if" block. If condition is None, represents an "else" block

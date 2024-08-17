@@ -5,7 +5,7 @@ Walking and transformation are based on Python's ``ast`` module, but introduce a
 functionality such as IR language testing and dataclass support.
 """
 from typing import Generic, TypeVar, Sequence
-from spatialstencil.syntax.common.node import BaseNode
+from spatialstencil.syntax.common.basenode import BaseNode
 
 # Create a generic type T that extends the base node type
 BaseNodeT = TypeVar('BaseNodeT', bound=BaseNode)

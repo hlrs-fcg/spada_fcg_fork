@@ -166,15 +166,14 @@ class TreeToAST(lark.Transformer):
         offset += 1
 
         else_ifs = []
-        orelse = None
         for arg in args[offset:]:
             if isinstance(arg, lark.Tree) and arg.data == 'elif_block':
                 elif_test, elif_body = arg.children
-                else_ifs.append((elif_test, elif_body))
+                else_ifs.append(irnodes.ElseIfBlock(elif_test, elif_body))
             elif isinstance(arg, lark.Tree) and arg.data == 'else_block':
-                orelse = arg.children[0]
+                else_ifs.append(irnodes.ElseIfBlock(None, arg.children[0]))
 
-        return irnodes.IfBlock(results, test, operation_type, body, else_ifs, orelse)
+        return irnodes.IfBlock(results, test, operation_type, body, else_ifs)
 
     def statement(self, args, meta=None):
         if len(args) == 5:

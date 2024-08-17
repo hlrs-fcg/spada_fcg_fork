@@ -112,11 +112,14 @@ class InputOutputCollector(sast.NodeVisitor):
 
     def visit_IfBlock(self, node: sast.IfBlock):
         self.inputs |= self.visit(node.condition)
-        if node.else_ifs:
-            for elif_cond, _ in node.else_ifs:
-                self.inputs |= self.visit(elif_cond)
-
         self.outputs |= set(node.outputs)
 
         # Recurse to children
+        self.generic_visit(node)
+
+    def visit_ElseIfBlock(self, node: sast.ElseIfBlock):
+        if node.condition is not None:
+            self.inputs |= self.visit(node.condition)
+
+        # Recurse to body
         self.generic_visit(node)
