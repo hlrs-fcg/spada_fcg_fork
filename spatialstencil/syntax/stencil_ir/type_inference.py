@@ -332,7 +332,7 @@ def _result_type_of(*args: sast.ScalarType, optype: str | None = None) -> sast.S
             # Floating point
             if max_bit_width_float[0] is None or max_bit_width_float[0] < sast.BIT_WIDTH[arg]:
                 max_bit_width_float = sast.BIT_WIDTH[arg], arg
-        elif arg in (sast.ScalarType.u8, sast.ScalarType.u16, sast.ScalarType.u32):
+        elif arg in (sast.ScalarType.bool, sast.ScalarType.u8, sast.ScalarType.u16, sast.ScalarType.u32):
             # Unsigned integer
             if max_bit_width_uint[0] is None or max_bit_width_uint[0] < sast.BIT_WIDTH[arg]:
                 max_bit_width_uint = sast.BIT_WIDTH[arg], arg
@@ -352,6 +352,8 @@ def _result_type_of(*args: sast.ScalarType, optype: str | None = None) -> sast.S
     if max_bit_width_float[0] is not None:
         return max_bit_width_float[1]
     if max_bit_width_uint[0] is not None:
+        if max_bit_width_int[0] is not None and max_bit_width_int[0] > max_bit_width_uint[0]:
+            return max_bit_width_int[1]
         return max_bit_width_uint[1]
     return max_bit_width_int[1]
 

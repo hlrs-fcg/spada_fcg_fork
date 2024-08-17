@@ -15,6 +15,7 @@ class TestTypeInference(unittest.TestCase):
             assert type_inference._result_type_of(dtype, dtype, dtype) == dtype
 
     def test_result_type_expansion(self):
+        assert type_inference._result_type_of(ScalarType.u16, ScalarType.i32) == ScalarType.i32
         assert type_inference._result_type_of(ScalarType.bool, ScalarType.i16) == ScalarType.i16
         assert type_inference._result_type_of(ScalarType.f64, ScalarType.bool) == ScalarType.f64
         assert type_inference._result_type_of(ScalarType.f64, ScalarType.f32) == ScalarType.f64

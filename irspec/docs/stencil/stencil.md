@@ -47,7 +47,7 @@ the following rules in this order:
     * Example: `i32 + f16 -> f16`
   * When one of the types is wider, the widest type will be used for the output;
     * Example: `i16 + u16 -> u16`
-  * For the purposes of type promotion, `bool` is considered a signed integral 1-bit value.
+  * For the purposes of type promotion, `bool` is considered an unsigned integral 1-bit value.
 
 #### Domain types
 
