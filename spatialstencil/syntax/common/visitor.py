@@ -1,60 +1,14 @@
 """
-Provides basic AST/IR utilities for traversal, transformation, and find/replacement.
+Provides basic AST/IR utilities for traversal and transformation.
 
 Walking and transformation are based on Python's ``ast`` module, but introduce additional
 functionality such as IR language testing and dataclass support.
 """
-import ast
-from dataclasses import dataclass
 from typing import Generic, TypeVar, Sequence
-
-
-@dataclass
-class BaseNode:
-    """
-    Base class for AST/IR nodes.
-    """
-
-    def iter_fields(self):
-        """
-        Yield a tuple of ``(fieldname, value)`` for each field in the dataclass.
-        """
-        for field in self.__dataclass_fields__:
-            try:
-                yield field, getattr(self, field)
-            except AttributeError:
-                pass
-
-    def iter_child_nodes(self, ir_node_class: type['BaseNode'] = None):
-        """
-        Yield all direct child AST/IR nodes of node.
-        """
-        ir_node_class = ir_node_class or BaseNode
-        for _, field in self.iter_fields():
-            if isinstance(field, BaseNode):
-                yield field
-            elif isinstance(field, (tuple, list)):
-                for item in field:
-                    if isinstance(item, BaseNode):
-                        yield item
-
+from spatialstencil.syntax.common.node import BaseNode
 
 # Create a generic type T that extends the base node type
 BaseNodeT = TypeVar('BaseNodeT', bound=BaseNode)
-
-
-def walk(node: BaseNode):
-    """
-    Recursively yield all descendant nodes in the tree starting at ``node``
-    (including ``node`` itself), in breadth-first order. This function is
-    based on ``ast.walk``.
-    """
-    from collections import deque
-    todo = deque([node])
-    while todo:
-        node = todo.popleft()
-        todo.extend(node.iter_child_nodes())
-        yield node
 
 
 class IRNodeVisitor(Generic[BaseNodeT]):
@@ -141,43 +95,3 @@ class IRNodeTransformer(IRNodeVisitor[BaseNodeT]):
         if isinstance(sequence, tuple):
             return tuple(new_values)
         return new_values
-
-
-class ASTFindReplace(ast.NodeTransformer):
-    """
-    Finds and replaces a name with another value on Python ASTs.
-    """
-
-    def __init__(self, repldict: dict[str, ast.AST]):
-        """
-        Creates a find-and-replace AST node transformer.
-
-        :param repldict: A dictionary mapping a source name to a target replacement AST node.
-        """
-        self.replace_count = 0
-        self.repldict = repldict
-        self.encountered_names: set[str] = set()
-        # If ast.Names were given, use them as keys as well
-        self.repldict.update({k.id: v for k, v in self.repldict.items() if isinstance(k, ast.Name)})
-
-    def visit_Name(self, node: ast.Name):
-        self.encountered_names.add(node.id)
-        if node.id in self.repldict:
-            val = self.repldict[node.id]
-            if isinstance(val, ast.AST):
-                new_node = ast.copy_location(val, node)
-            else:
-                new_node = ast.copy_location(ast.parse(str(self.repldict[node.id])).body[0].value, node)
-            self.replace_count += 1
-            return new_node
-
-        return self.generic_visit(node)
-
-    def visit_keyword(self, node: ast.keyword):
-        if node.arg in self.repldict:
-            val = self.repldict[node.arg]
-            if isinstance(val, ast.AST):
-                val = ast.unparse(val)
-            node.arg = val
-            self.replace_count += 1
-        return self.generic_visit(node)

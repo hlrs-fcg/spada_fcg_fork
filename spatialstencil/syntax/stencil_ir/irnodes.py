@@ -4,9 +4,9 @@ Native class definitions for the spatial stencil Intermediate Representation (IR
 from dataclasses import dataclass, field
 import enum
 from typing import Literal
-import pprint
 
-from spatialstencil.syntax import helpers
+from spatialstencil.syntax.common.node import BaseNode
+from spatialstencil.syntax.common import visitor
 
 
 class ScalarType(enum.Enum):
@@ -48,7 +48,14 @@ class ComputationType(enum.Enum):
     BACKWARD = 2
 
 
-class Node(helpers.BaseNode):
+class IRType:
+    """
+    Interface that indicates this node represents a type.
+    """
+    pass
+
+
+class Node(BaseNode):
     """
     Abstract class representing an IR node for spatial stencils.
     """
@@ -75,14 +82,8 @@ class Node(helpers.BaseNode):
         """
         pass
 
-    def pretty(self) -> str:
-        """
-        Pretty-prints the contents of this AST node.
-        """
-        return pprint.pformat(self)
 
-
-class Domain(Node):
+class Domain(Node, IRType):
     """
     Abstract domain type.
     """
@@ -142,7 +143,7 @@ class OffsetAndInterval(Node):
 
 
 @dataclass
-class Extent(Node):
+class Extent(Node, IRType):
     """
     Extents of a field.
     """
@@ -156,7 +157,7 @@ class Extent(Node):
 
 
 @dataclass
-class FieldType(Node):
+class FieldType(Node, IRType):
     domain: Domain
     extent: Extent
     dtype: ScalarType
@@ -167,7 +168,9 @@ class FieldType(Node):
         Creates an empty (not type/shape-inferred) field type.
         """
         return FieldType(
-            domain=Cartesian(None, None, None), extent=Extent([OffsetAndInterval((None, None, None))]), dtype=ScalarType.UNKNOWN)
+            domain=Cartesian(None, None, None),
+            extent=Extent([OffsetAndInterval((None, None, None))]),
+            dtype=ScalarType.UNKNOWN)
 
     def validate(self) -> None:
         assert self.dtype != ScalarType.f64
@@ -180,7 +183,7 @@ DataType = FieldType | ScalarType
 
 
 @dataclass
-class TypeInfo(Node):
+class OperationType(Node):
     source: list[DataType] = field(default_factory=lambda: [FieldType.empty()])
     destination: list[DataType] | None = None
 
@@ -202,7 +205,7 @@ class TypeInfo(Node):
 
 
 @dataclass
-class Interval(Node):
+class Interval(Node, IRType):
     start: int | Literal["?"] | None = "?"
     end: int | Literal["?"] | None = "?"
 
@@ -349,27 +352,34 @@ class Operation:
     """
     Interface for an operation.
 
-    An Operation *must* have a field called ``typeinfo`` defined.
+    An Operation *must* have a field called ``operation_type`` defined.
     """
-    typeinfo: TypeInfo
+    operation_type: OperationType
+
+
+class Block:
+    """
+    Interface for a block of operations.
+    """
+    pass
 
 
 @dataclass
 class ReturnOp(Node, Operation):
     values: list[Expression]
-    typeinfo: TypeInfo = field(default_factory=lambda: TypeInfo([ScalarType.UNKNOWN]))
+    operation_type: OperationType = field(default_factory=lambda: OperationType([ScalarType.UNKNOWN]))
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
         return (f'{indent_str}spst.return {", ".join(v.as_ir() for v in self.values)}'
-                f' : {self.typeinfo.as_ir()}')
+                f' : {self.operation_type.as_ir()}')
 
 
 @dataclass
 class MaterializeOp(Node, Operation):
     result: Identifier
     value: Identifier
-    typeinfo: TypeInfo = field(default_factory=TypeInfo)
+    operation_type: OperationType = field(default_factory=OperationType)
 
     def validate(self) -> None:
         assert isinstance(self.result, Identifier)
@@ -378,14 +388,15 @@ class MaterializeOp(Node, Operation):
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
         return (f'{indent_str}{self.result.as_ir()} = spst.materialize ({self.value.as_ir()})'
-                f' : {self.typeinfo.as_ir()}')
+                f' : {self.operation_type.as_ir()}')
 
 
 @dataclass
 class AssignOp(Node, Operation):
     result: Identifier
     value: Expression
-    typeinfo: TypeInfo = field(default_factory=lambda: TypeInfo([ScalarType.UNKNOWN], [ScalarType.UNKNOWN]))
+    operation_type: OperationType = field(
+        default_factory=lambda: OperationType([ScalarType.UNKNOWN], [ScalarType.UNKNOWN]))
 
     def validate(self) -> None:
         assert isinstance(self.result, Identifier)
@@ -393,18 +404,18 @@ class AssignOp(Node, Operation):
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
         return (f'{indent_str}{self.result.as_ir()} = {self.value.as_ir()}'
-                f' : {self.typeinfo.as_ir()}')
+                f' : {self.operation_type.as_ir()}')
 
 
 @dataclass
-class StatementBlock(Node, Operation):
+class StatementBlock(Node, Operation, Block):
     """
     A single statement in a Stencil IR computation.
     """
     outputs: list[Identifier]
     inputs: list[Identifier]
     attributes: list[tuple[str, Node]]
-    typeinfo: TypeInfo
+    operation_type: OperationType
     body: list[AssignOp | ReturnOp]
 
     def validate(self) -> None:
@@ -417,7 +428,7 @@ class StatementBlock(Node, Operation):
         outputs = ', '.join(o.as_ir() for o in self.outputs)
         result = f'{indent_str}{outputs} = spst.statement ({inputs})'
         result += ' {}'
-        result += f' : {self.typeinfo.as_ir()} '
+        result += f' : {self.operation_type.as_ir()} '
         result += '{\n'
         result += '\n'.join(stmt.as_ir(indent + 1) for stmt in self.body)
         result += '\n' + indent_str + '}'
@@ -425,13 +436,13 @@ class StatementBlock(Node, Operation):
 
 
 @dataclass
-class IfBlock(Node, Operation):
+class IfBlock(Node, Operation, Block):
     """
     If/elif/else block operating on a mask tensor.
     """
     outputs: list[Identifier]
     condition: Identifier
-    typeinfo: TypeInfo
+    operation_type: OperationType
     body: list[StatementBlock | ReturnOp]
     else_ifs: list[tuple[Identifier, list[StatementBlock | ReturnOp]]] | None  # List of (condition, body)
     orelse: list[StatementBlock | ReturnOp] | None
@@ -454,7 +465,7 @@ class IfBlock(Node, Operation):
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
         result = f'{indent_str}{", ".join(res.as_ir() for res in self.outputs)} = spst.if ({self.condition.as_ir()})'
-        result += f' : {self.typeinfo.as_ir()} '
+        result += f' : {self.operation_type.as_ir()} '
         result += '{\n'
         result += '\n'.join(stmt.as_ir(indent + 1) for stmt in self.body)
         result += '\n' + indent_str + '}'
@@ -472,7 +483,7 @@ class IfBlock(Node, Operation):
 
 
 @dataclass
-class ComputationBlock(Node, Operation):
+class ComputationBlock(Node, Operation, Block):
     """
     A computational block with an interval in a stencil IR computation.
     """
@@ -480,7 +491,7 @@ class ComputationBlock(Node, Operation):
     inputs: list[Identifier]
     schedule: ComputationType
     interval: tuple[Interval, Interval, Interval]
-    typeinfo: TypeInfo
+    operation_type: OperationType
     body: list[StatementBlock | IfBlock | MaterializeOp]
 
     def as_ir(self, indent: int = 0) -> str:
@@ -495,7 +506,7 @@ class ComputationBlock(Node, Operation):
         result += f'{indent_str} interval = [{", ".join(i.as_ir() for i in self.interval)}]\n'
         result += indent_str + '}'
         # Types
-        result += f' : {self.typeinfo.as_ir()} '
+        result += f' : {self.operation_type.as_ir()} '
         # Body
         result += '{\n'
         result += '\n'.join(stmt.as_ir(indent + 1) for stmt in self.body)
@@ -504,7 +515,7 @@ class ComputationBlock(Node, Operation):
 
 
 @dataclass
-class Program(Node, Operation):
+class Program(Node, Operation, Block):
     """
     Root node of a stencil program AST.
     """
@@ -512,7 +523,7 @@ class Program(Node, Operation):
     name: str | None
     inputs: list[Identifier]
     attributes: list[tuple[str, Node]]
-    typeinfo: TypeInfo
+    operation_type: OperationType
     computations: list[ComputationBlock]
 
     def as_ir(self, indent: int = 0) -> str:
@@ -523,19 +534,19 @@ class Program(Node, Operation):
         name = f' @{self.name}' if self.name else ''
 
         return (f'{indent_str}{outputs} = spst.program{name}({inputs}) {{}}'
-                f' : {self.typeinfo.as_ir()} '
+                f' : {self.operation_type.as_ir()} '
                 '{\n'
                 f'{newline.join(c.as_ir(indent + 1) for c in self.computations)}'
                 '\n' + indent_str + '}')
 
 
-class NodeVisitor(helpers.IRNodeVisitor[Node]):
+class NodeVisitor(visitor.IRNodeVisitor[Node]):
 
     def __init__(self, *args, **kwargs):
         super().__init__(Node, *args, **kwargs)
 
 
-class NodeTransformer(helpers.IRNodeTransformer[Node]):
+class NodeTransformer(visitor.IRNodeTransformer[Node]):
 
     def __init__(self, *args, **kwargs):
         super().__init__(Node, *args, **kwargs)

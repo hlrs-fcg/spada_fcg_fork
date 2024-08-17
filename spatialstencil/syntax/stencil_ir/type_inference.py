@@ -3,7 +3,6 @@ Contains type/extent inference functionality for the Stencil IR.
 """
 from spatialstencil.syntax.stencil_ir import irnodes as sast
 from spatialstencil.syntax.stencil_ir import analysis
-from spatialstencil.syntax import helpers
 from collections import defaultdict
 import copy
 import math
@@ -49,13 +48,13 @@ def infer_inputs_and_outputs(program: sast.Program):
     outputs_per_computation: list[set[sast.Identifier]] = []
 
     # Collect statement blocks locally
-    for node in helpers.walk(program):
+    for node in program.walk():
         if isinstance(node, sast.StatementBlock):
             collector = analysis.InputOutputCollector()
             collector.visit(node)
             node.inputs = _unique_id_list(collector.inputs, False)
-            node.typeinfo.source = node.typeinfo.source[:len(node.inputs)]  # Adjust type information
-            node.typeinfo.destination = node.typeinfo.destination[:len(node.body[-1].values)]
+            node.operation_type.source = node.operation_type.source[:len(node.inputs)]  # Adjust type information
+            node.operation_type.destination = node.operation_type.destination[:len(node.body[-1].values)]
 
     # Collect inputs/outputs per computation and only include globally-necessary fields in a second pass
     for comp in program.computations:
@@ -66,7 +65,7 @@ def infer_inputs_and_outputs(program: sast.Program):
 
         # Set the inputs to be anything that is used and defined outside (i.e., not overridden)
         comp.inputs = _unique_id_list(collector.inputs - collector.outputs, False)
-        comp.typeinfo.source = comp.typeinfo.source[:len(comp.inputs)]  # Adjust type information
+        comp.operation_type.source = comp.operation_type.source[:len(comp.inputs)]  # Adjust type information
 
         # Initialize outputs to final outputs of the block
         comp.outputs = _unique_id_list(collector.outputs, True)
@@ -75,7 +74,7 @@ def infer_inputs_and_outputs(program: sast.Program):
     subsequent_names = set(k.name for k in program.outputs)
     for i, comp in reversed(list(enumerate(program.computations))):
         comp.outputs = [out for out in comp.outputs if out.name in subsequent_names]
-        comp.typeinfo.destination = comp.typeinfo.destination[:len(comp.outputs)]  # Adjust type information
+        comp.operation_type.destination = comp.operation_type.destination[:len(comp.outputs)]  # Adjust type information
         subsequent_names.update(set(k.name for k in comp.inputs + comp.outputs))
 
 
@@ -103,11 +102,11 @@ def infer_scalar_types(program: sast.Program, default_float_dtype: sast.ScalarTy
     inferrer = TypeInference(default_float_dtype, default_int_dtype)
 
     # Collect program global fields. If type is unknown, use default float type
-    for field, dtype in zip(program.inputs, program.typeinfo.source):
+    for field, dtype in zip(program.inputs, program.operation_type.source):
         if dtype.dtype == sast.ScalarType.UNKNOWN:
             dtype.dtype = default_float_dtype
         inferrer.field_types[field.name] = dtype.dtype
-    for field, dtype in zip(program.outputs, program.typeinfo.destination):
+    for field, dtype in zip(program.outputs, program.operation_type.destination):
         if dtype.dtype == sast.ScalarType.UNKNOWN:
             dtype.dtype = default_float_dtype
         inferrer.field_types[field.name] = dtype.dtype
@@ -124,44 +123,45 @@ class TypeInference(sast.NodeTransformer):
         self.float_dtype = default_float_dtype
         self.int_dtype = default_int_dtype
 
-    def _modify_typeinfo(self, typeinfo: sast.TypeInfo, inputs: list[sast.Identifier], outputs: list[sast.Identifier]):
+    def _modify_typeinfo(self, operation_type: sast.OperationType, inputs: list[sast.Identifier],
+                         outputs: list[sast.Identifier]):
         """
         Helper function that updates the type information based on inferred types.
         """
-        for i, (name, src) in enumerate(zip(inputs, typeinfo.source)):
+        for i, (name, src) in enumerate(zip(inputs, operation_type.source)):
             scalartype = self.field_types[name.name]
             if isinstance(src, sast.FieldType):
                 src.dtype = scalartype
             else:  # Scalar type
-                typeinfo.source[i] = scalartype
+                operation_type.source[i] = scalartype
 
-        if typeinfo.destination:
-            for i, (name, dst) in enumerate(zip(outputs, typeinfo.destination)):
+        if operation_type.destination:
+            for i, (name, dst) in enumerate(zip(outputs, operation_type.destination)):
                 scalartype = self.field_types[name.name]
                 if isinstance(dst, sast.FieldType):
                     dst.dtype = scalartype
                 else:  # Scalar type
-                    typeinfo.destination[i] = scalartype
+                    operation_type.destination[i] = scalartype
 
     # Scalar operations
     def visit_ReturnOp(self, node: sast.ReturnOp):
         for i, val in enumerate(node.values):
-            node.typeinfo.source[i] = _infer_expression(val, self.field_types, self.float_dtype, self.int_dtype)
+            node.operation_type.source[i] = _infer_expression(val, self.field_types, self.float_dtype, self.int_dtype)
         return node
 
     def visit_AssignOp(self, node: sast.AssignOp):
         output_type = _infer_expression(node.value, self.field_types, self.float_dtype, self.int_dtype)
-        node.typeinfo.source[0] = output_type
+        node.operation_type.source[0] = output_type
         if node.result.name not in self.field_types:
             self.field_types[node.result.name] = output_type
-        node.typeinfo.destination[0] = output_type
+        node.operation_type.destination[0] = output_type
         return node
 
     # Field operations
     def visit_MaterializeOp(self, node: sast.MaterializeOp):
         assert node.value.name in self.field_types
-        node.typeinfo.source[0].dtype = self.field_types[node.value.name]
-        node.typeinfo.destination[0].dtype = self.field_types[node.value.name]
+        node.operation_type.source[0].dtype = self.field_types[node.value.name]
+        node.operation_type.destination[0].dtype = self.field_types[node.value.name]
         self.field_types[node.result.name] = self.field_types[node.value.name]
         return node
 
@@ -171,13 +171,13 @@ class TypeInference(sast.NodeTransformer):
         node = self.generic_visit(node)
 
         # Input types should aleady exist
-        for src, src_type in zip(node.inputs, node.typeinfo.source):
+        for src, src_type in zip(node.inputs, node.operation_type.source):
             src_type.dtype = self.field_types[src.name]
 
         # Use return value to infer output types
         assert isinstance(node.body[-1], sast.ReturnOp)
-        retvals = node.body[-1].typeinfo.source
-        for dst, retval, dst_type in zip(node.outputs, retvals, node.typeinfo.destination):
+        retvals = node.body[-1].operation_type.source
+        for dst, retval, dst_type in zip(node.outputs, retvals, node.operation_type.destination):
             dst_type.dtype = retval
             self.field_types[dst.name] = retval
 
@@ -189,12 +189,12 @@ class TypeInference(sast.NodeTransformer):
 
         # Input type should aleady exist
         # TODO(later): Verify that condition / return types match across branches in a separate validation pass
-        node.typeinfo.source[0].dtype = self.field_types[node.condition.name]
+        node.operation_type.source[0].dtype = self.field_types[node.condition.name]
 
         # Use return value to infer output types
         assert isinstance(node.body[-1], sast.ReturnOp)
-        retvals = node.body[-1].typeinfo.source
-        for dst, retval, dst_type in zip(node.outputs, retvals, node.typeinfo.destination):
+        retvals = node.body[-1].operation_type.source
+        for dst, retval, dst_type in zip(node.outputs, retvals, node.operation_type.destination):
             dst_type.dtype = retval
             self.field_types[dst.name] = retval
 
@@ -202,7 +202,7 @@ class TypeInference(sast.NodeTransformer):
 
     def visit_ComputationBlock(self, node: sast.ComputationBlock):
         node = self.generic_visit(node)
-        self._modify_typeinfo(node.typeinfo, node.inputs, node.outputs)
+        self._modify_typeinfo(node.operation_type, node.inputs, node.outputs)
         return node
 
 
@@ -216,8 +216,8 @@ def infer_field_extents(program: sast.Program):
     field_extents: dict[str, dict[tuple[int | None], set[tuple[int | None]]]] = {}
 
     # Start with outputs. Extents always start at (0, 0, 0)
-    assert isinstance(program.typeinfo.destination, list)
-    for field, dtype in zip(program.outputs, program.typeinfo.destination):
+    assert isinstance(program.operation_type.destination, list)
+    for field, dtype in zip(program.outputs, program.operation_type.destination):
         if dtype.extent.is_unknown():
             dtype.extent.extents = [sast.OffsetAndInterval((0, 0, 0))]
         field_extents[field.name] = defaultdict(set)
@@ -245,24 +245,24 @@ def infer_field_domains(program: sast.Program, domain: tuple[int] | None = None)
     field_domains: dict[str, sast.Cartesian] = {}
 
     # Start with outputs. Use halo for extents.
-    assert isinstance(program.typeinfo.destination, list)
-    for field, dtype in zip(program.outputs, program.typeinfo.destination):
+    assert isinstance(program.operation_type.destination, list)
+    for field, dtype in zip(program.outputs, program.operation_type.destination):
         if dtype.domain.is_unknown():
             dtype.domain = sast.Cartesian(*domain)
         field_domains[field.name] = dtype.domain
 
-    for field, dtype in zip(program.inputs, program.typeinfo.source):
+    for field, dtype in zip(program.inputs, program.operation_type.source):
         field_domains[field.name] = sast.Cartesian(*_infer_domain_from_extents(domain, dtype.extent))
 
     # Gather failed identifiers for warnings
     potentially_unknown_identifiers: set[str] = set()
 
     # Propagate backwards through statements from end of program
-    for node in reversed(list(helpers.walk(program))):
+    for node in reversed(list(program.walk())):
         if isinstance(node, sast.StatementBlock):
             # Gather the local domain
             stmt_domain = None
-            for out, outtype in zip(node.outputs, node.typeinfo.destination):
+            for out, outtype in zip(node.outputs, node.operation_type.destination):
                 if stmt_domain is None:
                     if not outtype.domain.is_unknown():
                         stmt_domain = outtype.domain
@@ -281,7 +281,7 @@ def infer_field_domains(program: sast.Program, domain: tuple[int] | None = None)
                 continue
 
             # Compute input domains based on extents and output
-            for inp, inptype in zip(node.inputs, node.typeinfo.source):
+            for inp, inptype in zip(node.inputs, node.operation_type.source):
                 new_domain = _infer_domain_from_extents((stmt_domain.x, stmt_domain.y, stmt_domain.z), inptype.extent)
                 # Take max value from current domain if in dictionary
                 if inp.name in field_domains:
@@ -476,11 +476,12 @@ class ExtentAssigner(sast.NodeTransformer):
                 oldtup = tuple(None if kk == math.inf else kk for kk in tup)
                 yield oldkey, oldtup
 
-    def _modify_typeinfo(self, typeinfo: sast.TypeInfo, inputs: list[sast.Identifier], outputs: list[sast.Identifier]):
+    def _modify_typeinfo(self, operation_type: sast.OperationType, inputs: list[sast.Identifier],
+                         outputs: list[sast.Identifier]):
         """
         Helper function that updates the type information based on inferred types.
         """
-        for name, src in zip(inputs, typeinfo.source):
+        for name, src in zip(inputs, operation_type.source):
             if name.name in self.field_extents:
                 extent_set = self.field_extents[name.name]
                 if isinstance(src, sast.FieldType):
@@ -488,8 +489,8 @@ class ExtentAssigner(sast.NodeTransformer):
                         sast.OffsetAndInterval(ex, interval) for interval, ex in self._sort_extents(extent_set)
                     ]
 
-        if typeinfo.destination:
-            for name, dst in zip(outputs, typeinfo.destination):
+        if operation_type.destination:
+            for name, dst in zip(outputs, operation_type.destination):
                 if name.name in self.field_extents:
                     extent_set = self.field_extents[name.name]
                     if isinstance(dst, sast.FieldType):
@@ -498,23 +499,23 @@ class ExtentAssigner(sast.NodeTransformer):
                         ]
 
     def visit_MaterializeOp(self, node: sast.MaterializeOp):
-        self._modify_typeinfo(node.typeinfo, [node.value], [node.result])
+        self._modify_typeinfo(node.operation_type, [node.value], [node.result])
         return self.generic_visit(node)
 
     def visit_StatementBlock(self, node: sast.StatementBlock):
-        self._modify_typeinfo(node.typeinfo, node.inputs, node.outputs)
+        self._modify_typeinfo(node.operation_type, node.inputs, node.outputs)
         return self.generic_visit(node)
 
     def visit_IfBlock(self, node: sast.IfBlock):
-        self._modify_typeinfo(node.typeinfo, [node.condition], node.outputs)
+        self._modify_typeinfo(node.operation_type, [node.condition], node.outputs)
         return self.generic_visit(node)
 
     def visit_ComputationBlock(self, node: sast.ComputationBlock):
-        self._modify_typeinfo(node.typeinfo, node.inputs, node.outputs)
+        self._modify_typeinfo(node.operation_type, node.inputs, node.outputs)
         return self.generic_visit(node)
 
     def visit_Program(self, node: sast.Program):
-        self._modify_typeinfo(node.typeinfo, node.inputs, node.outputs)
+        self._modify_typeinfo(node.operation_type, node.inputs, node.outputs)
         return self.generic_visit(node)
 
 
@@ -527,35 +528,36 @@ class DomainAssigner(sast.NodeTransformer):
         super().__init__()
         self.field_domains = field_domains
 
-    def _modify_typeinfo(self, typeinfo: sast.TypeInfo, inputs: list[sast.Identifier], outputs: list[sast.Identifier]):
+    def _modify_typeinfo(self, operation_type: sast.OperationType, inputs: list[sast.Identifier],
+                         outputs: list[sast.Identifier]):
         """
         Helper function that updates the type information based on inferred types.
         """
-        for name, src in zip(inputs, typeinfo.source):
+        for name, src in zip(inputs, operation_type.source):
             if name.name in self.field_domains and isinstance(src, sast.FieldType) and src.domain.is_unknown():
                 src.domain = copy.deepcopy(self.field_domains[name.name])
 
-        if typeinfo.destination:
-            for name, dst in zip(outputs, typeinfo.destination):
+        if operation_type.destination:
+            for name, dst in zip(outputs, operation_type.destination):
                 if name.name in self.field_domains and isinstance(dst, sast.FieldType) and dst.domain.is_unknown():
                     dst.domain = copy.deepcopy(self.field_domains[name.name])
 
     def visit_MaterializeOp(self, node: sast.MaterializeOp):
-        self._modify_typeinfo(node.typeinfo, [node.value], [node.result])
+        self._modify_typeinfo(node.operation_type, [node.value], [node.result])
         return self.generic_visit(node)
 
     def visit_StatementBlock(self, node: sast.StatementBlock):
-        self._modify_typeinfo(node.typeinfo, node.inputs, node.outputs)
+        self._modify_typeinfo(node.operation_type, node.inputs, node.outputs)
         return self.generic_visit(node)
 
     def visit_IfBlock(self, node: sast.IfBlock):
-        self._modify_typeinfo(node.typeinfo, [node.condition], node.outputs)
+        self._modify_typeinfo(node.operation_type, [node.condition], node.outputs)
         return self.generic_visit(node)
 
     def visit_ComputationBlock(self, node: sast.ComputationBlock):
-        self._modify_typeinfo(node.typeinfo, node.inputs, node.outputs)
+        self._modify_typeinfo(node.operation_type, node.inputs, node.outputs)
         return self.generic_visit(node)
 
     def visit_Program(self, node: sast.Program):
-        self._modify_typeinfo(node.typeinfo, node.inputs, node.outputs)
+        self._modify_typeinfo(node.operation_type, node.inputs, node.outputs)
         return self.generic_visit(node)

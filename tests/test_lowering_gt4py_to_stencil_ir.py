@@ -154,11 +154,11 @@ class TestStencilIRParser(unittest.TestCase):
         # Lower without a domain
         irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program)
         assert irprogram.inputs[1].name == 'in_field'
-        assert irprogram.typeinfo.source[1].domain == sast.Cartesian(None, None, None)
+        assert irprogram.operation_type.source[1].domain == sast.Cartesian(None, None, None)
 
         # Lower with a domain
         irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program, domain=(128, 128, 80))
-        assert irprogram.typeinfo.source[1].domain == sast.Cartesian(132, 132, 80)
+        assert irprogram.operation_type.source[1].domain == sast.Cartesian(132, 132, 80)
 
     def test_domain_inference_vertical(self):
         # Parse stencil samples file
@@ -168,16 +168,16 @@ class TestStencilIRParser(unittest.TestCase):
         # Lower without a domain
         irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program)
         assert irprogram.inputs[-1].name == 'wcon'
-        assert irprogram.typeinfo.source[-1].domain == sast.Cartesian(None, None, None)
+        assert irprogram.operation_type.source[-1].domain == sast.Cartesian(None, None, None)
         assert irprogram.outputs[0].name == 'utens_stage'
-        assert irprogram.typeinfo.destination[0].domain == sast.Cartesian(None, None, None)
+        assert irprogram.operation_type.destination[0].domain == sast.Cartesian(None, None, None)
 
         # Lower with a domain
         irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program, domain=(128, 128, 80))
         assert irprogram.inputs[-1].name == 'wcon'
-        assert irprogram.typeinfo.source[-1].domain == sast.Cartesian(129, 128, 80)
+        assert irprogram.operation_type.source[-1].domain == sast.Cartesian(129, 128, 80)
         assert irprogram.outputs[0].name == 'utens_stage'
-        assert irprogram.typeinfo.destination[0].domain == sast.Cartesian(128, 128, 80)
+        assert irprogram.operation_type.destination[0].domain == sast.Cartesian(128, 128, 80)
 
 
 # GT4Py stencils for the test

@@ -6,7 +6,8 @@ import ast
 import enum
 from dataclasses import dataclass
 
-from spatialstencil.syntax import helpers
+from spatialstencil.syntax.common.node import BaseNode
+from spatialstencil.syntax.common import visitor
 
 
 class ComputationType(enum.Enum):
@@ -27,7 +28,7 @@ class FieldType(enum.Enum):
     float = enum.auto()
 
 
-class GTree(helpers.BaseNode):
+class GTree(BaseNode):
 
     def pretty(self, indent: int = 0) -> str:
         """
@@ -120,13 +121,13 @@ class GTProgram(GTree):
                 f'{newline.join(c.pretty(indent + 1) for c in self.computations)}')
 
 
-class NodeVisitor(helpers.IRNodeVisitor[GTree]):
+class NodeVisitor(visitor.IRNodeVisitor[GTree]):
 
     def __init__(self, *args, **kwargs):
         super().__init__(GTree, *args, **kwargs)
 
 
-class NodeTransformer(helpers.IRNodeTransformer[GTree]):
+class NodeTransformer(visitor.IRNodeTransformer[GTree]):
 
     def __init__(self, *args, **kwargs):
         super().__init__(GTree, *args, **kwargs)

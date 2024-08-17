@@ -98,8 +98,8 @@ class TreeToAST(lark.Transformer):
         return irnodes.Identifier(*args)
 
     subscript = irnodes.Subscript.from_lark
-    type_info = lambda self, args: irnodes.TypeInfo(*([arg] for arg in args))
-    type_list_info = lambda self, args: irnodes.TypeInfo(*args)
+    type_info = lambda self, args: irnodes.OperationType(*([arg] for arg in args))
+    type_list_info = lambda self, args: irnodes.OperationType(*args)
 
     # Operators
     def unary_op(self, args, meta=None):
@@ -140,7 +140,7 @@ class TreeToAST(lark.Transformer):
 
     # Operations
     def return_expr(self, args, meta=None):
-        if isinstance(args[-1], irnodes.TypeInfo):
+        if isinstance(args[-1], irnodes.OperationType):
             return irnodes.ReturnOp(args[:-1], args[-1])
         return irnodes.ReturnOp(args)
 
@@ -156,11 +156,11 @@ class TreeToAST(lark.Transformer):
         results = args[0]
         test = args[1]
         offset = 2
-        if isinstance(args[offset], irnodes.TypeInfo):
-            typeinfo = args[offset]
+        if isinstance(args[offset], irnodes.OperationType):
+            operation_type = args[offset]
             offset += 1
         else:
-            typeinfo = irnodes.TypeInfo([irnodes.FieldType.empty()], [irnodes.FieldType.empty()])
+            operation_type = irnodes.OperationType([irnodes.FieldType.empty()], [irnodes.FieldType.empty()])
 
         body = args[offset]
         offset += 1
@@ -174,20 +174,20 @@ class TreeToAST(lark.Transformer):
             elif isinstance(arg, lark.Tree) and arg.data == 'else_block':
                 orelse = arg.children[0]
 
-        return irnodes.IfBlock(results, test, typeinfo, body, else_ifs, orelse)
+        return irnodes.IfBlock(results, test, operation_type, body, else_ifs, orelse)
 
     def statement(self, args, meta=None):
         if len(args) == 5:
-            results, inputs, attributes, typeinfo, body = args
+            results, inputs, attributes, operation_type, body = args
         elif len(args) == 4:
-            results, inputs, typeinfo, body = args
+            results, inputs, operation_type, body = args
             attributes = {}
         else:
             raise ValueError(f'Unexpected number of arguments to spst.statement: {len(args)}')
-        return irnodes.StatementBlock(results, inputs, attributes, typeinfo, body)
+        return irnodes.StatementBlock(results, inputs, attributes, operation_type, body)
 
     def computation(self, args, meta=None):
-        results, inputs, attributes, typeinfo, body = args
+        results, inputs, attributes, operation_type, body = args
         schedule = interval = None
         for k, v in attributes.items():
             if k == 'schedule':
@@ -200,7 +200,7 @@ class TreeToAST(lark.Transformer):
             raise ValueError('spst.computation is missing the "schedule" attribute')
         if interval is None:
             raise ValueError('spst.computation is missing the "interval" attribute')
-        return irnodes.ComputationBlock(results, inputs, schedule, interval, typeinfo, body)
+        return irnodes.ComputationBlock(results, inputs, schedule, interval, operation_type, body)
 
     def program(self, args, meta=None):
         outputs = args[0]
@@ -210,8 +210,8 @@ class TreeToAST(lark.Transformer):
             offset = 2
         else:
             name = None
-        inputs, attributes, typeinfo, computations = args[offset:]
-        return irnodes.Program(outputs, name, inputs, attributes, typeinfo, computations)
+        inputs, attributes, operation_type, computations = args[offset:]
+        return irnodes.Program(outputs, name, inputs, attributes, operation_type, computations)
 
 
 # Helper functions

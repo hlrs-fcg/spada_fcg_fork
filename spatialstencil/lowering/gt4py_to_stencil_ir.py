@@ -1,7 +1,7 @@
 import ast
 from collections import defaultdict
 from spatialstencil.syntax.gt4py import astnodes as gtast
-from spatialstencil.syntax import helpers
+from spatialstencil.syntax.common.find_and_replace import PyASTFindReplace
 from spatialstencil.syntax.stencil_ir import irnodes as sast, type_inference
 
 
@@ -64,7 +64,7 @@ def field_versioning(program: gtast.GTProgram):
                     continue
 
                 # First, replace elements in body (to avoid self-reference clashes)
-                replacer = helpers.ASTFindReplace(replacements)
+                replacer = PyASTFindReplace(replacements)
                 stmt.body = replacer.visit(stmt.body)
                 used_identifiers.update(replacer.encountered_names)
 
@@ -112,7 +112,7 @@ def constant_propagation(program: gtast.GTProgram):
                     continue
 
                 # Find constants within expression and replace
-                stmt.body = helpers.ASTFindReplace(constants).visit(stmt.body)
+                stmt.body = PyASTFindReplace(constants).visit(stmt.body)
 
                 # If this statement is now a constant, make it so
                 try:
@@ -154,7 +154,7 @@ class MaterializeIntermediates(sast.NodeTransformer):
         self.do_not_materialize |= set(n.name for n in node.outputs)
 
         # Collect all used identifier names (to assign a new name)
-        for subnode in helpers.walk(node):
+        for subnode in node.walk():
             if isinstance(subnode, sast.Identifier):
                 self.allnames.add(subnode.name)
 
@@ -186,15 +186,15 @@ class MaterializeIntermediates(sast.NodeTransformer):
             results: list[sast.Identifier] | None = None
             stmt: sast.StatementBlock | sast.IfBlock
             results = stmt.outputs
-            result_typeinfo = stmt.typeinfo.destination
+            result_typeinfo = stmt.operation_type.destination
 
             # Append materialize after statement
             if results:
                 if result_typeinfo:
                     # Do not materialize if horizontal offsets (i.e., [0:1]) are all zero
                     results = [
-                        r for r, typeinfo in zip(results, result_typeinfo)
-                        if any(v != 0 for e in typeinfo.extent.extents for v in e.values[0:1])
+                        r for r, operation_type in zip(results, result_typeinfo)
+                        if any(v != 0 for e in operation_type.extent.extents for v in e.values[0:1])
                     ]
 
                 results = [r for r in results if r.name not in self.do_not_materialize]
@@ -207,12 +207,13 @@ class MaterializeIntermediates(sast.NodeTransformer):
                         sast.MaterializeOp(
                             result=materialized,
                             value=result,
-                            typeinfo=sast.TypeInfo([sast.FieldType.empty()], [sast.FieldType.empty()])))
+                            operation_type=sast.OperationType([sast.FieldType.empty()], [sast.FieldType.empty()])))
 
         for i, out in enumerate(node.outputs):
             node.outputs[i] = self.visit(out)
 
-        return sast.ComputationBlock(node.outputs, node.inputs, node.schedule, node.interval, node.typeinfo, new_body)
+        return sast.ComputationBlock(node.outputs, node.inputs, node.schedule, node.interval, node.operation_type,
+                                     new_body)
 
 
 def convert_gt4py_ast_to_stencil_ast(program: gtast.GTProgram, default_float_dtype: sast.ScalarType,
@@ -243,16 +244,16 @@ def convert_gt4py_ast_to_stencil_ast(program: gtast.GTProgram, default_float_dty
                 sast.ComputationBlock(
                     coutputs, cinputs, sast.ComputationType[computation.computation_type.name],
                     (xintvl, yintvl, zintvl),
-                    sast.TypeInfo([sast.FieldType.empty() for _ in cinputs],
-                                  [sast.FieldType.empty() for _ in coutputs]), cbody))
+                    sast.OperationType([sast.FieldType.empty() for _ in cinputs],
+                                       [sast.FieldType.empty() for _ in coutputs]), cbody))
 
     return sast.Program(
         outputs=[sast.Identifier(field) for field in sorted(output_fields)],
         name=program.name,
         inputs=[sast.Identifier(field) for field in sorted(input_fields)],
         attributes={},
-        typeinfo=sast.TypeInfo([field_type_by_name[field] for field in sorted(input_fields)],
-                               [field_type_by_name[field] for field in sorted(output_fields)]),
+        operation_type=sast.OperationType([field_type_by_name[field] for field in sorted(input_fields)],
+                                          [field_type_by_name[field] for field in sorted(output_fields)]),
         computations=computations,
     )
 
@@ -341,7 +342,8 @@ def _convert_interval_to_computation_body(
                     outputs=[_parse_field(stmt.target)],
                     inputs=stmt_inputs,
                     attributes=[],
-                    typeinfo=sast.TypeInfo([sast.FieldType.empty() for _ in stmt_inputs], [sast.FieldType.empty()]),
+                    operation_type=sast.OperationType([sast.FieldType.empty() for _ in stmt_inputs],
+                                                      [sast.FieldType.empty()]),
                     body=[
                         sast.ReturnOp([sast.Expression(OperationConverter().visit(stmt.body))]),
                     ]))
@@ -382,16 +384,16 @@ def _convert_interval_to_computation_body(
             # Add overall return values to each branch
             stmt_body.append(
                 sast.ReturnOp([sast.Expression(so) for so in sorted(all_stmt_outputs)],
-                              sast.TypeInfo([sast.FieldType.empty() for _ in outputs])))
+                              sast.OperationType([sast.FieldType.empty() for _ in outputs])))
             if else_ifs:
                 for _, elif_body in else_ifs:
                     elif_body.append(
                         sast.ReturnOp([sast.Expression(so) for so in sorted(all_stmt_outputs)],
-                                      sast.TypeInfo([sast.FieldType.empty() for _ in outputs])))
+                                      sast.OperationType([sast.FieldType.empty() for _ in outputs])))
             if orelse:
                 orelse.append(
                     sast.ReturnOp([sast.Expression(so) for so in sorted(all_stmt_outputs)],
-                                  sast.TypeInfo([sast.FieldType.empty() for _ in outputs])))
+                                  sast.OperationType([sast.FieldType.empty() for _ in outputs])))
 
             # Create IR node
             body.append(
@@ -401,8 +403,8 @@ def _convert_interval_to_computation_body(
                     body=stmt_body,
                     else_ifs=else_ifs,
                     orelse=orelse,
-                    typeinfo=sast.TypeInfo([sast.FieldType.empty()],
-                                           [sast.FieldType.empty() for _ in all_stmt_outputs]),
+                    operation_type=sast.OperationType([sast.FieldType.empty()],
+                                                      [sast.FieldType.empty() for _ in all_stmt_outputs]),
                 ))
         else:
             raise TypeError(f'Unsupported statement type "{type(stmt)}"')

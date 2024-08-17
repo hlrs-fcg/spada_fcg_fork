@@ -1,6 +1,7 @@
 import unittest
 from dataclasses import dataclass
-from spatialstencil.syntax.helpers import BaseNode, IRNodeTransformer, IRNodeVisitor
+from spatialstencil.syntax.common.node import BaseNode
+from spatialstencil.syntax.common.visitor import IRNodeTransformer, IRNodeVisitor
 
 
 @dataclass
@@ -24,6 +25,7 @@ class MixedSequenceNode(BaseNode):
 
 # Create a IRNodeVisitor that visits all nodes and adds the value of all integer fields
 class SumVisitor(IRNodeVisitor):
+
     def __init__(self):
         super().__init__(BaseNode)
         self.sum = 0
@@ -40,6 +42,7 @@ class SumVisitor(IRNodeVisitor):
 
 # Create a transformer that adds one to every integer field
 class IncrementVisitor(IRNodeTransformer):
+
     def visit_SimpleNode(self, node: SimpleNode):
         node.a += 1
         node.f += 1
@@ -52,11 +55,16 @@ class IncrementVisitor(IRNodeTransformer):
 
 
 class TestIRNode(unittest.TestCase):
+
     def test_ir_node_transformer_identity(self):
         # Create a sequence node
-        node = SequenceNode(1, (SimpleNode(1, 1), SimpleNode(2, 6)), [SimpleNode(3, 6), SimpleNode(4, 8)], [(SimpleNode(1, 1), SimpleNode(2, 6)), (SimpleNode(3, 6), SimpleNode(4, 8))])
+        node = SequenceNode(1, (SimpleNode(1, 1), SimpleNode(2, 6)),
+                            [SimpleNode(3, 6), SimpleNode(4, 8)], [(SimpleNode(1, 1), SimpleNode(2, 6)),
+                                                                   (SimpleNode(3, 6), SimpleNode(4, 8))])
         # Create a copy
-        cp_node = SequenceNode(1, (SimpleNode(1, 1), SimpleNode(2, 6)), [SimpleNode(3, 6), SimpleNode(4, 8)], [(SimpleNode(1, 1), SimpleNode(2, 6)), (SimpleNode(3, 6), SimpleNode(4, 8))])
+        cp_node = SequenceNode(1, (SimpleNode(1, 1), SimpleNode(2, 6)),
+                               [SimpleNode(3, 6), SimpleNode(4, 8)], [(SimpleNode(1, 1), SimpleNode(2, 6)),
+                                                                      (SimpleNode(3, 6), SimpleNode(4, 8))])
         # Create a node transformer
         transformer = IRNodeTransformer()
         # Transform the node
@@ -86,8 +94,12 @@ class TestIRNode(unittest.TestCase):
         self.assertEqual(node, golden)
 
     def test_ir_node_transformer_increment(self):
-        node = SequenceNode(1, (SimpleNode(1, 1), SimpleNode(2, 6)), [SimpleNode(3, 6), SimpleNode(4, 8)], [(SimpleNode(1, 1), SimpleNode(2, 6)), (SimpleNode(3, 6), SimpleNode(0, 0))])
-        golden = SequenceNode(2, (SimpleNode(2, 2), SimpleNode(3, 7)), [SimpleNode(4, 7), SimpleNode(5, 9)], [(SimpleNode(2, 2), SimpleNode(3, 7)), (SimpleNode(4, 7), SimpleNode(1, 1))])
+        node = SequenceNode(1, (SimpleNode(1, 1), SimpleNode(2, 6)),
+                            [SimpleNode(3, 6), SimpleNode(4, 8)], [(SimpleNode(1, 1), SimpleNode(2, 6)),
+                                                                   (SimpleNode(3, 6), SimpleNode(0, 0))])
+        golden = SequenceNode(2, (SimpleNode(2, 2), SimpleNode(3, 7)),
+                              [SimpleNode(4, 7), SimpleNode(5, 9)], [(SimpleNode(2, 2), SimpleNode(3, 7)),
+                                                                     (SimpleNode(4, 7), SimpleNode(1, 1))])
 
         transformer = IncrementVisitor()
         transformer.visit(node)
@@ -96,7 +108,9 @@ class TestIRNode(unittest.TestCase):
 
     def test_ir_node_visitor(self):
         # Create a sequence node
-        node = SequenceNode(1, (SimpleNode(1, 1), SimpleNode(2, 6)), [SimpleNode(3, 6), SimpleNode(4, 8)], [(SimpleNode(0, 1), SimpleNode(1, 0)), (SimpleNode(1, 1), SimpleNode(2, 0))])
+        node = SequenceNode(1, (SimpleNode(1, 1), SimpleNode(2, 6)),
+                            [SimpleNode(3, 6), SimpleNode(4, 8)], [(SimpleNode(0, 1), SimpleNode(1, 0)),
+                                                                   (SimpleNode(1, 1), SimpleNode(2, 0))])
         # Create a visitor
         visitor = SumVisitor()
         # Visit the node
