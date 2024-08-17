@@ -29,15 +29,32 @@ class BaseNode:
     """
 
     @classmethod
-    def validate_schema(cls) -> None:
+    def validate_schema(cls, visited: set[type['BaseNode']] = None) -> None:
         """
         Validates that the node type and all its child node types abide by
         the rules defined on ``BaseNode``.
 
-        Raises assertions on failure.
+        Raises exceptions on failure.
         """
+        visited = visited or set()
+        if cls in visited:  # Skip type cycles
+            return
+        visited.add(cls)
+
         for field_name, field in cls.__dataclass_fields__.items():
-            pass
+            if issubclass(field.type, BaseNode):
+                # Traverse
+                field.type.validate_schema(visited)
+            elif hasattr(field.type, '__origin__') and issubclass(field.type.__origin__, (tuple, list)):  # Sequence
+                # Check that contents must be either a terminator or a node
+                for subtype in field.type.__args__:
+                    if issubclass(subtype, BaseNode):
+                        subtype.validate_schema(visited)
+                    if not issubclass(subtype, (BaseNode, int, float, str, type(None))):
+                        raise TypeError(f'Unsupported sequence content "{subtype}" for field {field_name} of {cls}')
+            else:
+                if not issubclass(field.type, (int, float, str, type(None))):
+                    raise TypeError(f'Unsupported terminator type "{field.type}" for field {field_name} of {cls}')
 
     def validate(self) -> None:
         """

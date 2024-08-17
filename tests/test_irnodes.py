@@ -11,16 +11,37 @@ class SimpleNode(BaseNode):
 
 
 @dataclass
+class TupleNode(BaseNode):
+    tup: tuple[BaseNode, BaseNode]
+
+
+@dataclass
 class SequenceNode(BaseNode):
     f: int
     tup: tuple[BaseNode, BaseNode]
     lst: list[BaseNode]
-    lst_of_tuples: list[tuple[BaseNode, BaseNode]]
+    lst_of_tuples: list[TupleNode]
+
+
+@dataclass
+class MixedEntry(BaseNode):
+    key: int
+    value: BaseNode
 
 
 @dataclass
 class MixedSequenceNode(BaseNode):
+    mixed_seq: list[MixedEntry]
+
+
+@dataclass
+class IncorrectMixedSequenceNode(BaseNode):
     mixed_seq: list[tuple[int, BaseNode]]
+
+
+@dataclass
+class SomethingThatContainsABadNode(BaseNode):
+    value: IncorrectMixedSequenceNode
 
 
 # Create a IRNodeVisitor that visits all nodes and adds the value of all integer fields
@@ -56,6 +77,17 @@ class IncrementVisitor(IRNodeTransformer):
 
 class TestIRNode(unittest.TestCase):
 
+    def test_validate_schema(self):
+        SimpleNode.validate_schema()
+        SequenceNode.validate_schema()
+        MixedSequenceNode.validate_schema()
+
+        with self.assertRaises(TypeError):
+            IncorrectMixedSequenceNode.validate_schema()
+
+        with self.assertRaises(TypeError):
+            SomethingThatContainsABadNode.validate_schema()
+
     def test_ir_node_transformer_identity(self):
         # Create a sequence node
         node = SequenceNode(1, (SimpleNode(1, 1), SimpleNode(2, 6)),
@@ -74,9 +106,9 @@ class TestIRNode(unittest.TestCase):
 
     def test_mixed_sequence_node_transformer_identity(self):
         # Create a sequence node
-        node = MixedSequenceNode([(1, SimpleNode(1, 1)), (2, SimpleNode(2, 6))])
+        node = MixedSequenceNode([MixedEntry(1, SimpleNode(1, 1)), MixedEntry(2, SimpleNode(2, 6))])
         # Create a copy
-        cp_node = MixedSequenceNode([(1, SimpleNode(1, 1)), (2, SimpleNode(2, 6))])
+        cp_node = MixedSequenceNode([MixedEntry(1, SimpleNode(1, 1)), MixedEntry(2, SimpleNode(2, 6))])
         # Create a node transformer
         transformer = IRNodeTransformer()
         # Transform the node
@@ -85,8 +117,8 @@ class TestIRNode(unittest.TestCase):
         self.assertEqual(node, cp_node)
 
     def test_mixed_sequence_node_increment(self):
-        node = MixedSequenceNode([(1, SimpleNode(1, 1)), (2, SimpleNode(2, 6))])
-        golden = MixedSequenceNode([(1, SimpleNode(2, 2)), (2, SimpleNode(3, 7))])
+        node = MixedSequenceNode([MixedEntry(1, SimpleNode(1, 1)), MixedEntry(2, SimpleNode(2, 6))])
+        golden = MixedSequenceNode([MixedEntry(1, SimpleNode(2, 2)), MixedEntry(2, SimpleNode(3, 7))])
 
         transformer = IncrementVisitor()
         transformer.visit(node)
