@@ -127,8 +127,8 @@ class OffsetAndInterval(Node):
     """
     Dimension tuple containing an offset and an interval of an ``Extent``.
     """
-    values: tuple[int | None]
-    interval: tuple[int | None] = field(default_factory=lambda: (0, None, 0, None, 0, None))
+    values: list[int | None]
+    interval: list[int | None] = field(default_factory=lambda: [0, None, 0, None, 0, None])
 
     def validate(self) -> None:
         # For every dimension, an interval has a start and end point
@@ -312,7 +312,7 @@ class Subscript(Node):
     A field subscript (of the form %x[0, 1, 0])
     """
     value: Identifier
-    subscript: tuple[int, int, int]
+    subscript: list[int]
 
     def as_ir(self, indent: int = 0) -> str:
         return f'{self.value.as_ir()}[{", ".join(str(s) for s in self.subscript)}]'
@@ -361,7 +361,7 @@ class Block:
     """
     Interface for a block of operations.
     """
-    pass
+    body: list[Node]
 
 
 @dataclass
@@ -408,13 +408,22 @@ class AssignOp(Node, Operation):
 
 
 @dataclass
+class Attribute(Node):
+    name: str
+    attr: Node
+
+    def as_ir(self, indent: int = 0) -> str:
+        return f'{self.name} = {self.attr.as_ir()}'
+
+
+@dataclass
 class StatementBlock(Node, Operation, Block):
     """
     A single statement in a Stencil IR computation.
     """
     outputs: list[Identifier]
     inputs: list[Identifier]
-    attributes: list[tuple[str, Node]]
+    attributes: list[Attribute]
     operation_type: OperationType
     body: list[AssignOp | ReturnOp]
 
@@ -435,6 +444,27 @@ class StatementBlock(Node, Operation, Block):
         return result
 
 
+class ElseIfBlock(Node, Block):
+    """
+    A single "else if" block. If condition is None, represents an "else" block
+    """
+    condition: Identifier | None
+    body: list[StatementBlock | ReturnOp]
+
+    def as_ir(self, indent: int = 0) -> str:
+        indent_str = '  ' * indent
+        if self.condition is None:
+            result = ' else '
+        else:
+            result += f' elif ({self.condition.as_ir()}) '
+
+        result += '{\n'
+        result += '\n'.join(stmt.as_ir(indent + 1) for stmt in self.body)
+        result += '\n' + indent_str + '}'
+
+        return result
+
+
 @dataclass
 class IfBlock(Node, Operation, Block):
     """
@@ -444,23 +474,19 @@ class IfBlock(Node, Operation, Block):
     condition: Identifier
     operation_type: OperationType
     body: list[StatementBlock | ReturnOp]
-    else_ifs: list[tuple[Identifier, list[StatementBlock | ReturnOp]]] | None  # List of (condition, body)
-    orelse: list[StatementBlock | ReturnOp] | None
+    else_ifs: list[ElseIfBlock]
 
     def validate(self) -> None:
         assert isinstance(self.outputs, list)
         assert all(isinstance(r, Identifier) for r in self.outputs)
         assert isinstance(self.condition, Identifier)
-        if self.else_ifs:
-            assert isinstance(self.else_ifs, list)
-            assert all(isinstance(econd, Identifier) for econd, _ in self.else_ifs)
+        assert isinstance(self.else_ifs, list)
+        assert all(isinstance(econd, Identifier) or econd is None for econd, _ in self.else_ifs)
 
         # Check terminators
         assert isinstance(self.body[-1], ReturnOp)
         if self.else_ifs:
             assert all(isinstance(estmts[-1], ReturnOp) for _, estmts in self.else_ifs)
-        if self.orelse:
-            assert isinstance(self.orelse[-1], ReturnOp)
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
@@ -469,16 +495,8 @@ class IfBlock(Node, Operation, Block):
         result += '{\n'
         result += '\n'.join(stmt.as_ir(indent + 1) for stmt in self.body)
         result += '\n' + indent_str + '}'
-        if self.else_ifs:
-            for elif_cond, elif_body in self.else_ifs:
-                result += f' elif ({elif_cond.as_ir()}) '
-                result += '{\n'
-                result += '\n'.join(stmt.as_ir(indent + 1) for stmt in elif_body)
-                result += '\n' + indent_str + '}'
-        if self.orelse:
-            result += ' else {\n'
-            result += '\n'.join(stmt.as_ir(indent + 1) for stmt in self.orelse)
-            result += '\n' + indent_str + '}'
+        for else_if in self.else_ifs:
+            result += else_if.as_ir(indent)
         return result
 
 
@@ -490,7 +508,7 @@ class ComputationBlock(Node, Operation, Block):
     outputs: list[Identifier]
     inputs: list[Identifier]
     schedule: ComputationType
-    interval: tuple[Interval, Interval, Interval]
+    interval: list[Interval]
     operation_type: OperationType
     body: list[StatementBlock | IfBlock | MaterializeOp]
 
@@ -522,7 +540,7 @@ class Program(Node, Operation, Block):
     outputs: list[Identifier]
     name: str | None
     inputs: list[Identifier]
-    attributes: list[tuple[str, Node]]
+    attributes: list[Attribute]
     operation_type: OperationType
     computations: list[ComputationBlock]
 

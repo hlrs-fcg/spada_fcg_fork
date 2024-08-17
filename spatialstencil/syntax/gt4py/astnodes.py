@@ -53,25 +53,35 @@ class GTComputeStatement(GTStatement):
 
 
 @dataclass
+class GTElseIfBlock(GTree):
+    condition: ast.Expr | ast.Name | None
+    body: list[GTStatement]
+
+    def pretty(self, indent: int = 0) -> str:
+        indent_str = indent * '  '
+        if self.condition is None:
+            result = [f'{indent_str}else:']
+        else:
+            result = [f'{indent_str}elif {ast.unparse(self.condition)}:']
+
+        result += [stmt.pretty(indent + 1) for stmt in self.body]
+
+        return '\n'.join(result)
+
+
+@dataclass
 class GTIfStatement(GTStatement):
     condition: ast.Expr | ast.Name
     body: list[GTStatement]
-    else_ifs: list[tuple[ast.Expr | ast.Name, list[GTStatement]]] | None  # List of (condition, body)
-    orelse: list[GTStatement] | None
+    else_ifs: list[GTElseIfBlock]
 
     def pretty(self, indent: int = 0) -> str:
         indent_str = indent * '  '
         result = [f'{indent_str}if {ast.unparse(self.condition)}:']
         result += [stmt.pretty(indent + 1) for stmt in self.body]
 
-        if self.else_ifs:
-            for elif_cond, elif_body in self.else_ifs:
-                result += [f'{indent_str}elif {ast.unparse(elif_cond)}:']
-                result += [stmt.pretty(indent + 1) for stmt in elif_body]
-
-        if self.orelse:
-            result += [f'{indent_str}else:']
-            result += [stmt.pretty(indent + 1) for stmt in self.orelse]
+        for elif_stmt in self.else_ifs:
+            result.append(elif_stmt.pretty(indent))
 
         return '\n'.join(result)
 
