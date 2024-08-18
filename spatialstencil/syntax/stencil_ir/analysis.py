@@ -3,6 +3,7 @@ Analysis passes on the Stencil IR.
 """
 from collections import defaultdict
 from spatialstencil.syntax.stencil_ir import irnodes as sast
+from typing import Literal
 
 
 class ExtentCollector(sast.NodeVisitor):
@@ -18,7 +19,7 @@ class ExtentCollector(sast.NodeVisitor):
         self.interval: tuple[sast.Interval, sast.Interval, sast.Interval] = self._DEFAULT_INTERVAL
 
     @property
-    def flat_interval(self) -> tuple[int | None]:
+    def flat_interval(self) -> tuple[int | Literal["?"] | None]:
         return tuple(item for dim in self.interval for item in (dim.start, dim.end))
 
     def visit_ComputationBlock(self, node: sast.ComputationBlock):
