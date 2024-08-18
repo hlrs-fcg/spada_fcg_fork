@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 
-from spatialstencil.syntax.stencil_ir import type_inference, parser
+from spatialstencil.syntax.stencil_ir import type_inference, parser, canonicalization
 from spatialstencil.syntax.stencil_ir.irnodes import ScalarType, Program
 
 
@@ -85,6 +85,9 @@ class TestTypeInference(unittest.TestCase):
         # Infer extents for the program without extents
         type_inference.infer_field_extents(program)
 
+        # Canonicalize program with extents
+        program_w_extents = canonicalization.canonicalize(program_w_extents)
+
         # Check that the extents are the same
         # Note that this also checks the canonicalization of extents
         self.assertEqual(program.as_ir(), program_w_extents.as_ir())
@@ -101,6 +104,9 @@ class TestTypeInference(unittest.TestCase):
 
         # Infer extents for the program without extents
         type_inference.infer_field_extents(program)
+
+        # Canonicalize program with extents
+        program_w_extents = canonicalization.canonicalize(program_w_extents)
 
         # Check that the extents are the same
         # Note that this also checks the canonicalization of extents

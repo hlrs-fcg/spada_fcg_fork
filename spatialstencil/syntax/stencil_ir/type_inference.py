@@ -451,6 +451,23 @@ def _unique_id_list(identifiers: set[sast.Identifier], latest_version: bool) -> 
     return [sast.Identifier(name, versions[name]) for name in sorted(names)]
 
 
+def sort_extents(extent_set: dict[tuple[int | None], set[tuple[int | None]]]):
+    """
+    Yields a flat list of sorted extents as it should appear in a canonical Stencil IR.
+    Substitutes None entries for infinity.
+    """
+    # None means infinity in the dictionary keys
+    newdict = {tuple(math.inf if kk is None else kk for kk in k): v for k, v in extent_set.items()}
+    for k, tuples in sorted(newdict.items()):
+        oldkey = tuple(None if kk == math.inf else kk for kk in k)  # Recover old values
+
+        # None means "?" in the dictionary values, which must be last as well
+        newtuples = [tuple(math.inf if t is None else t for t in tup) for tup in tuples]
+        for tup in sorted(newtuples):
+            oldtup = tuple(None if kk == math.inf else kk for kk in tup)
+            yield oldkey, oldtup
+
+
 class ExtentAssigner(sast.NodeTransformer):
     """
     Sets extents based on given dictionary.
@@ -459,22 +476,6 @@ class ExtentAssigner(sast.NodeTransformer):
     def __init__(self, field_extents: dict[str, dict[tuple[int | None], set[tuple[int | None]]]]):
         super().__init__()
         self.field_extents = field_extents
-
-    def _sort_extents(self, extent_set: dict[tuple[int | None], set[tuple[int | None]]]):
-        """
-        Yields a flat list of sorted extents as it should appear in a canonical Stencil IR.
-        Substitutes None entries for infinity.
-        """
-        # None means infinity in the dictionary keys
-        newdict = {tuple(math.inf if kk is None else kk for kk in k): v for k, v in extent_set.items()}
-        for k, tuples in sorted(newdict.items()):
-            oldkey = tuple(None if kk == math.inf else kk for kk in k)  # Recover old values
-
-            # None means "?" in the dictionary values, which must be last as well
-            newtuples = [tuple(math.inf if t is None else t for t in tup) for tup in tuples]
-            for tup in sorted(newtuples):
-                oldtup = tuple(None if kk == math.inf else kk for kk in tup)
-                yield oldkey, oldtup
 
     def _modify_typeinfo(self, operation_type: sast.OperationType, inputs: list[sast.Identifier],
                          outputs: list[sast.Identifier]):
@@ -486,7 +487,7 @@ class ExtentAssigner(sast.NodeTransformer):
                 extent_set = self.field_extents[name.name]
                 if isinstance(src, sast.FieldType):
                     src.extent.extents = [
-                        sast.OffsetAndInterval(ex, interval) for interval, ex in self._sort_extents(extent_set)
+                        sast.OffsetAndInterval(ex, interval) for interval, ex in sort_extents(extent_set)
                     ]
 
         if operation_type.destination:
@@ -495,7 +496,7 @@ class ExtentAssigner(sast.NodeTransformer):
                     extent_set = self.field_extents[name.name]
                     if isinstance(dst, sast.FieldType):
                         dst.extent.extents = [
-                            sast.OffsetAndInterval(ex, interval) for interval, ex in self._sort_extents(extent_set)
+                            sast.OffsetAndInterval(ex, interval) for interval, ex in sort_extents(extent_set)
                         ]
 
     def visit_MaterializeOp(self, node: sast.MaterializeOp):
