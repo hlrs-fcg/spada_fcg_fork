@@ -1,0 +1,97 @@
+"""
+Provides basic AST/IR utilities for traversal and transformation.
+
+Walking and transformation are based on Python's ``ast`` module, but introduce additional
+functionality such as IR language testing and dataclass support.
+"""
+from typing import Generic, TypeVar, Sequence
+from spatialstencil.syntax.common.basenode import BaseNode
+
+# Create a generic type T that extends the base node type
+BaseNodeT = TypeVar('BaseNodeT', bound=BaseNode)
+
+
+class IRNodeVisitor(Generic[BaseNodeT]):
+    """
+    A node visitor base class that walks the AST/IR node tree and visits children
+    using named functions. See ``ast.NodeVisitor`` for more information.
+
+    The class also performs optional language validation checks by passing in the base IR node class.
+    """
+
+    def __init__(self, ir_node_class: type[BaseNodeT] = BaseNode):
+        self.base_node = ir_node_class
+
+    def _validate_node_type(self, node: BaseNodeT):
+        if self.base_node is not BaseNode and isinstance(node, BaseNode) and not isinstance(node, self.base_node):
+            raise TypeError(f'Node {node} does not match the IR language with base node {self.base_node}')
+
+    def visit(self, node: BaseNodeT):
+        """
+        Visit a node.
+        If you have a node with a ``visit_NodeName`` method
+        where ``NodeName`` is the name of the node class, it will be called.
+        """
+        self._validate_node_type(node)
+        method = 'visit_' + node.__class__.__name__
+        visitor = getattr(self, method, self.generic_visit)
+        return visitor(node)
+
+    def generic_visit(self, node: BaseNodeT):
+        """
+        Recursively visit all children of the node.
+        Called if no explicit visitor function exists for a node.
+        If a visitor function exists for a given
+        node type, it MUST call ``self.generic_visit(node)`` to visit its children.
+        """
+        if isinstance(node, BaseNode):
+            for _, value in node.iter_fields():
+                if isinstance(value, (list, tuple)):
+                    self.generic_visit_sequence(value)
+                elif isinstance(value, BaseNode):
+                    self.visit(value)
+
+    def generic_visit_sequence(self, sequence: Sequence[BaseNodeT]):
+        for item in sequence:
+            if isinstance(item, (list, tuple)):
+                self.generic_visit_sequence(item)
+            elif isinstance(item, BaseNode):
+                self.visit(item)
+
+
+class IRNodeTransformer(IRNodeVisitor[BaseNodeT]):
+    """
+    A ``NodeVisitor`` subclass that walks the AST/IR and allows modification of nodes.
+    See ``ast.NodeTransformer`` for more information.
+    """
+
+    def generic_visit(self, node: BaseNodeT):
+        for field, old_value in node.iter_fields():
+            if isinstance(old_value, (list, tuple)):
+                new_values = self.generic_visit_sequence(old_value)
+                setattr(node, field, new_values)
+            elif isinstance(old_value, BaseNode):
+                new_node = self.visit(old_value)
+                if new_node is None:
+                    delattr(node, field)
+                else:
+                    setattr(node, field, new_node)
+        return node
+
+    def generic_visit_sequence(self, sequence: Sequence[BaseNodeT]):
+        new_values = []
+        for value in sequence:
+            if isinstance(value, BaseNode):
+                value = self.visit(value)
+                if value is None:
+                    continue
+                elif isinstance(value, (list, tuple)):
+                    new_values.extend(value)
+                    continue
+            elif isinstance(value, (list, tuple)):
+                value = self.generic_visit_sequence(value)
+            new_values.append(value)
+
+        if isinstance(sequence, tuple):
+            return tuple(new_values)
+        return new_values

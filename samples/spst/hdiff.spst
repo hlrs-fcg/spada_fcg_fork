@@ -3,12 +3,12 @@
  * See https://github.com/GridTools/gt4py/blob/1caca893034a18d5df1522ed251486659f846589/tests/test_integration/stencil_definitions.py#L194
  **/
 
-%out = stencil.program(%in, %coeff) {} : 
+%out = spst.program @hdiff(%in, %coeff) {} : 
        field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
        field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
     -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
    // This stencil contains one parallel computation block
-   %out = stencil.computation(%in, %coeff) {
+   %out = spst.computation(%in, %coeff) {
      schedule = PARALLEL,
      interval = [interval<?, ?>, interval<?, ?>, interval<?, ?>]
    } : field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
@@ -16,7 +16,7 @@
     -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
         // Stencil statements
         // Laplacian
-        %lap = stencil.statement(%in) {} : 
+        %lap = spst.statement(%in) {} : 
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
                 %lap = 4.0 * %in[0, 0, 0] - (
@@ -24,31 +24,31 @@
                 )
                 return %lap
         }
-        %res_x = stencil.statement(%lap) {} : 
+        %res_x = spst.statement(%lap) {} : 
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
                 return %lap[1, 0, 0] - %lap[0, 0, 0]
         }
-        %res_y = stencil.statement(%lap) {} : 
+        %res_y = spst.statement(%lap) {} : 
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
                 return %lap[0, 1, 0] - %lap[0, 0, 0]
         }
         // Horizontal fluxes
-        %flx = stencil.statement(%in, %res_x) {} : 
+        %flx = spst.statement(%in, %res_x) {} : 
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
                 return 0 if (%res_x * (%in[1,0,0] - %in[0,0,0]) > 0) else %res_x
         }
-        %fly = stencil.statement(%in, %res_y) {} : 
+        %fly = spst.statement(%in, %res_y) {} : 
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
                 return 0 if (%res_y * (%in[0,1,0] - %in[0,0,0]) > 0) else %res_y
         }
         // Output
-        %out = stencil.statement(%in, %coeff, %flx, %fly) {} : 
+        %out = spst.statement(%in, %coeff, %flx, %fly) {} : 
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,

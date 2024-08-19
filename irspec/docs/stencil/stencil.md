@@ -14,6 +14,9 @@ type-name<type-arguments>
 ```
 The type arguments can either be literals or other types.
 
+Some types are prefixed with `spst`. If they are used within an enclosing `spst` operation,
+this prefix may be omited. Moreover, some types define a shorthand syntax that avoids the boilerplate of nested types.
+
 #### Scalar Types
 
 The scalar types include
@@ -28,7 +31,7 @@ u8, u16, u32,
 ```
 and the floating point types
 ```
-f16, f32
+f16, f32, f64,
 ```
 and boolean types
 ```
@@ -36,6 +39,15 @@ bool
 ```
 
 Note that not all targets might support all scalar types natively.
+
+Type promotion rules (e.g., when adding an `f16` to `f32`) follows the ANSI C standard, and evaluates
+the following rules in this order:
+
+  * If one type is integral and another is floating point, the result will be floating point;
+    * Example: `i32 + f16 -> f16`
+  * When one of the types is wider, the widest type will be used for the output;
+    * Example: `i16 + u16 -> u16`
+  * For the purposes of type promotion, `bool` is considered an unsigned integral 1-bit value.
 
 #### Domain types
 
@@ -62,60 +74,10 @@ The purpose of placeholders is to allow type-inference to deduce the
 domain sizes. To lower the representation, we require all dimensions
 of the iteration domain have been inferred at compile time.
 
-#### Extent types
+!!! abstract "Domain Shorthand Notation"
+    When clear from context, the shorthand notation `[x, y, z]` may be used instead.
 
-We utilize the type system to represent the access offsets of a stencil operation.
-The goal is that the type encapsulates the data layout and data movement.
-
-An extent defines the access offsets of a stencil operation.
-For every integer triple `i, j, k` there is an extent access:
-```
-stencil.access<i, j, k> ::= (i, j, k)
-```
-If an extent is unknown, it can contain the placeholder extent `?`. The purpose of placeholders is to allow
-type-inference to deduce the extent accesses. We require the extent accesses to be compile-time inferrable.
-Replacing a concrete value with a `?` creates a super-type. That is, the type `stencil.access<?, ?, ? >` is a
-super-type of all stencil accesses.
-
-A sequence of extent accesses forms the extent:
-```
-stencil.extent<extent-access* >
-```
-This sequence must *contain no duplicates*.
-
-An extent `E_sub` where every access is a subtype of an access of another extent `E_sup` is a sub-type of `E_sup`.
-As such, values of type `E_sub` may be consumed everywhere that values of type `E_sup` may be consumed.
-
-Example:
-```
-%x_sup : stencil.extent<(0, 0, 0)>
-%x_sub : stencil.extent<(0, 0, 0), (0, 0, 1)>
-// x_sub is a sub-type of x_sup
-%y : stencil.extent<(0, 0, ?)>
-// y is a super-type of both x_sup and x_sub
-```
-
-For example, in the following program, the extent of `out` is `spst.extent<(0, 0, 0)>`:
-and valid extents of inp are:
-
-```
-inp : extent<(?, ?, ?)>
-inp : extent<(?, ?, 0)>
-inp : extent< (-1, 0, 0), (0, 0, 0), (0, -1, 0), (0, 1, 0), (1, 0, 0)>
-```
-
-
-#### Field Types
-
-For every domain type D, scalar type T, and extent type E,
-there is a field type
-```
-spst.field<D, E, T>
-```
-that models a multi-dimensional array (field) over iteration domain D with extent E and scalar type T.
-
-A field type `spst.field<D, E1, T>` is a subtype of a type `spst.field<D, E2, T>` if `E1` is a subtype of `E2`.
-The domains and scalar types must match.
+    For example, `[1, ?, 3]` is equivalent to `spst.cartesian<1, ?, 3>`
 
 #### Interval Types
 
@@ -141,12 +103,92 @@ In particular, all intervals are subtypes of `spst.interval<?, ?>`.
 The purpose of this type system is to allow representation of both implicit padding and explicit padding.
 After type-inference all placeholders must have been removed.
 
+!!! abstract "Interval Shorthand Notation"
+    When clear from context, the  shorthand notation for intervals may be used.
+    It omits some of the boilerplate syntax from the nested types:
+    For any `a` and `b`, `a:b` is equivalent to `spst.interval<a, b>`
+    
+    For example, `0:None` is equivalent to `spst.interval<0, None>`
+
+#### Extent types
+
+We utilize the type system to represent the access offsets of a stencil operation.
+The goal is that the type encapsulates the data layout and data movement.
+
+An extent defines the access offsets of a stencil operation. It is defined by an offset and an interval, having
+the syntax `(i, j, k) in [is:ie, js:je, ks:ke]`, where `*s` is the beginning of the dimension (inclusive) 
+and `*e` is the end (exclusive). Negative end values mean that the end is relative to the end of the domain.
+The interval in the brackets uses the [interval types](#interval-types).
+Every offset `(i, j, k)` without an interval is implicitly defined over the entire space, that is `(i, j, k)` is equivalent to
+`(i, j, k) in [0:None, 0:None, 0:None]`.
+
+If an extent is unknown, it can contain the placeholder extent `?`. The purpose of placeholders is to allow
+type-inference to deduce the extent accesses. We require the extent accesses to be compile-time inferrable.
+Replacing a concrete value with a `?` creates a super-type. That is, the type `(?, ?, ?)` is a
+super-type of all stencil accesses.
+
+A sequence of extent accesses forms the extent:
+```
+spst.extent<extent-access* >
+```
+This sequence must *contain no duplicates*.
+
+An extent `E_sub` where every access is a subtype of an access of another extent `E_sup` is a sub-type of `E_sup`.
+As such, values of type `E_sub` may be consumed everywhere that values of type `E_sup` may be consumed.
+
+??? example "Example: Extent Subtyping"
+    ```mlir
+    %x_sup : spst.extent<(0, 0, 0)>
+    %x_sub : spst.extent<(0, 0, 0), (0, 0, 1)>
+    // x_sub is a sub-type of x_sup
+    %y : spst.extent<(0, 0, ?)>
+    // y is a super-type of both x_sup and x_sub
+    ```
+
+??? example "Example: Extent Types"
+    For example, in the following expression:
+
+    ```mlir
+    -4.0 * %in[0, 0, 0] + %in[-1, 0, 0] + %in[1, 0, 0] + %in[0, -1, 0] + %in[0, 1, 0]
+    ```
+
+    valid extents of `in` are:
+    
+    ```mlir
+    in : spst.extent<(?, ?, ?)>
+    in : spst.extent<(?, ?, 0)>
+    in : spst.extent<(-1, 0, 0), (0, 0, 0), (0, -1, 0), (0, 1, 0), (1, 0, 0)>
+    ```
+
+!!! abstract "Extent Shorthand Notation"
+    When clear from context, the shorthand notation `{(i, j, k) in [is:ie, js:je, ks:ke], ...}` 
+    or `{(i, j, k), ...}` may be used instead.
+
+#### Field Types
+
+For every domain type D, scalar type T, and extent type E,
+there is a field type
+```
+spst.field<D, E, T>
+```
+that models a multi-dimensional array (field) over iteration domain D with extent E and scalar type T.
+
+A field type `spst.field<D, E1, T>` is a subtype of a type `spst.field<D, E2, T>` if `E1` is a subtype of `E2`.
+The domains and scalar types must match.
+
+!!! abstract "Field Shorthand Notation"
+    One may use shorthand notation for the nested types:
+    `field<[x, y, z], {(i, j, k) in [is:ie, js:je, ks:ke], ...}, f32>`
+    
+    For example, `field<[x, y, z], {(0, 0, 0)}, f32>`
+    is equivalent to `spst.field<spst.cartesian<x, y, z>, spst.extent<(0, 0, 0)>, f32>`
+    
 #### Schedule Type
 
 There are three possible schedules
 
 ```
-spst.schedule<PARALLEL | FORWARD | BACKWARD>
+spst.schedule :== PARALLEL | FORWARD | BACKWARD
 ```
 
 ## Operations
@@ -171,6 +213,7 @@ The semantics depends on the containing operation.
 spst.return %value : T
 ```
 
+The `spst` prefix may be omitted when it is clear from the enclosing operation.
 
 ### spst.statement
 
@@ -178,7 +221,7 @@ spst.return %value : T
 %out = spst.statement(%in_1, ... %in_n) :
        spst.field<D, E1, T1> , ...,   spst.field<D, E_n, T_n> ->  spst.field<D, E_0, T_0> 
 {
-    spst.return expression : T
+    spst.return expression : T_0
 }
 ```
 A field that is the result of a stencil statement is an intermediate field.
@@ -219,7 +262,7 @@ _**Note**: This representation allows us to both handle implicitly padded domain
 ```
 %out_1, ..., %out_m = spst.computation(%in_1, ..., %in_n) {
            schedule = s : spst.schedule,
-           interval = [x: spst.interval, y: spst.interval, z: spst.interval]
+           interval = [spst.interval, spst.interval, spst.interval]
    } : spst.field<D, E_1, T_1> , ...,  spst.field<D, E_n, T_n>
  -> spst.field<D, E_n+1, T_N+1> , ...,  spst.field<D, E_n+m, T_n+m> {
    stencil-statement-block
@@ -253,17 +296,17 @@ field is re-computed for each of its (distinct) consuming accesses.
 A `spst.materialize` may interrupt this propagation of extent type by 
 means of a type-cast.
     
-Example:
-```
-%mat = spst.materialize(%intermediate) : spst.field<D, spst.extent<(0, 0, 0)>, T> -> spst.field<D, spst.extent<(1, 1, 0)>, T>
-```
-In the example, consuming statement of `%mat` may access `%mat[1, 1, 0]` without affecting the type of `%intermediate`.
-
-Semantically, this has the effect that whenever `%mat` is consumed,
-it corresponds to reading information about `%intermediate` from other grid
-points at the appropriately translated offsets.
-In other words, the intermediate field `%intermediate` becomes materialized
-and accessible via the `mat` variable.
+??? example "Example: Materialize"
+    ```
+    %mat = spst.materialize(%intermediate) : spst.field<D, spst.extent<(0, 0, 0)>, T> -> spst.field<D, spst.extent<(1, 1, 0)>, T>
+    ```
+    In the example, consuming statement of `%mat` may access `%mat[1, 1, 0]` without affecting the type of `%intermediate`.
+    
+    Semantically, this has the effect that whenever `%mat` is consumed,
+    it corresponds to reading information about `%intermediate` from other grid
+    points at the appropriately translated offsets.
+    In other words, the intermediate field `%intermediate` becomes materialized
+    and accessible via the `mat` variable.
 
 Note that it is valid to use placeholder extents `?` in the types
 of a materialize, as the actual values can be inferred based on the
@@ -272,22 +315,20 @@ a materialize does not introduce any constraints on the input type.
 The output type is deduced as a sub-type that can be substituted
 into the consuming statements.
 
-Example:
-```
-%mat = spst.materialize(%intermediate) : spst.field<D, spst.extent<(?, ?, ?)>, T> -> spst.field<D, spst.extent<(?, ?, ?)>, T>
-...
-%mat[0, 1, 0]
-...
-%mat[1, 0, 0]
-...
-
-// Type inference leads to 
-
-%mat = spst.materialize(%intermediate) : spst.field<D, spst.extent<(?, ?, ?)>, T>
-        -> spst.field<D, spst.extent<(0, 1, 0), (1, 0, 0)>, T>
-
-
-```
+??? example "Example: Materialize"
+    ```
+    %mat = spst.materialize(%intermediate) : spst.field<D, spst.extent<(?, ?, ?)>, T> -> spst.field<D, spst.extent<(?, ?, ?)>, T>
+    ...
+    %mat[0, 1, 0]
+    ...
+    %mat[1, 0, 0]
+    ...
+    
+    // Type inference leads to 
+    
+    %mat = spst.materialize(%intermediate) : spst.field<D, spst.extent<(?, ?, ?)>, T>
+            -> spst.field<D, spst.extent<(0, 1, 0), (1, 0, 0)>, T>
+    ```
 
 ### spst.if
 
@@ -330,7 +371,7 @@ spst.if (%mask)  {
 The types of the yielded values must match the result types of the spst.if.
 
 
-??? example "Example: If-else"
+???+ example "Example: If-else"
     ```
     %x = spst.if (%mask): spst.field<D, extent<(0,0,0)>, bool> -> spst.field<D, E_1, T_1> {
       %x_1 = ...
@@ -341,7 +382,7 @@ The types of the yielded values must match the result types of the spst.if.
     }
     ```
 
-???+ example "Example: Ternary Choice"
+??? example "Example: Ternary Choice"
     For example, to implement a ternary choice on the value of a field, the following pattern is used:
     
     ```
@@ -361,7 +402,7 @@ The types of the yielded values must match the result types of the spst.if.
 
 !!! danger "No Side Effects"
     The spst.if operation and any nested operations are not allowed to have side effects. 
-    The operation must not modify any state or memory that is accessed outside of the operation itself.
+    The operation must not modify any state or memory that is accessed outside the operation itself.
     This is necessary to ensure that the operation can be executed in parallel.
 
 ### spst.while
@@ -374,7 +415,7 @@ A stencil program contains one more stencil computations.
 Its arguments and return types may contain both scalar types and field types.
 
 ```
-%out_1, ..., %out_m = spst.program(%in_1, ..., %in_n) {
+%out_1, ..., %out_m = spst.program @programname (%in_1, ..., %in_n) {
    } : T_1, ...,  T_n
  -> T_N+1 , ...,  T_n+m {
    stencil-computation-block
