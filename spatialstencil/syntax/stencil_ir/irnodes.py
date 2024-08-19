@@ -595,7 +595,7 @@ class ElseIfBlock(Node, Block):
         if self.condition is None:
             result = ' else '
         else:
-            result += f' elif ({self.condition.as_ir()}) '
+            result = f' elif ({self.condition.as_ir()}) '
 
         result += '{\n'
         result += '\n'.join(stmt.as_ir(indent + 1) for stmt in self.body)
@@ -620,12 +620,12 @@ class IfBlock(Node, Operation, Block):
         assert all(isinstance(r, Identifier) for r in self.outputs)
         assert isinstance(self.condition, Identifier)
         assert isinstance(self.else_ifs, list)
-        assert all(isinstance(econd, Identifier) or econd is None for econd, _ in self.else_ifs)
+        assert all(isinstance(econd, ElseIfBlock) for econd in self.else_ifs)
 
         # Check terminators
         assert isinstance(self.body[-1], ReturnOp)
         if self.else_ifs:
-            assert all(isinstance(estmts[-1], ReturnOp) for _, estmts in self.else_ifs)
+            assert all(isinstance(estmts.body[-1], ReturnOp) for estmts in self.else_ifs)
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
