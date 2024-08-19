@@ -220,7 +220,10 @@ def _make_dimtuple(tup):
 
 def _make_offset_and_interval(extent_tuple):
     if len(extent_tuple) == 2:
-        return irnodes.OffsetAndInterval(_make_dimtuple(extent_tuple[0]), extent_tuple[1])
+        interval_list = []
+        for intvl in extent_tuple[1]:
+            interval_list.extend([intvl.start, intvl.end])
+        return irnodes.OffsetAndInterval(_make_dimtuple(extent_tuple[0]), tuple(interval_list))
     return irnodes.OffsetAndInterval(_make_dimtuple(extent_tuple[0]))
 
 

@@ -43,6 +43,7 @@ class CanonicalizeExtents(sast.NodeTransformer):
 
         if operation_type.destination:
             for dst in operation_type.destination:
+                extent_set = self._extent_set_from_node(dst.extent.extents)
                 if isinstance(dst, sast.FieldType):
                     dst.extent.extents = [
                         sast.OffsetAndInterval(ex, interval) for interval, ex in type_inference.sort_extents(extent_set)
