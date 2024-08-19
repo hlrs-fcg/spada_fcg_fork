@@ -3,8 +3,8 @@ import os
 import sys
 from typing import TextIO
 
-from spatialstencil.syntax import astnodes
-from spatialstencil.syntax import lark_to_ast
+from spatialstencil.syntax.stencil_ir import irnodes
+from spatialstencil.syntax.stencil_ir import lark_to_ast
 
 
 class Parser:
@@ -12,6 +12,7 @@ class Parser:
     A spatial stencil language parser. Parses multiple strings faster than
     calling ``parser.parse_string`` multiple times.
     """
+
     def __init__(self) -> None:
         # Find and load the local lark file
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -23,7 +24,7 @@ class Parser:
         self.parser = lark.Lark(ebnf, parser='earley')
         self.transformer = lark_to_ast.TreeToAST()
 
-    def parse(self, code: str) -> astnodes.Program:
+    def parse(self, code: str) -> irnodes.Program:
         """
         Parses a string representing a spatial stencil program, returning the
         top-level program AST node.
@@ -36,7 +37,7 @@ class Parser:
         return ast
 
 
-def parse_string(code: str) -> astnodes.Program:
+def parse_string(code: str) -> irnodes.Program:
     """
     Parses a string representing a spatial stencil program, returning the
     top-level program AST node.
@@ -48,7 +49,7 @@ def parse_string(code: str) -> astnodes.Program:
     return parser.parse(code)
 
 
-def parse_file(file_or_filename: TextIO | str) -> astnodes.Program:
+def parse_file(file_or_filename: TextIO | str) -> irnodes.Program:
     """
     Parses a file representing a spatial stencil program, returning the
     top-level program AST node.
@@ -64,8 +65,8 @@ def parse_file(file_or_filename: TextIO | str) -> astnodes.Program:
 
 if __name__ == '__main__':
     if len(sys.argv) != 2:
-        print('USAGE: python -m spatialstencil.syntax.parser <STENCIL FILE>')
+        print('USAGE: python -m spatialstencil.syntax.stencil_ir.parser <STENCIL FILE>')
         exit(1)
 
     out = parse_file(sys.argv[1])
-    print(out.pretty())
+    print(out.as_ir())
