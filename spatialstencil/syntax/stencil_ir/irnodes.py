@@ -307,7 +307,7 @@ class Cartesian(Domain):
         return Cartesian(self.x.intersect(other.x), self.y.intersect(other.y), self.z.intersect(other.z))
 
     @staticmethod
-    def from_tuple(tup: tuple[int | Literal["?"] | None]) -> 'Cartesian':
+    def from_tuple(tup: tuple) -> 'Cartesian':
         """
         Creates a Cartesian domain from a 6-tuple of integers or "?".
         """

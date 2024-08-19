@@ -171,16 +171,16 @@ class TestStencilIRParser(unittest.TestCase):
         # Lower without a domain
         irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program)
         assert irprogram.inputs[-1].name == 'wcon'
-        assert irprogram.operation_type.source[-1].domain == sast.Cartesian(None, None, None)
+        assert irprogram.operation_type.source[-1].domain == sast.Cartesian()
         assert irprogram.outputs[0].name == 'utens_stage'
-        assert irprogram.operation_type.destination[0].domain == sast.Cartesian(None, None, None)
+        assert irprogram.operation_type.destination[0].domain == sast.Cartesian()
 
         # Lower with a domain
         irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program, domain=(128, 128, 80))
         assert irprogram.inputs[-1].name == 'wcon'
-        assert irprogram.operation_type.source[-1].domain == sast.Cartesian(129, 128, 80)
+        assert irprogram.operation_type.source[-1].domain == sast.Cartesian.from_tuple((0, 129, 0, 128, 0, 80))
         assert irprogram.outputs[0].name == 'utens_stage'
-        assert irprogram.operation_type.destination[0].domain == sast.Cartesian(128, 128, 80)
+        assert irprogram.operation_type.destination[0].domain == sast.Cartesian.from_tuple((0, 128, 0, 128, 0, 80))
 
 
 # GT4Py stencils for the test

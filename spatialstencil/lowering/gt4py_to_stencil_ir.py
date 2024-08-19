@@ -43,6 +43,7 @@ def lower_gt4py_to_stencil_ir(program: gtast.GTProgram,
 
         new_ast = MaterializeIntermediates().visit(new_ast)
 
+    domain = sast.Cartesian.from_tuple((0, domain[0], 0, domain[1], 0, domain[2])) if domain else None
     # Perform type/shape inference in stencil IR language
     type_inference.infer_types(new_ast, default_float_dtype, default_int_dtype, domain)
 
@@ -285,23 +286,23 @@ def _gt4py_to_stencil_ir_type(dtype: gtast.FieldType, default_float_dtype: sast.
         result.dtype = default_float_dtype
     elif dtype == gtast.FieldType.FieldIJ:
         result.dtype = default_float_dtype
-        result.domain = sast.Cartesian(None, None, 1)
+        result.domain = sast.Cartesian.from_tuple((0, None, 0, None, 0, 1))
     elif dtype == gtast.FieldType.FieldI:
         result.dtype = default_float_dtype
-        result.domain = sast.Cartesian(None, 1, 1)
+        result.domain = sast.Cartesian.from_tuple((0, None, 0, 1, 0, 1))
     elif dtype == gtast.FieldType.FieldJ:
         result.dtype = default_float_dtype
-        result.domain = sast.Cartesian(1, None, 1)
+        result.domain = sast.Cartesian.from_tuple((0, 1, 0, None, 0, 1))
     elif dtype == gtast.FieldType.FieldK:
         result.dtype = default_float_dtype
-        result.domain = sast.Cartesian(1, 1, None)
+        result.domain = sast.Cartesian.from_tuple((0, 1, 0, 1, 0, None))
     elif dtype == gtast.FieldType.int:
         result.dtype = default_int_dtype
-        result.domain = sast.Cartesian(1, 1, 1)
+        result.domain = sast.Cartesian.from_tuple((0, 1, 0, 1, 0, 1))
         result.extent = sast.Extent([sast.OffsetAndInterval((0, 0, 0))])
     elif dtype == gtast.FieldType.float:
         result.dtype = default_float_dtype
-        result.domain = sast.Cartesian(1, 1, 1)
+        result.domain = sast.Cartesian.from_tuple((0, 1, 0, 1, 0, 1))
         result.extent = sast.Extent([sast.OffsetAndInterval((0, 0, 0))])
     else:
         raise TypeError(f'Unsupported field type "{dtype}"')
