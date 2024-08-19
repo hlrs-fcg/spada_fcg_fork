@@ -75,42 +75,50 @@ class TestTypeInference(unittest.TestCase):
     def test_infer_extent_materialize(self):
         file = Path(__file__).parent / Path('../samples/spst/laplacian_mat_sh.spst')
         file2 = Path(__file__).parent / Path('../samples/spst/laplacian_mat_sh_ext.spst')
-        program: Program
-        program_w_extents: Program
+        test_program: Program
+        golden_program: Program
         with open(file, 'r') as f:
-            program = parser.parse_file(f)
+            test_program = parser.parse_file(f)
         with open(file2, 'r') as f:
-            program_w_extents = parser.parse_file(f)
+            golden_program = parser.parse_file(f)
 
         # Infer extents for the program without extents
-        type_inference.infer_field_extents(program)
+        type_inference.infer_field_extents(test_program)
 
         # Canonicalize program with extents
-        program_w_extents = canonicalization.canonicalize(program_w_extents)
+        golden_program = canonicalization.canonicalize(golden_program)
 
         # Check that the extents are the same
         # Note that this also checks the canonicalization of extents
-        self.assertEqual(program.as_ir(), program_w_extents.as_ir())
+        for s1, s2 in zip(golden_program.computations[0].body, test_program.computations[0].body):
+            self.assertEqual(s1.as_ir(), s2.as_ir())
+
+        # Check the overall program
+        self.assertEqual(golden_program.as_ir(), test_program.as_ir())
 
     def test_infer_extent_no_materialize(self):
         file = Path(__file__).parent / Path('../samples/spst/laplacian_no_mat.spst')
         file2 = Path(__file__).parent / Path('../samples/spst/laplacian_no_mat_ext.spst')
-        program: Program
-        program_w_extents: Program
+        test_program: Program
+        golden_program: Program
         with open(file, 'r') as f:
-            program = parser.parse_file(f)
+            test_program = parser.parse_file(f)
         with open(file2, 'r') as f:
-            program_w_extents = parser.parse_file(f)
+            golden_program = parser.parse_file(f)
 
         # Infer extents for the program without extents
-        type_inference.infer_field_extents(program)
+        type_inference.infer_field_extents(test_program)
 
         # Canonicalize program with extents
-        program_w_extents = canonicalization.canonicalize(program_w_extents)
+        golden_program = canonicalization.canonicalize(golden_program)
 
         # Check that the extents are the same
         # Note that this also checks the canonicalization of extents
-        self.assertEqual(program.as_ir(), program_w_extents.as_ir())
+        for s1, s2 in zip(golden_program.computations[0].body, test_program.computations[0].body):
+            self.assertEqual(s1.as_ir(), s2.as_ir())
+
+        # Check the overall program
+        self.assertEqual(golden_program.as_ir(), test_program.as_ir())
 
     def test_canonicalize_extents(self):
         # Parse a simple program
