@@ -44,6 +44,11 @@ class SomethingThatContainsABadNode(BaseNode):
     value: IncorrectMixedSequenceNode
 
 
+@dataclass
+class SomethingThatContainsABadNode2(BaseNode):
+    value: list[IncorrectMixedSequenceNode]
+
+
 # Create a IRNodeVisitor that visits all nodes and adds the value of all integer fields
 class SumVisitor(IRNodeVisitor):
 
@@ -87,6 +92,9 @@ class TestIRNode(unittest.TestCase):
 
         with self.assertRaises(TypeError):
             SomethingThatContainsABadNode.validate_schema()
+
+        with self.assertRaises(TypeError):
+            SomethingThatContainsABadNode2.validate_schema()
 
     def test_ir_node_transformer_identity(self):
         # Create a sequence node
