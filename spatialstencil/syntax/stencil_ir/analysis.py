@@ -40,6 +40,10 @@ class ExtentCollector(sast.NodeVisitor):
         for out in node.outputs:
             self.visit(out)
 
+    def visit_MaterializeOp(self, node: sast.MaterializeOp):
+        self.visit(node.value)
+        # Do not visit the result
+
     def visit_Identifier(self, node: sast.Identifier):
         # If a bare identifier (i.e., no subscript) is used, the extent (0, 0, 0) should be added
         self.extents[node.name][self.flat_interval].add((0, 0, 0))
