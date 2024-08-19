@@ -105,7 +105,6 @@ class TestStencilIRParser(unittest.TestCase):
         file = os.path.join(os.path.dirname(__file__), '..', 'samples', 'spst', 'vadv.spst')
         program = parser.parse_file(file)
         ir_1 = program.as_ir()
-        print(ir_1)
         program2 = parser.parse_string(ir_1)
         ir_2 = program2.as_ir()
         assert ir_1 == ir_2
