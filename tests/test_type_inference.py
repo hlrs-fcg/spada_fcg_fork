@@ -7,6 +7,10 @@ from spatialstencil.syntax.stencil_ir.irnodes import ScalarType, Program
 
 class TestTypeInference(unittest.TestCase):
 
+    def __init__(self):
+        super().__init__()
+        self.maxDiff = None
+
     def test_result_type_simple(self):
         # Test unary, binary, and ternary self-comparisons
         for dtype in ScalarType:
