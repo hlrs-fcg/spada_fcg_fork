@@ -2,8 +2,8 @@
 // Version 2, with cast_extent to prevent type-propagation
 
 %out = spst.program (%in) {} :
-    field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
-    -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
+    field<domain<?, ?, ?>, extent<(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0), (0, 1, 0), (-1, 1, 0), (1, 1, 0), (0, 2, 0)>, f32>
+    -> field<domain<?, ?, ?>, extent<(0, 0, 0)>, f32>
 {
     %res = spst.computation (%in)
     {

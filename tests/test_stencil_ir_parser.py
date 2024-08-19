@@ -110,9 +110,9 @@ class TestStencilIRParser(unittest.TestCase):
         assert ir_1 == ir_2
 
     def test_shorthand_notation(self):
-        file = os.path.join(os.path.dirname(__file__), '..', 'samples', 'spst', 'laplacian_3.spst')
+        file = os.path.join(os.path.dirname(__file__), '..', 'samples', 'spst', 'laplacian_mat_ext.spst')
         program = parser.parse_file(file)
-        file2 = os.path.join(os.path.dirname(__file__), '..', 'samples', 'spst', 'laplacian_2.spst')
+        file2 = os.path.join(os.path.dirname(__file__), '..', 'samples', 'spst', 'laplacian_mat_sh_ext.spst')
         program2 = parser.parse_file(file2)
         assert program.as_ir() == program2.as_ir()
 
