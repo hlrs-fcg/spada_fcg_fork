@@ -153,11 +153,15 @@ class TestStencilIRParser(unittest.TestCase):
         # Lower without a domain
         irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program)
         assert irprogram.inputs[1].name == 'in_field'
-        assert irprogram.operation_type.source[1].domain == sast.Cartesian(None, None, None)
+        assert irprogram.operation_type.source[1].domain == sast.Cartesian()
+
+        print(irprogram.as_ir())
 
         # Lower with a domain
-        irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program, domain=(128, 128, 80))
-        assert irprogram.operation_type.source[1].domain == sast.Cartesian(132, 132, 80)
+        domain = sast.Cartesian(sast.Interval(0, 128), sast.Interval(0, 128), sast.Interval(0, 80))
+        irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program, domain=domain)
+        result = sast.Cartesian(sast.Interval(-2, 130), sast.Interval(-2, 130), sast.Interval(0, 80))
+        assert irprogram.operation_type.source[1].domain == result
 
     def test_domain_inference_vertical(self):
         # Parse stencil samples file

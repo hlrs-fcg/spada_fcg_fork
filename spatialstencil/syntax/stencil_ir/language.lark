@@ -45,6 +45,7 @@ identifier : "%" suffix_id ("#" digits)?
 dim_list: dim ("," dim)*
 
 interval_type : ("spst.")? "interval" "<" dim_or_end "," dim_or_end ">" | dim_or_end ":" dim_or_end
+computation_interval : "(" interval_type ("," interval_type)* ")"
 multi_interval_type : "[" interval_type ("," interval_type)* "]"
 
 extent_offset_tuple : "(" dim ("," dim)* ")"
@@ -52,10 +53,11 @@ extent_tuple : extent_offset_tuple ("in" multi_interval_type)?
 extent_tuple_list : extent_tuple ("," extent_tuple)*
 extent_type : ("spst.")? "extent" "<" extent_tuple_list ">" | "{" extent_tuple_list "}"
 
-domain_type : ("spst.")? ("domain" | "cartesian") "<" dim_list ">" | "[" dim_list "]"
+domain_list : (interval_type | unknown_dim_literal) ("," (interval_type | unknown_dim_literal))*
+domain_type : ("spst.")? ("domain" | "cartesian") "<" domain_list ">" | "[" domain_list "]"
 field_type : ("spst.")? "field" "<" domain_type "," extent_type "," standard_type ">"
 
-?builtin_type : field_type | domain_type | extent_type | interval_type | multi_interval_type
+?builtin_type : field_type | domain_type | extent_type | interval_type | multi_interval_type | computation_interval
 ?field_or_scalar_type : field_type | standard_type
 
 ////////////////////////////////////////////////////

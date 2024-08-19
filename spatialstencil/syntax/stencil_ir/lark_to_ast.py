@@ -50,8 +50,10 @@ class TreeToAST(lark.Transformer):
     type_list = list
     subscript_slice = tuple
     multi_interval_type = list
+    computation_interval = list
     attr = tuple
     call_arguments = list
+    domain_list = list
 
     statement_body = list
     computation_body = list
@@ -81,9 +83,18 @@ class TreeToAST(lark.Transformer):
             return args[0]
         return irnodes.Expression(*args)
 
+    def unknown_domain_literal(self, args, meta=None):
+        return irnodes.Interval()
+
     # Data types
     def domain_type(self, args, meta=None):
-        return irnodes.Cartesian(*_make_dimtuple(args[0]))
+        intervals = []
+        for interval in args[0]:
+            if isinstance(interval, irnodes.Interval):
+                intervals.append(interval)
+            else:
+                intervals.append(irnodes.Interval())
+        return irnodes.Cartesian(*intervals)
 
     def extent_type(self, args, meta=None):
         return irnodes.Extent([_make_offset_and_interval(a) for a in args[0]])

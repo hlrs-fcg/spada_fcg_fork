@@ -7,7 +7,7 @@
     %res = spst.computation (%in)
     {
         schedule = PARALLEL,
-        interval = [0:None, 0:None, 0:None]
+        interval = (0:None, 0:None, 0:None)
     } : field<[?,?,?],
         {(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0), (0, 1, 0), (-1, 1, 0), (1, 1, 0), (0, 2, 0)}, f32>
       -> field<[?,?,?], {(0, 0, 0)}, f32>

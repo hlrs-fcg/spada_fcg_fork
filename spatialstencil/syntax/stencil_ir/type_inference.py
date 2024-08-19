@@ -1,7 +1,7 @@
 """
 Contains type/extent inference functionality for the Stencil IR.
 """
-from spatialstencil.syntax.stencil_ir import irnodes as sast
+from spatialstencil.syntax.stencil_ir import irnodes as sast, irnodes
 from spatialstencil.syntax.stencil_ir import analysis
 from collections import defaultdict
 import copy
@@ -29,6 +29,9 @@ def infer_types(program: sast.Program,
     """
     infer_scalar_types(program, default_float_dtype, default_int_dtype)
     infer_field_extents(program)
+
+    print(program.as_ir())
+
     infer_field_domains(program, domain)
 
 
@@ -231,7 +234,7 @@ def infer_field_extents(program: sast.Program):
     ExtentAssigner(field_extents).visit(program)
 
 
-def infer_field_domains(program: sast.Program, domain: tuple[int] | None = None):
+def infer_field_domains(program: sast.Program, domain: sast.Cartesian | None = None):
     """
     Infers the domain size of a Stencil IR program by traversing it backwards.
     Operates in-place.
@@ -248,11 +251,12 @@ def infer_field_domains(program: sast.Program, domain: tuple[int] | None = None)
     assert isinstance(program.operation_type.destination, list)
     for field, dtype in zip(program.outputs, program.operation_type.destination):
         if dtype.domain.is_unknown():
-            dtype.domain = sast.Cartesian(*domain)
+            dtype.domain = domain
         field_domains[field.name] = dtype.domain
 
     for field, dtype in zip(program.inputs, program.operation_type.source):
-        field_domains[field.name] = sast.Cartesian(*_infer_domain_from_extents(domain, dtype.extent))
+        field_domains[field.name] = _infer_domain_from_extents(domain, dtype.extent)
+        print(field.name, field_domains[field.name] )
 
     # Gather failed identifiers for warnings
     potentially_unknown_identifiers: set[str] = set()
@@ -282,14 +286,14 @@ def infer_field_domains(program: sast.Program, domain: tuple[int] | None = None)
 
             # Compute input domains based on extents and output
             for inp, inptype in zip(node.inputs, node.operation_type.source):
-                new_domain = _infer_domain_from_extents((stmt_domain.x, stmt_domain.y, stmt_domain.z), inptype.extent)
+                new_domain = _infer_domain_from_extents(stmt_domain, inptype.extent)
                 # Take max value from current domain if in dictionary
                 if inp.name in field_domains:
                     dom = field_domains[inp.name]
-                    field_domains[inp.name] = sast.Cartesian(
-                        max(new_domain[0], dom.x), max(new_domain[1], dom.y), max(new_domain[2], dom.z))
+                    field_domains[inp.name] = dom.union(new_domain)
                 else:
-                    field_domains[inp.name] = sast.Cartesian(*new_domain)
+                    # Else, copy
+                    field_domains[inp.name] = copy.deepcopy(new_domain)
         elif isinstance(node, sast.MaterializeOp):
             if node.result.name not in field_domains:
                 warnings.warn(f'Cannot infer domain size from materialization of "%{node.value.name}"')
@@ -402,32 +406,27 @@ def _infer_expression(expr: sast.Expression, field_types: dict[str, sast.ScalarT
     raise TypeError(f'Unidentified AST type {type(val)}')
 
 
-def _infer_domain_from_extents(base_domain: tuple[int, int, int], extents: sast.Extent) -> tuple[int, int, int]:
-    output = list(base_domain)
-    for dim in range(len(output)):
-        # For each extent, collect the interval and offset and add new boundaries as necessary
-        min_extent: int = math.inf
-        max_extent: int = -math.inf
-        for extent in extents.extents:
-            int_start, int_end = extent.interval[2 * dim], extent.interval[2 * dim + 1]
+def _infer_domain_from_extents(output_domain: sast.Cartesian, extents: sast.Extent) -> irnodes.Cartesian:
+    """
+    Given the output domain and extents, infers the domain size of the input field.
+    Assuming that the output is accessed at offset (0, 0, 0).
+    :param output_domain:
+    :param extents:
+    :return:
+    """
+    #print(output_domain, extents)
+    current_domain = copy.deepcopy(output_domain)
 
-            # Wrap around and handle None values
-            int_end = output[dim] if int_end is None else int_end
-            int_start = (output[dim] + int_start) if int_start < 0 else int_start
-            int_end = (output[dim] + int_end) if int_end < 0 else int_end
+    for e in extents.extents:
+        # Convert the extent interval into a cartesian domain representing the output
+        extent_domain = output_domain.intersect_with_ranges(e.interval)
+        # Expand the domain with the extent values
+        extent_domain = extent_domain.add(e.values)
 
-            extent_value = extent.values[dim]
-            if extent_value + int_start < 0:  # Outside boundaries
-                min_extent = min(min_extent, extent_value)
-            if extent_value + int_end > output[dim]:  # Outside boundaries
-                max_extent = max(max_extent, extent_value)
-        min_extent = 0 if min_extent == math.inf else min_extent
-        max_extent = 0 if max_extent == -math.inf else max_extent
+        current_domain = current_domain.union(extent_domain)
+        #print(current_domain)
 
-        # Add maximal overflowing extents to output dimensions
-        output[dim] += max_extent - min_extent
-
-    return tuple(output)
+    return current_domain
 
 
 def _unique_id_list(identifiers: set[sast.Identifier], latest_version: bool) -> list[sast.Identifier]:

@@ -82,6 +82,9 @@ class Node(BaseNode):
         """
         pass
 
+    def __post_init__(self):
+        self.validate()
+
 
 class Domain(Node, IRType):
     """
@@ -104,22 +107,6 @@ def _val_or_unk(val: int | None) -> str:
     return str(val)
 
 
-@dataclass
-class Cartesian(Domain):
-    """
-    Cartesian domain type in three dimensions.
-
-    A None value for each dimension means "unknown" (or "?")
-    """
-    x: int | None
-    y: int | None
-    z: int | None
-
-    def as_ir(self, indent: int = 0) -> str:
-        return f'spst.cartesian<{_val_or_unk(self.x)}, {_val_or_unk(self.y)}, {_val_or_unk(self.z)}>'
-
-    def is_unknown(self) -> bool:
-        return self.x is None or self.y is None or self.z is None
 
 
 @dataclass
@@ -151,7 +138,7 @@ class Extent(Node, IRType):
     extents: list[OffsetAndInterval]
 
     def as_ir(self, indent: int = 0) -> str:
-        return f'spst.extent<{", ".join(e.as_ir() for e in self.extents)}>'
+        return "{" + f'{", ".join(e.as_ir() for e in self.extents)}' + "}"
 
     def is_unknown(self) -> bool:
         return all(dim is None for extent in self.extents for dim in extent.values)
@@ -169,7 +156,7 @@ class FieldType(Node, IRType):
         Creates an empty (not type/shape-inferred) field type.
         """
         return FieldType(
-            domain=Cartesian(None, None, None),
+            domain=Cartesian(Interval(), Interval(), Interval()),
             extent=Extent([OffsetAndInterval((None, None, None))]),
             dtype=ScalarType.UNKNOWN)
 
@@ -207,11 +194,161 @@ class OperationType(Node):
 
 @dataclass
 class Interval(Node, IRType):
+    # NOTE: We are using "?" to represent unknown values
+    # NOTE: The None value can represent the limit relative to a known upper bound.
     start: int | Literal["?"] | None = "?"
     end: int | Literal["?"] | None = "?"
 
     def as_ir(self, indent: int = 0) -> str:
-        return f'spst.interval<{self.start}, {self.end}>'
+        return f'{self.start}:{self.end}'
+        #return f'spst.interval<{self.start}, {self.end}>'
+
+    def is_unknown(self) -> bool:
+        return self.start is None or self.end is None or self.start == "?" or self.end == "?"
+
+    def union(self, other: 'Interval'):
+        """
+        Returns the union of two intervals.
+        If one value is unknown, the other value is returned.
+        TODO Check?
+        Assumes none of the values is None.
+        """
+        assert self.start is not None
+        assert self.end is not None
+        assert other.start is not None
+        assert other.end is not None
+
+        if other.start == "?":
+            start = self.start
+        elif self.start == "?":
+            start = other.start
+        else:
+            start = min(self.start, other.start)
+
+        if other.end == "?":
+            end = self.end
+        elif self.end == "?":
+            end = other.end
+        else:
+            end = max(self.end, other.end)
+
+        return Interval(start, end)
+
+    def intersect(self, other: 'Interval'):
+        """
+        Returns the intersection of two intervals.
+        :param other:
+        :return:
+        """
+        assert self.start is not None
+        assert self.end is not None
+        assert other.start is not None
+        assert other.end is not None
+
+        if other.start == "?":
+            start = self.start
+        elif self.start == "?":
+            start = other.start
+        else:
+            start = max(self.start, other.start)
+
+        if other.end == "?":
+            end = self.end
+        elif self.end == "?":
+            end = other.end
+        else:
+            end = min(self.end, other.end)
+
+        return Interval(start, end)
+
+
+@dataclass
+class Cartesian(Domain):
+    """
+    Cartesian domain type in three dimensions.
+
+    A None value for each dimension means "unknown" (or "?")
+    """
+    x: Interval = field(default_factory=lambda: Interval())
+    y: Interval = field(default_factory=lambda: Interval())
+    z: Interval = field(default_factory=lambda: Interval())
+
+    def as_ir(self, indent: int = 0) -> str:
+        return f'[{self.x.as_ir()}, {self.y.as_ir()}, {self.z.as_ir()}]'
+        #return f'spst.cartesian<{self.x.as_ir()}, {self.y.as_ir()}, {self.z.as_ir()}>'
+
+    def is_unknown(self) -> bool:
+        return self.x.is_unknown() or self.y.is_unknown() or self.z.is_unknown()
+
+    def validate(self) -> None:
+        # Domain must be fully defined
+        assert isinstance(self.x, Interval)
+        assert isinstance(self.y, Interval)
+        assert isinstance(self.z, Interval)
+        assert self.x.start is not None
+        assert self.x.end is not None
+        assert self.y.start is not None
+        assert self.y.end is not None
+        assert self.z.start is not None
+        assert self.z.end is not None
+
+    def union(self, other: 'Cartesian'):
+        """
+        Returns a new Cartesian domain that is the union of all intervals in the domain.
+        Unknown values are replaced by the other domain's values.
+        """
+        return Cartesian(self.x.union(other.x), self.y.union(other.y), self.z.union(other.z))
+
+    def intersect(self, other: 'Cartesian'):
+        """
+        Returns a new Cartesian domain that is the intersection of all intervals in the domain.
+        Unknown values are replaced by the other domain's values.
+        """
+        return Cartesian(self.x.intersect(other.x), self.y.intersect(other.y), self.z.intersect(other.z))
+
+    @staticmethod
+    def from_tuple(tup: tuple[int | Literal["?"] | None]) -> 'Cartesian':
+        """
+        Creates a Cartesian domain from a 6-tuple of integers or "?".
+        """
+        return Cartesian(Interval(tup[0], tup[1]), Interval(tup[2], tup[3]), Interval(tup[4], tup[5]))
+
+    def intersect_with_ranges(self, tup: tuple[int | None]) -> 'Cartesian':
+        """
+        Creates a Cartesian sub-domain from a 6-tuple of intervals
+        that may indicate a sub-domain of the original Cartesian domain
+        through the use of negative values to indicate an offset from the
+        upper bound of the domain and None to indicate the upper bound of the domain.
+        """
+        output_upperbound = [self.x.end, self.y.end, self.z.end]
+
+        clean_interval_tuple = []
+        for i in range(3):
+            if tup[2 * i] is None:
+                clean_interval_tuple.append(0)
+            elif tup[2 * i] < 0:
+                clean_interval_tuple.append(output_upperbound[i] + tup[2 * i])
+            else:
+                clean_interval_tuple.append(tup[2 * i])
+
+            if tup[2 * i + 1] is None:
+                clean_interval_tuple.append(output_upperbound[i])
+            elif tup[2 * i + 1] < 0:
+                clean_interval_tuple.append(output_upperbound[i] + tup[2 * i + 1])
+            else:
+                clean_interval_tuple.append(tup[2 * i + 1])
+
+        domain = Cartesian.from_tuple(clean_interval_tuple)
+        return domain
+
+    def add(self, tuple) -> 'Cartesian':
+        # Adds the value of the tuple to the Cartesian domain in each dimension
+        assert len(tuple) == 3
+        assert all(x is not None for x in tuple)
+        assert not self.is_unknown()
+        return Cartesian(Interval(self.x.start + tuple[0], self.x.end + tuple[0]),
+                         Interval(self.y.start + tuple[1], self.y.end + tuple[1]),
+                         Interval(self.z.start + tuple[2], self.z.end + tuple[2]))
 
 
 @dataclass
@@ -523,7 +660,7 @@ class ComputationBlock(Node, Operation, Block):
         # Attributes
         result += '{\n'
         result += f'{indent_str} schedule = {self.schedule.name},\n'
-        result += f'{indent_str} interval = [{", ".join(i.as_ir() for i in self.interval)}]\n'
+        result += f'{indent_str} interval = ({", ".join(i.as_ir() for i in self.interval)})\n'
         result += indent_str + '}'
         # Types
         result += f' : {self.operation_type.as_ir()} '
