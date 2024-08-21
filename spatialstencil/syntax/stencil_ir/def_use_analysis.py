@@ -45,14 +45,15 @@ class DefUseAnalysis(sast.NodeVisitor):
 
     def visit_IfBlock(self, node: sast.IfBlock):
         """
-        An if block uses its condition and the conditions of its if-else blocks
+        An if block uses its condition and the conditions of its if-else blocks.
+        The if-else blocks share the same type as the if block.
         :param node:
         :return:
         """
         self.add(node.condition, node.operation_type.source[0])
 
-        for elif_block, field_type in zip(node.else_ifs, node.operation_type.source[1:]):
-            self.add(elif_block.condition, field_type)
+        for elif_block in node.else_ifs:
+            self.add(elif_block.condition, node.operation_type.source[0])
 
         self.generic_visit(node)
 

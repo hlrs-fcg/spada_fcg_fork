@@ -164,7 +164,19 @@ def _walk_StatementBlock(uses: dict[sast.Identifier, list[def_use_analysis.Scope
 def _walk_IfBlock(uses: dict[sast.Identifier, list[def_use_analysis.ScopedUse]],
                   computation: sast.ComputationBlock,
                   node: sast.IfBlock):
-    pass
+    assert len(node.outputs) == 1, "Only a single output is supported for now"
+    # The if-block takes the predicate as input and outputs a field
+    use_offsets = _offsets_of_uses_in_scope(uses, computation, node.outputs[0])
+
+    # The output type is the union of the uses
+    # For each output, the extent is the union of the uses
+    for output, output_t in zip(node.outputs, node.operation_type.destination):
+        output_t.extent.extents = use_offsets
+        output_t.extent.sort_extents()
+
+    # The input type is [0, 0, 0]
+    node.operation_type.source[0].extent.extents[:] = [sast.Offset((0, 0, 0))]
+
 
 
 def _walk_ReturnOp(uses: dict[sast.Identifier, list[def_use_analysis.ScopedUse]],
@@ -189,6 +201,7 @@ def _offsets_of_uses_in_scope(uses: dict[sast.Identifier, list[def_use_analysis.
     # Concatenate all the extents from uses_of_result
     use_offsets = []
     for use in uses_of_result:
+        print(f"Use of {id.name} in {use.definition_scope} with extent {use.field_type.extent.extents}")
         use_offsets.extend(use.field_type.extent.extents)
     if len(use_offsets) == 0:
         print(f"No uses of {id.name} found.")

@@ -1,0 +1,31 @@
+%res = spst.program @ifelseexample(%tin, %f2) {} : spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32>, spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> -> spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> {
+  %rh = spst.computation (%tin) {
+   schedule = PARALLEL,
+   interval = [0:None, 0:None, 0:None]
+  } : spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32>, spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> -> spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> {
+    %pred1 = spst.statement (%tin) {} : spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32>, spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> -> spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> {
+      spst.return (%tin < 233.16)
+    }
+    %pred2 = spst.statement (%tin) {} : spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> -> spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> {
+      spst.return (%tin >= 273.16)
+    }
+    %qstar = spst.if (%pred1) : spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> -> spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> {
+      %qstar#1 = spst.statement (%f2) : spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> -> spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> {
+        spst.return %f2
+      }
+      spst.return %qstar#1
+    } elif (%pred2) {
+      %qstar#2 = spst.statement (%f2) : spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> -> spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> {
+        spst.return %f2[0, 1, 0]
+      }
+      spst.return %qstar#2
+    } else {
+      %qstar#3 = spst.statement (%f2) : spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> -> spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> {
+        spst.return %f2[-2, 0, 0] + %f2[0, 0, 0]
+      }
+      spst.return %qstar#3
+    }
+    return %qstar
+  }
+  return %rh
+}

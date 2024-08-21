@@ -696,6 +696,8 @@ class IfBlock(Node, Operation, Block):
         assert isinstance(self.condition, Identifier)
         assert isinstance(self.else_ifs, list)
         assert all(isinstance(econd, ElseIfBlock) for econd in self.else_ifs)
+        # The source types are the conditions of all if/elif blocks
+        assert len(self.operation_type.source) == 1
 
         # Check terminators
         assert isinstance(self.body[-1], ReturnOp)

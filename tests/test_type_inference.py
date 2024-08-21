@@ -97,12 +97,10 @@ class TestTypeInference(unittest.TestCase):
         fields['d'] = ScalarType.i32
         assert type_inference._infer_expression(exprs[4], fields, ScalarType.f32, ScalarType.i32) == ScalarType.f32
 
-    def test_infer_extent_materialize(self):
-        file = Path(__file__).parent / Path('../samples/spst/laplacian_mat_sh.spst')
-        file2 = Path(__file__).parent / Path('../samples/spst/laplacian_mat_sh_ext.spst')
+    def _test_programs_equal(self, file1, file2):
         test_program: Program
         golden_program: Program
-        with open(file, 'r') as f:
+        with open(file1, 'r') as f:
             test_program = parser.parse_file(f)
         with open(file2, 'r') as f:
             golden_program = parser.parse_file(f)
@@ -115,25 +113,26 @@ class TestTypeInference(unittest.TestCase):
 
         # Check the overall program
         self.assertEqual(golden_program.as_ir(), test_program.as_ir())
+
+    def test_infer_extent_ifelse(self):
+        file = Path(__file__).parent / Path('../samples/spst/if_else.spst')
+        file2 = Path(__file__).parent / Path('../samples/spst/if_else_ext.spst')
+
+        self._test_programs_equal(file, file2)
+
+
+    def test_infer_extent_materialize(self):
+        file = Path(__file__).parent / Path('../samples/spst/laplacian_mat_sh.spst')
+        file2 = Path(__file__).parent / Path('../samples/spst/laplacian_mat_sh_ext.spst')
+
+        self._test_programs_equal(file, file2)
 
     def test_infer_extent_no_materialize(self):
         file = Path(__file__).parent / Path('../samples/spst/laplacian_no_mat.spst')
         file2 = Path(__file__).parent / Path('../samples/spst/laplacian_no_mat_ext.spst')
-        test_program: Program
-        golden_program: Program
-        with open(file, 'r') as f:
-            test_program = parser.parse_file(f)
-        with open(file2, 'r') as f:
-            golden_program = parser.parse_file(f)
 
-        # Infer extents for the program without extents
-        extent_inference.infer_field_extents(test_program)
+        self._test_programs_equal(file, file2)
 
-        # Canonicalize program with extents
-        golden_program = canonicalization.canonicalize(golden_program)
-
-        # Check the overall program
-        self.assertEqual(golden_program.as_ir(), test_program.as_ir())
 
     def test_canonicalize_extents(self):
         # Parse a simple program
