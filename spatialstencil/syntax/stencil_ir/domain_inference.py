@@ -30,8 +30,8 @@ def infer_field_domains(program: sast.Program,
         field_domains[field.name] = dtype.domain
 
     #for field, dtype in zip(program.inputs, program.operation_type.source):
-    #    field_domains[field.name] = _infer_domain_from_extents(domain, dtype.extent)
-    #$    print(field.name, field_domains[field.name])
+        #field_domains[field.name] = _infer_domain_from_extents(domain, dtype.extent)
+        #print(field.name, field_domains[field.name])
 
     # Gather failed identifiers for warnings
     potentially_unknown_identifiers: set[str] = set()

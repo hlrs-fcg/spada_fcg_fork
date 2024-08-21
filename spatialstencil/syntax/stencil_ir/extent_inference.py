@@ -201,10 +201,14 @@ def _offsets_of_uses_in_scope(uses: dict[sast.Identifier, list[def_use_analysis.
     # Concatenate all the extents from uses_of_result
     use_offsets = []
     for use in uses_of_result:
-        print(f"Use of {id.name} in {use.definition_scope} with extent {use.field_type.extent.extents}")
+        print(f"Use of {id.name} with extent {use.field_type.extent.extents}")
         use_offsets.extend(use.field_type.extent.extents)
     if len(use_offsets) == 0:
         print(f"No uses of {id.name} found.")
+
+    # Remove any unknown offsets: THIS SHOULD NOT HAPPEN!
+    use_offsets = [o for o in use_offsets if all(i != "?" for i in o)]
+    #assert all(o[i] != "?" for o in use_offsets for i in range(3)), f"Offset of uses of {id.name} must be known before inference"
     return use_offsets
 
 

@@ -163,6 +163,8 @@ class Offset(Node):
             if self_value != other_value:
                 return self_value < other_value
         return False
+    def __getitem__(self, item):
+        return self.values[item]
 
 
 

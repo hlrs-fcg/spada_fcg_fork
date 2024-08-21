@@ -116,6 +116,24 @@ class TestStencilIRParser(unittest.TestCase):
         assert comps[1].inputs == [sast.Identifier('tmp', version=1)]
         assert comps[1].outputs == [sast.Identifier('out', version=0)]
 
+    def test_versioning_in_ifelse(self):
+        program = self.gtfuncs['test_versioning_in_ifelse']
+        irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program, materialize=False)
+
+        comp = irprogram.computations[0]
+        print(comp)
+        assert comp.outputs == [sast.Identifier('out')]
+        assert isinstance(comp.body[0], sast.IfBlock)
+        ifblock = comp.body[0]
+        assert ifblock.outputs == [sast.Identifier('out', version=0)]
+        stmt = ifblock.body[0]
+        assert stmt.result == sast.Identifier('out', version=1)
+        assert len(ifblock.else_ifs) == 1
+        ifelse_block = ifblock.else_ifs[0]
+        stmt2 = ifelse_block.body[0]
+        assert stmt2.result == sast.Identifier('out', version=2)
+        print(comp)
+
     def test_lower_mathcall(self):
         program = self.gtfuncs['simple_mathcall']
         irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program)
@@ -177,9 +195,9 @@ class TestStencilIRParser(unittest.TestCase):
         # Lower with a domain
         irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program, domain=(128, 128, 80))
         assert irprogram.inputs[-1].name == 'wcon'
-        assert irprogram.operation_type.source[-1].domain == sast.Cartesian.from_tuple((0, 129, 0, 128, 0, 80))
+        assert irprogram.operation_type.source[-1].domain == sast.Cartesian.from_sequence((0, 129, 0, 128, 0, 80))
         assert irprogram.outputs[0].name == 'utens_stage'
-        assert irprogram.operation_type.destination[0].domain == sast.Cartesian.from_tuple((0, 128, 0, 128, 0, 80))
+        assert irprogram.operation_type.destination[0].domain == sast.Cartesian.from_sequence((0, 128, 0, 128, 0, 80))
 
 
 # GT4Py stencils for the test
@@ -237,6 +255,16 @@ def output_overwrite(inp: Field3D, out: Field3D):
     with computation(PARALLEL), interval(...):
         tmp = inp + out
         out = tmp + 1
+
+def test_versioning_in_ifelse(inp: Field3D,
+                              out: Field3D):
+    with computation(PARALLEL), interval(...):
+        pred1 = inp < 233.16
+        if pred1:
+            out = inp
+        else:
+            out = inp + 1
+        out = out + inp
 
 
 # Adapted saturation adjustment subset code from PyFV3, see:
