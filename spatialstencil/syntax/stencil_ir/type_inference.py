@@ -1,12 +1,11 @@
 """
-Contains type/extent inference functionality for the Stencil IR.
+Contains scalar type inference functionality for the Stencil IR.
 """
-from spatialstencil.syntax.stencil_ir import irnodes as sast, irnodes
+from spatialstencil.syntax.stencil_ir import irnodes as sast
 from spatialstencil.syntax.stencil_ir import analysis
-from collections import defaultdict
-import copy
-import math
-import warnings
+
+from spatialstencil.syntax.stencil_ir.domain_inference import infer_field_domains
+from spatialstencil.syntax.stencil_ir.extent_inference import infer_field_extents
 
 
 def infer_types(program: sast.Program,
@@ -29,9 +28,6 @@ def infer_types(program: sast.Program,
     """
     infer_scalar_types(program, default_float_dtype, default_int_dtype)
     infer_field_extents(program)
-
-    print(program.as_ir())
-
     infer_field_domains(program, domain)
 
 
@@ -209,104 +205,6 @@ class TypeInference(sast.NodeTransformer):
         return node
 
 
-def infer_field_extents(program: sast.Program):
-    """
-    Infers the extents of a Stencil IR program by traversing it twice.
-    Operates in-place.
-
-    :param program: The Stencil IR program to traverse.
-    """
-    field_extents: dict[str, dict[tuple[int | None], set[tuple[int | None]]]] = {}
-
-    # Start with outputs. Extents always start at (0, 0, 0)
-    assert isinstance(program.operation_type.destination, list)
-    for field, dtype in zip(program.outputs, program.operation_type.destination):
-        if dtype.extent.is_unknown():
-            dtype.extent.extents = [sast.OffsetAndInterval((0, 0, 0))]
-        field_extents[field.name] = defaultdict(set)
-        for oi in dtype.extent.extents:
-            field_extents[field.name][oi.interval].add(oi.values)
-
-    # Visit entire program and collect extents
-    field_extents.update(analysis.collect_extents(program))
-
-    # Transform the program by assigning extents to field types
-    ExtentAssigner(field_extents).visit(program)
-
-
-def infer_field_domains(program: sast.Program, domain: sast.Cartesian | None = None):
-    """
-    Infers the domain size of a Stencil IR program by traversing it backwards.
-    Operates in-place.
-
-    :param program: The Stencil IR program to traverse.
-    :param domain: An optional 3-tuple representing domain size (x, y, z). If not given, existing domain size will
-                   be used or "?" will remain.
-    """
-    if domain is None:  # Nothing to do
-        return
-    field_domains: dict[str, sast.Cartesian] = {}
-
-    # Start with outputs. Use halo for extents.
-    assert isinstance(program.operation_type.destination, list)
-    for field, dtype in zip(program.outputs, program.operation_type.destination):
-        if dtype.domain.is_unknown():
-            dtype.domain = domain
-        field_domains[field.name] = dtype.domain
-
-    for field, dtype in zip(program.inputs, program.operation_type.source):
-        field_domains[field.name] = _infer_domain_from_extents(domain, dtype.extent)
-        print(field.name, field_domains[field.name] )
-
-    # Gather failed identifiers for warnings
-    potentially_unknown_identifiers: set[str] = set()
-
-    # Propagate backwards through statements from end of program
-    for node in reversed(list(program.walk())):
-        if isinstance(node, sast.StatementBlock):
-            # Gather the local domain
-            stmt_domain = None
-            for out, outtype in zip(node.outputs, node.operation_type.destination):
-                if stmt_domain is None:
-                    if not outtype.domain.is_unknown():
-                        stmt_domain = outtype.domain
-                    elif out.name in field_domains:
-                        stmt_domain = field_domains[out.name]
-                else:
-                    if not outtype.domain.is_unknown() and outtype.domain != stmt_domain:
-                        raise ValueError('Ambiguous domains found when processing multiple '
-                                         f'statement outputs: {stmt_domain} != {outtype.domain}')
-                    if out.name in field_domains and field_domains[out.name] != stmt_domain:
-                        raise ValueError('Ambiguous domains found when processing multiple '
-                                         f'statement outputs: {stmt_domain} != {field_domains[out.name]}')
-            if stmt_domain is None:
-                for out in node.outputs:
-                    potentially_unknown_identifiers.add(out.name)
-                continue
-
-            # Compute input domains based on extents and output
-            for inp, inptype in zip(node.inputs, node.operation_type.source):
-                new_domain = _infer_domain_from_extents(stmt_domain, inptype.extent)
-                # Take max value from current domain if in dictionary
-                if inp.name in field_domains:
-                    dom = field_domains[inp.name]
-                    field_domains[inp.name] = dom.union(new_domain)
-                else:
-                    # Else, copy
-                    field_domains[inp.name] = copy.deepcopy(new_domain)
-        elif isinstance(node, sast.MaterializeOp):
-            if node.result.name not in field_domains:
-                warnings.warn(f'Cannot infer domain size from materialization of "%{node.value.name}"')
-                continue
-            field_domains[node.value.name] = field_domains[node.result.name]
-
-    # Warn on still-unknown identifiers
-    for identifier in potentially_unknown_identifiers:
-        if identifier not in field_domains:
-            warnings.warn(f'Could not infer domain size for "%{identifier}"')
-
-    # Assign inferred domain sizes across Stencil IR program
-    DomainAssigner(field_domains).visit(program)
 
 
 #########################################################################################
@@ -406,29 +304,6 @@ def _infer_expression(expr: sast.Expression, field_types: dict[str, sast.ScalarT
     raise TypeError(f'Unidentified AST type {type(val)}')
 
 
-def _infer_domain_from_extents(output_domain: sast.Cartesian, extents: sast.Extent) -> irnodes.Cartesian:
-    """
-    Given the output domain and extents, infers the domain size of the input field.
-    Assuming that the output is accessed at offset (0, 0, 0).
-    :param output_domain:
-    :param extents:
-    :return:
-    """
-    #print(output_domain, extents)
-    current_domain = copy.deepcopy(output_domain)
-
-    for e in extents.extents:
-        # Convert the extent interval into a cartesian domain representing the output
-        extent_domain = output_domain.intersect_with_ranges(e.interval)
-        # Expand the domain with the extent values
-        extent_domain = extent_domain.add(e.values)
-
-        current_domain = current_domain.union(extent_domain)
-        #print(current_domain)
-
-    return current_domain
-
-
 def _unique_id_list(identifiers: set[sast.Identifier], latest_version: bool) -> list[sast.Identifier]:
     """
     Makes a list of uniquely-named identifiers from a set thereof. The ordering is deterministic (sorted)
@@ -450,114 +325,4 @@ def _unique_id_list(identifiers: set[sast.Identifier], latest_version: bool) -> 
     return [sast.Identifier(name, versions[name]) for name in sorted(names)]
 
 
-def sort_extents(extent_set: dict[tuple[int | None], set[tuple[int | None]]]):
-    """
-    Yields a flat list of sorted extents as it should appear in a canonical Stencil IR.
-    Substitutes None entries for infinity.
-    """
-    # None means infinity in the dictionary keys
-    newdict = {tuple(math.inf if kk is None else kk for kk in k): v for k, v in extent_set.items()}
-    for k, tuples in sorted(newdict.items()):
-        oldkey = tuple(None if kk == math.inf else kk for kk in k)  # Recover old values
 
-        # None means "?" in the dictionary values, which must be last as well
-        newtuples = [tuple(math.inf if t is None else t for t in tup) for tup in tuples]
-        for tup in sorted(newtuples):
-            oldtup = tuple(None if kk == math.inf else kk for kk in tup)
-            yield oldkey, oldtup
-
-
-class ExtentAssigner(sast.NodeTransformer):
-    """
-    Sets extents based on given dictionary.
-    """
-
-    def __init__(self, field_extents: dict[str, dict[tuple[int | None], set[tuple[int | None]]]]):
-        super().__init__()
-        self.field_extents = field_extents
-
-    def _modify_typeinfo(self, operation_type: sast.OperationType, inputs: list[sast.Identifier],
-                         outputs: list[sast.Identifier]):
-        """
-        Helper function that updates the type information based on inferred types.
-        """
-        for name, src in zip(inputs, operation_type.source):
-            if name.name in self.field_extents:
-                extent_set = self.field_extents[name.name]
-                if isinstance(src, sast.FieldType):
-                    src.extent.extents = [
-                        sast.OffsetAndInterval(ex, interval) for interval, ex in sort_extents(extent_set)
-                    ]
-
-        if operation_type.destination:
-            for name, dst in zip(outputs, operation_type.destination):
-                if name.name in self.field_extents:
-                    extent_set = self.field_extents[name.name]
-                    if isinstance(dst, sast.FieldType):
-                        dst.extent.extents = [
-                            sast.OffsetAndInterval(ex, interval) for interval, ex in sort_extents(extent_set)
-                        ]
-
-    def visit_MaterializeOp(self, node: sast.MaterializeOp):
-        self._modify_typeinfo(node.operation_type, [node.value], [node.result])
-        return self.generic_visit(node)
-
-    def visit_StatementBlock(self, node: sast.StatementBlock):
-        self._modify_typeinfo(node.operation_type, node.inputs, node.outputs)
-        return self.generic_visit(node)
-
-    def visit_IfBlock(self, node: sast.IfBlock):
-        self._modify_typeinfo(node.operation_type, [node.condition], node.outputs)
-        return self.generic_visit(node)
-
-    def visit_ComputationBlock(self, node: sast.ComputationBlock):
-        self._modify_typeinfo(node.operation_type, node.inputs, node.outputs)
-        return self.generic_visit(node)
-
-    def visit_Program(self, node: sast.Program):
-        self._modify_typeinfo(node.operation_type, node.inputs, node.outputs)
-        return self.generic_visit(node)
-
-
-class DomainAssigner(sast.NodeTransformer):
-    """
-    Sets domain based on given dictionary.
-    """
-
-    def __init__(self, field_domains: dict[str, sast.Cartesian]):
-        super().__init__()
-        self.field_domains = field_domains
-
-    def _modify_typeinfo(self, operation_type: sast.OperationType, inputs: list[sast.Identifier],
-                         outputs: list[sast.Identifier]):
-        """
-        Helper function that updates the type information based on inferred types.
-        """
-        for name, src in zip(inputs, operation_type.source):
-            if name.name in self.field_domains and isinstance(src, sast.FieldType) and src.domain.is_unknown():
-                src.domain = copy.deepcopy(self.field_domains[name.name])
-
-        if operation_type.destination:
-            for name, dst in zip(outputs, operation_type.destination):
-                if name.name in self.field_domains and isinstance(dst, sast.FieldType) and dst.domain.is_unknown():
-                    dst.domain = copy.deepcopy(self.field_domains[name.name])
-
-    def visit_MaterializeOp(self, node: sast.MaterializeOp):
-        self._modify_typeinfo(node.operation_type, [node.value], [node.result])
-        return self.generic_visit(node)
-
-    def visit_StatementBlock(self, node: sast.StatementBlock):
-        self._modify_typeinfo(node.operation_type, node.inputs, node.outputs)
-        return self.generic_visit(node)
-
-    def visit_IfBlock(self, node: sast.IfBlock):
-        self._modify_typeinfo(node.operation_type, [node.condition], node.outputs)
-        return self.generic_visit(node)
-
-    def visit_ComputationBlock(self, node: sast.ComputationBlock):
-        self._modify_typeinfo(node.operation_type, node.inputs, node.outputs)
-        return self.generic_visit(node)
-
-    def visit_Program(self, node: sast.Program):
-        self._modify_typeinfo(node.operation_type, node.inputs, node.outputs)
-        return self.generic_visit(node)
