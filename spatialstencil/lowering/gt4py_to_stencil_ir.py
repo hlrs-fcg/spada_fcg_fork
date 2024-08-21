@@ -63,29 +63,31 @@ def field_versioning(program: gtast.GTProgram):
     for comp in program.computations:
         for intvl in comp.intervals:
             for stmt in intvl.statements:
-                if not isinstance(stmt, gtast.GTComputeStatement):
-                    continue
 
-                # First, replace elements in body (to avoid self-reference clashes)
-                replacer = PyASTFindReplace(replacements)
-                stmt.body = replacer.visit(stmt.body)
-                used_identifiers.update(replacer.encountered_names)
+                if isinstance(stmt, gtast.GTComputeStatement):
 
-                # Name clash, add version
-                if stmt.target in names:
-                    # Special case: if the target is an output is never read/overwritten, keep version zero
-                    if (stmt.target in program.fields and stmt.target not in name_to_version and
-                            stmt.target not in used_identifiers):
-                        name_to_version[stmt.target] = 0
-                        continue
+                    # First, replace elements in body (to avoid self-reference clashes)
+                    replacer = PyASTFindReplace(replacements)
+                    stmt.body = replacer.visit(stmt.body)
+                    used_identifiers.update(replacer.encountered_names)
 
-                    old_name = stmt.target
-                    name_to_version[stmt.target] += 1
-                    stmt.target = f'{stmt.target}#{name_to_version[stmt.target]}'
-                    replacements[old_name] = ast.Name(id=stmt.target)
-                else:
-                    names.add(stmt.target)
+                    # Name clash, add version
+                    if stmt.target in names:
+                        # Special case: if the target is an output is never read/overwritten, keep version zero
+                        if (stmt.target in program.fields and stmt.target not in name_to_version and
+                                stmt.target not in used_identifiers):
+                            name_to_version[stmt.target] = 0
+                            continue
 
+                        old_name = stmt.target
+                        name_to_version[stmt.target] += 1
+                        stmt.target = f'{stmt.target}#{name_to_version[stmt.target]}'
+                        replacements[old_name] = ast.Name(id=stmt.target)
+                    else:
+                        names.add(stmt.target)
+                elif isinstance(stmt, gtast.GTIfStatement):
+                    # TODO Handle if statements
+                    pass
 
 def constant_propagation(program: gtast.GTProgram):
     """
