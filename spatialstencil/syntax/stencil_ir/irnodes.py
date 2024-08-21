@@ -396,16 +396,19 @@ class Cartesian(Domain):
             assert intervals[i].end != "?"
 
             if intervals[i].start is None:
+                # TODO CHECK IF RIGHT
                 start = 0
+            elif intervals[i].start < 0:
+                start = output_upperbound[i] + intervals[i].start
             else:
-                start = max(output_lowerbound[i],
-                            output_lowerbound[i] + intervals[i].start)
+                start = intervals[i].start
 
             if intervals[i].end is None:
                 end = output_upperbound[i]
+            elif intervals[i].end < 0:
+                end = output_upperbound[i] + intervals[i].end
             else:
-                end = min(output_upperbound[i],
-                          output_upperbound[i] + intervals[i].end)
+                end = intervals[i].end
 
             result.append(Interval(start, end))
 

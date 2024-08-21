@@ -50,6 +50,35 @@ class TestTypeInference(unittest.TestCase):
         assert result == golden_result
 
 
+    def test_infer_domain_from_extents_2(self):
+
+        output_domain = Cartesian.from_sequence((0, 128, 0, 128, 0, 80))
+
+        extents = [
+            Offset((0, 0, -5)),
+            Offset((0, 0, 2))
+        ]
+        extent = Extent(extents)
+
+        golden_result = Cartesian.from_sequence((0, 128, 0, 128, 0, 80))
+
+        intervals = [Interval(0, None), Interval(0, None), Interval(-5, -2)]
+
+        result = domain_inference._infer_domain_from_extents(output_domain,
+                                                             extent,
+                                                             intervals)
+
+        golden_result = Cartesian.from_sequence((0, 128, 0, 128, 0, 80))
+
+        intervals = [Interval(0, None), Interval(0, None), Interval(5, 78)]
+
+        result = domain_inference._infer_domain_from_extents(output_domain,
+                                                             extent,
+                                                             intervals)
+
+        assert result == golden_result
+
+
     def test_infer_expression(self):
         # Parse a simple program
         program = parser.parse_string('''
