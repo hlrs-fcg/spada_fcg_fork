@@ -60,6 +60,7 @@ class TreeToAST(lark.Transformer):
     program_body = list
 
     def attributes(self, args, meta=None):
+        print(args)
         result = {}
         for attr_name, attr_val in list(args):
             result[attr_name] = attr_val
@@ -69,6 +70,12 @@ class TreeToAST(lark.Transformer):
     float_type = int_type = uint_type = bool_type = unknown_type = lambda self, args: getattr(
         irnodes.ScalarType, str(args[0]))
     schedule_type = lambda self, args: getattr(irnodes.ComputationType, str(args[0]))
+
+    def schedule_keyword(self, args, meta=None):
+        return "schedule"
+
+    def interval_keyword(self, args, meta=None):
+        return "interval"
 
     def dim_or_end(self, args, meta=None):
         dim = args[0]
@@ -210,6 +217,9 @@ class TreeToAST(lark.Transformer):
             raise ValueError('spst.computation is missing the "schedule" attribute')
         if interval is None:
             raise ValueError('spst.computation is missing the "interval" attribute')
+        intervals = []
+        assert len(interval) == 3
+        print(interval)
         return irnodes.ComputationBlock(results, inputs, schedule, interval, operation_type, body)
 
     def program(self, args, meta=None):
@@ -226,16 +236,14 @@ class TreeToAST(lark.Transformer):
 
 # Helper functions
 def _make_dimtuple(tup):
-    return tuple((None if dim == '?' else dim) for dim in tup)
+    return tuple((dim for dim in tup))
 
 
 def _make_offset_and_interval(extent_tuple):
     if len(extent_tuple) == 2:
-        interval_list = []
-        for intvl in extent_tuple[1]:
-            interval_list.extend([intvl.start, intvl.end])
-        return irnodes.OffsetAndInterval(_make_dimtuple(extent_tuple[0]), tuple(interval_list))
-    return irnodes.OffsetAndInterval(_make_dimtuple(extent_tuple[0]))
+        assert False, "NOT SUPPORTED"
+    assert isinstance(extent_tuple, tuple)
+    return irnodes.Offset(extent_tuple[0])
 
 
 def _expr(val: irnodes.Node | int | float | str) -> irnodes.Expression:

@@ -1,12 +1,12 @@
 import unittest
 from pathlib import Path
 
-from spatialstencil.syntax.stencil_ir import type_inference, parser, canonicalization
-from spatialstencil.syntax.stencil_ir.irnodes import ScalarType, Program, Cartesian, Interval, OffsetAndInterval, Extent
+from spatialstencil.syntax.stencil_ir import type_inference, parser, canonicalization, extent_inference, \
+    domain_inference
+from spatialstencil.syntax.stencil_ir.irnodes import ScalarType, Program, Cartesian, Interval, Offset, Extent
 
 
 class TestTypeInference(unittest.TestCase):
-
 
     def test_result_type_simple(self):
         # Test unary, binary, and ternary self-comparisons
@@ -30,18 +30,22 @@ class TestTypeInference(unittest.TestCase):
 
     def test_infer_domain_from_extents(self):
 
-        output_domain = Cartesian.from_tuple((0, 128, 0, 128, 0, 80))
+        output_domain = Cartesian.from_sequence((0, 128, 0, 128, 0, 80))
 
         extents = [
-            OffsetAndInterval((0, 1, 0), (0, None, 0, None, 0, None)),
-            OffsetAndInterval((-1, 0, 0), (0, None, 0, None, 0, None)),
-            OffsetAndInterval((0, 0, 2), (0, None, 0, None, 0, -2))
+            Offset((0, 1, 0)),
+            Offset((-1, 0, 0)),
+            Offset((0, 0, 2))
         ]
         extent = Extent(extents)
 
-        golden_result = Cartesian.from_tuple((-1, 128, 0, 129, 0, 80))
+        golden_result = Cartesian.from_sequence((-1, 128, 0, 129, 0, 80))
 
-        result = type_inference._infer_domain_from_extents(output_domain, extent)
+        intervals = [Interval(0, None), Interval(0, None), Interval(0, -2)]
+
+        result = domain_inference._infer_domain_from_extents(output_domain,
+                                                             extent,
+                                                             intervals)
 
         assert result == golden_result
 
@@ -55,7 +59,7 @@ class TestTypeInference(unittest.TestCase):
           field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
             %out = spst.computation(%inp) {
               schedule = PARALLEL,
-              interval = (interval<?, ?>, interval<?, ?>, interval<?, ?>)
+              interval = [interval<?, ?>, interval<?, ?>, interval<?, ?>]
             } : field<domain<?, ?, ?>, extent<(?, ?, ?)>, i32>,
                 field<domain<?, ?, ?>, extent<(?, ?, ?)>, i16> ->
                 field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
@@ -70,6 +74,7 @@ class TestTypeInference(unittest.TestCase):
                           spst.return sqrt(%d) : f32
                     }  
             }
+            spst.return %out: f32
         }
         ''')
         exprs = [ex.value for ex in program.computations[0].body[0].body[:-1]]  # assignments
@@ -103,15 +108,10 @@ class TestTypeInference(unittest.TestCase):
             golden_program = parser.parse_file(f)
 
         # Infer extents for the program without extents
-        type_inference.infer_field_extents(test_program)
+        extent_inference.infer_field_extents(test_program)
 
         # Canonicalize program with extents
         golden_program = canonicalization.canonicalize(golden_program)
-
-        # Check that the extents are the same
-        # Note that this also checks the canonicalization of extents
-        for s1, s2 in zip(golden_program.computations[0].body, test_program.computations[0].body):
-            self.assertEqual(s1.as_ir(), s2.as_ir())
 
         # Check the overall program
         self.assertEqual(golden_program.as_ir(), test_program.as_ir())
@@ -127,15 +127,10 @@ class TestTypeInference(unittest.TestCase):
             golden_program = parser.parse_file(f)
 
         # Infer extents for the program without extents
-        type_inference.infer_field_extents(test_program)
+        extent_inference.infer_field_extents(test_program)
 
         # Canonicalize program with extents
         golden_program = canonicalization.canonicalize(golden_program)
-
-        # Check that the extents are the same
-        # Note that this also checks the canonicalization of extents
-        for s1, s2 in zip(golden_program.computations[0].body, test_program.computations[0].body):
-            self.assertEqual(s1.as_ir(), s2.as_ir())
 
         # Check the overall program
         self.assertEqual(golden_program.as_ir(), test_program.as_ir())
@@ -144,30 +139,32 @@ class TestTypeInference(unittest.TestCase):
         # Parse a simple program
         program = parser.parse_string('''
         %b = spst.program (%a) {} : 
-          field<[?, ?, ?], {(0, 0, 0), (0, -1, 0) in [0:None, 0:None, 1:-1], (0, 0, 0)}, f32> ->
+          field<[?, ?, ?], {(0, 0, 0), (0, -1, 0), (0, 0, 0)}, f32> ->
           field<[?, ?, ?], {(?, ?, ?)}, f32> {
             %b = spst.computation(%a) {
               schedule = PARALLEL,
-              interval = (0:None, 0:None, 0:None)
-            } : field<[?, ?, ?], {(0, 0, 0), (0, -1, 0) in [0:None, 0:None, 1:-1], (0, 0, 0)}, f32> ->
+              interval = [0:None, 0:None, 0:None]
+            } : field<[?, ?, ?], {(0, 0, 0), (0, -1, 0), (0, 0, 0)}, f32> ->
                 field<[?, ?, ?], {(?, ?, ?)}, f32> {
                     %b = spst.statement (%a) {} :
-                      field<[?, ?, ?], {(0, 0, 0), (-1, 0, 0)}, f32> -> field<[?, ?, ?], {(0, 0, 0)}, f32> {
+                      field<[?, ?, ?], {(0, 2, 0), (1, 0, 0), (?, ?, 2), (-1, 0, 1)}, f32> -> field<[?, ?, ?], {(0, 0, 0)}, f32> {
                           spst.return %a : f32
                     }  
             }
+            spst.return %b: f32
         }
         ''')
 
-        canonical = '''%b = spst.program(%a) {} : spst.field<[?:?, ?:?, ?:?], {(0, 0, 0), (0, -1, 0) in [0:None, 0:None, 1:-1]}, f32> -> spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> {
+        canonical = '''%b = spst.program(%a) {} : spst.field<[?:?, ?:?, ?:?], {(0, -1, 0), (0, 0, 0)}, f32> -> spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> {
   %b = spst.computation (%a) {
    schedule = PARALLEL,
-   interval = (0:None, 0:None, 0:None)
-  } : spst.field<[?:?, ?:?, ?:?], {(0, 0, 0), (0, -1, 0) in [0:None, 0:None, 1:-1]}, f32> -> spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> {
-    %b = spst.statement (%a) {} : spst.field<[?:?, ?:?, ?:?], {(-1, 0, 0), (0, 0, 0)}, f32> -> spst.field<[?:?, ?:?, ?:?], {(0, 0, 0)}, f32> {
+   interval = [0:None, 0:None, 0:None]
+  } : spst.field<[?:?, ?:?, ?:?], {(0, -1, 0), (0, 0, 0)}, f32> -> spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> {
+    %b = spst.statement (%a) {} : spst.field<[?:?, ?:?, ?:?], {(?, ?, 2), (-1, 0, 1), (0, 2, 0), (1, 0, 0)}, f32> -> spst.field<[?:?, ?:?, ?:?], {(0, 0, 0)}, f32> {
       spst.return %a : f32
     }
   }
+  spst.return %b : f32
 }'''
 
         cprogram = canonicalization.canonicalize(program)

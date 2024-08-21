@@ -45,11 +45,11 @@ identifier : "%" suffix_id ("#" digits)?
 dim_list: dim ("," dim)*
 
 interval_type : ("spst.")? "interval" "<" dim_or_end "," dim_or_end ">" | dim_or_end ":" dim_or_end
-computation_interval : "(" interval_type ("," interval_type)* ")"
+computation_interval : "[" interval_type ("," interval_type)* "]"
 multi_interval_type : "[" interval_type ("," interval_type)* "]"
 
 extent_offset_tuple : "(" dim ("," dim)* ")"
-extent_tuple : extent_offset_tuple ("in" multi_interval_type)?
+extent_tuple : extent_offset_tuple
 extent_tuple_list : extent_tuple ("," extent_tuple)*
 extent_type : ("spst.")? "extent" "<" extent_tuple_list ">" | "{" extent_tuple_list "}"
 
@@ -122,11 +122,14 @@ type_list : field_or_scalar_type ("," field_or_scalar_type)*
 type_info : ":" field_or_scalar_type ("->" field_or_scalar_type)?
 type_list_info : ":" type_list ("->" type_list)?
 
-attr : bare_id "=" (identifier | constant_literal | enum_literal | builtin_type)
+schedule_keyword : "schedule"
+interval_keyword : "interval"
+attr : schedule_keyword "=" schedule_type | interval_keyword "=" computation_interval
+
 attributes : "{" attr? ("," attr)* "}"
 
 // Define program
-program : id_list "=" "spst.program" ("@" bare_id)? params attributes type_list_info program_body
+program : id_list "=" "spst.program" ("@" bare_id)? params (attributes)? type_list_info program_body
 
 // Define computation
 computation : id_list "=" "spst.computation" params attributes type_list_info computation_body
@@ -150,7 +153,7 @@ else_block : "else" computation_body
 
 ////////////////////////////////////////////////////
 // AST tree structure
-program_body : "{" computation* "}"
+program_body : "{" computation* return_expr "}"
 computation_body : "{" (statement | if_op | materialize_op | return_expr)* "}"
 statement_body : "{" statement_contents* "}"
 

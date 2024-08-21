@@ -4,7 +4,7 @@
  **/
 
 // Note that utens_stage is both an input and output. converted to SSA
-%utens_stage_out = spst.program @vadv(%utens_stage, %u_stage, %wcon, %u_pos, %utens, %dtr_stage) {} : 
+%pres = spst.program @vadv(%utens_stage, %u_stage, %wcon, %u_pos, %utens, %dtr_stage) {} :
         field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
         field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
         field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
@@ -15,7 +15,7 @@
 
     %ccol, %dcol = spst.computation(%wcon, %dtr_stage, %u_stage, %u_pos, %utens, %utens_stage) {
      schedule = FORWARD,
-     interval = (interval<?, ?>, interval<?, ?>, interval<0, 1>) } :
+     interval = [interval<?, ?>, interval<?, ?>, interval<0, 1>] } :
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
             f32,
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
@@ -58,7 +58,7 @@
 
     %ccol, %dcol = spst.computation(%wcon, %ccol, %dcol, %dtr_stage, %u_stage, %u_pos, %utens_stage) {
      schedule = FORWARD,
-     interval = (interval<?, ?>, interval<?, ?>, interval<1, -1>) } :
+     interval = [interval<?, ?>, interval<?, ?>, interval<1, -1>] } :
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
@@ -109,7 +109,7 @@
 
     %dcol = spst.computation(%wcon, %ccol, %dcol, %dtr_stage, %u_stage, %u_pos, %utens_stage) {
      schedule = FORWARD,
-     interval = (interval<?, ?>, interval<?, ?>, interval<-1, None>) } :
+     interval = [interval<?, ?>, interval<?, ?>, interval<-1, None>] } :
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
@@ -152,7 +152,7 @@
 
     %data_col, %utens_stage_out = spst.computation(%dcol, %dtr_stage, %u_pos) {
      schedule = BACKWARD,
-     interval = (interval<?, ?>, interval<?, ?>, interval<-1, None>) } :
+     interval = [interval<?, ?>, interval<?, ?>, interval<-1, None>] } :
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
             f32,
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
@@ -176,7 +176,7 @@
 
     %utens_stage_out = spst.computation(%dcol, %dtr_stage, %u_pos, %data_col) {
      schedule = BACKWARD,
-     interval = (interval<?, ?>, interval<?, ?>, interval<0, -1>) } :
+     interval = [interval<?, ?>, interval<?, ?>, interval<0, -1>] } :
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
             f32,
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
@@ -197,4 +197,5 @@
             return %utens_stage_out
         }
     }
+    return %utens_stage_out
 }

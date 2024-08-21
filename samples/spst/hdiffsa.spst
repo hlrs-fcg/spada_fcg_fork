@@ -3,7 +3,7 @@
  * See https://github.com/spcl/open-earth-compiler/blob/1e48dee6a1a021bc11d6621432450406349b3733/test/Examples/hdiffsa.mlir
  **/
 
-%arg2 = spst.program @hdiffsa(%arg0, %arg1, %arg3, %arg4) {} : 
+%res = spst.program @hdiffsa(%arg0, %arg1, %arg3, %arg4) {} :
        field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
        field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
        field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
@@ -68,4 +68,5 @@
                 return %23
         }
     }
+    return %arg2
 }

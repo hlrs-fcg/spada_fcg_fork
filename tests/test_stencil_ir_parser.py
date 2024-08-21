@@ -31,6 +31,7 @@ class TestStencilIRParser(unittest.TestCase):
                         spst.return 0;
                     }
             }
+            spst.return %out
         }
         '''
         program = parser.parse_string(src)
@@ -71,6 +72,7 @@ class TestStencilIRParser(unittest.TestCase):
                           spst.return sqrt(%inp) : f32
                     }  
             }
+            spst.return %out
         }
         '''
         program = parser.parse_string(src)

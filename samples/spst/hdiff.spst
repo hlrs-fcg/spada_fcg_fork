@@ -3,14 +3,14 @@
  * See https://github.com/GridTools/gt4py/blob/1caca893034a18d5df1522ed251486659f846589/tests/test_integration/stencil_definitions.py#L194
  **/
 
-%out = spst.program @hdiff(%in, %coeff) {} : 
+%res = spst.program @hdiff(%in, %coeff) {} :
        field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
        field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
     -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
    // This stencil contains one parallel computation block
    %out = spst.computation(%in, %coeff) {
      schedule = PARALLEL,
-     interval = (interval<?, ?>, interval<?, ?>, interval<?, ?>)
+     interval = [interval<?, ?>, interval<?, ?>, interval<?, ?>]
    } : field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
        field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
     -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
@@ -59,4 +59,5 @@
                 )
         }
     }
+    return %out
 }

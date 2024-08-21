@@ -24,7 +24,7 @@ class TestStencilIRParser(unittest.TestCase):
         # Test computation
         comp = irprogram.computations[0]
         assert comp.schedule == sast.ComputationType.PARALLEL
-        assert comp.interval == (sast.Interval(0, None), sast.Interval(0, None), sast.Interval(0, None))
+        assert comp.interval == [sast.Interval(0, None), sast.Interval(0, None), sast.Interval(0, None)]
 
         # Test input/output collection
         assert [inp.name for inp in comp.inputs] == ['inp']
@@ -45,7 +45,7 @@ class TestStencilIRParser(unittest.TestCase):
         # Test computation
         comps = irprogram.computations
         assert comps[0].schedule == sast.ComputationType.PARALLEL
-        assert comps[0].interval == (sast.Interval(0, None), sast.Interval(0, None), sast.Interval(0, None))
+        assert comps[0].interval == [sast.Interval(0, None), sast.Interval(0, None), sast.Interval(0, None)]
 
         # Test input/output collection
         assert [inp.name for inp in comps[0].inputs] == ['inp']
@@ -64,7 +64,7 @@ class TestStencilIRParser(unittest.TestCase):
         # Test computation
         comps = irprogram.computations
         assert comps[0].schedule == sast.ComputationType.PARALLEL
-        assert comps[0].interval == (sast.Interval(0, None), sast.Interval(0, None), sast.Interval(0, None))
+        assert comps[0].interval == [sast.Interval(0, None), sast.Interval(0, None), sast.Interval(0, None)]
 
         # Test input/output collection
         assert [inp.name for inp in comps[0].inputs] == ['inp']
@@ -86,7 +86,7 @@ class TestStencilIRParser(unittest.TestCase):
         # Test computation
         comps = irprogram.computations
         assert comps[0].schedule == sast.ComputationType.PARALLEL
-        assert comps[0].interval == (sast.Interval(0, None), sast.Interval(0, None), sast.Interval(0, None))
+        assert comps[0].interval == [sast.Interval(0, None), sast.Interval(0, None), sast.Interval(0, None)]
 
         # Test input/output collection
         assert [inp.name for inp in comps[0].inputs] == ['inp']
@@ -108,7 +108,7 @@ class TestStencilIRParser(unittest.TestCase):
         # Test computation
         comps = irprogram.computations
         assert comps[0].schedule == sast.ComputationType.PARALLEL
-        assert comps[0].interval == (sast.Interval(0, None), sast.Interval(0, None), sast.Interval(0, None))
+        assert comps[0].interval == [sast.Interval(0, None), sast.Interval(0, None), sast.Interval(0, None)]
 
         # Test input/output collection
         assert comps[0].inputs == [sast.Identifier('inp')]

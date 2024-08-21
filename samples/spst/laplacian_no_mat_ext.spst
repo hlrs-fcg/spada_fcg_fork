@@ -1,16 +1,16 @@
 // Version with inferred extents
 // Without materialize
-%out = spst.program (%in) {} :
-       field<[?, ?, ?], {(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0), (0, 1, 0), (-1, 1, 0), (1, 1, 0), (0, 2, 0)}, f32>
-    -> field<[?, ?, ?], {(0, 0, 0)}, f32>
+%pres = spst.program (%in) {} :
+       field<[?, ?, ?], {(?, ?, ?)}, f32>
+    -> field<[?, ?, ?], {(?, ?, ?)}, f32>
 {
     %res = spst.computation (%in)
     {
         schedule = PARALLEL,
-        interval = (0:None, 0:None, 0:None)
+        interval = [0:None, 0:None, 0:None]
     } : field<[?,?,?],
-        {(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0), (0, 1, 0), (-1, 1, 0), (1, 1, 0), (0, 2, 0)}, f32>
-      -> field<[?,?,?], {(0, 0, 0)}, f32>
+       {(?, ?, ?)}, f32>
+      -> field<[?,?,?], {(?, ?, ?)}, f32>
     {
         %out_1 = spst.statement(%in)
                 : field<[?,?,?], {(0, 0, 0), (-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 1, 0), (0, 1, 0), (-1, 1, 0), (1, 1, 0), (0, 2, 0)}, f32>
@@ -26,4 +26,5 @@
             }
         return %out_2
     }
+    return %res
 }

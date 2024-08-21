@@ -1,13 +1,13 @@
 // Version before extent inference
 // Without materialize
-%out = spst.program (%in) {} :
+%pres = spst.program (%in) {} :
        field<[?, ?, ?], {(?, ?, ?)}, f32>
     -> field<[?, ?, ?], {(?, ?, ?)}, f32>
 {
     %res = spst.computation (%in)
     {
         schedule =  PARALLEL,
-        interval = (0:None, 0:None, 0:None)
+        interval = [0:None, 0:None, 0:None]
     } : field<[?,?,?],
               {(?, ?, ?)}, f32>
       -> field<[?,?,?], {(?, ?, ?)}, f32>
@@ -26,4 +26,5 @@
             }
         return %out_2
     }
+    return %res
 }

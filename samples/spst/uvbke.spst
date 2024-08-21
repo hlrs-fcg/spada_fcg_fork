@@ -3,7 +3,7 @@
  * See https://github.com/spcl/open-earth-compiler/blob/1e48dee6a1a021bc11d6621432450406349b3733/test/Examples/uvbke.mlir
  **/
 
-%arg4, %arg5 = spst.program @uvbke(%arg0, %arg1, %arg2, %arg3) {} : 
+%pres, %pres2 = spst.program @uvbke(%arg0, %arg1, %arg2, %arg3) {} :
        field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
        field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
        field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
@@ -46,4 +46,5 @@
                 return %23
         }
     }
+    return %arg4, %arg5
 }

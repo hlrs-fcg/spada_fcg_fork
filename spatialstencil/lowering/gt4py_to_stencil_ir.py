@@ -36,6 +36,8 @@ def lower_gt4py_to_stencil_ir(program: gtast.GTProgram,
     # Infer which fields are intermediate (before materialize pass)
     type_inference.infer_inputs_and_outputs(new_ast)
 
+    print(new_ast.as_ir())
+
     # Insert materialize for all fields
     if materialize:
         # Perform a first round of shape inference to skip certain materializations
@@ -43,7 +45,7 @@ def lower_gt4py_to_stencil_ir(program: gtast.GTProgram,
 
         new_ast = MaterializeIntermediates().visit(new_ast)
 
-    domain = sast.Cartesian.from_tuple((0, domain[0], 0, domain[1], 0, domain[2])) if domain else None
+    domain = sast.Cartesian.from_sequence((0, domain[0], 0, domain[1], 0, domain[2])) if domain else None
     # Perform type/shape inference in stencil IR language
     type_inference.infer_types(new_ast, default_float_dtype, default_int_dtype, domain)
 
@@ -77,7 +79,6 @@ def field_versioning(program: gtast.GTProgram):
                         name_to_version[stmt.target] = 0
                         continue
 
-                    # TODO(later): Do not make new version if intervals do not overlap?
                     old_name = stmt.target
                     name_to_version[stmt.target] += 1
                     stmt.target = f'{stmt.target}#{name_to_version[stmt.target]}'
@@ -244,7 +245,7 @@ def convert_gt4py_ast_to_stencil_ast(program: gtast.GTProgram, default_float_dty
             computations.append(
                 sast.ComputationBlock(
                     coutputs, cinputs, sast.ComputationType[computation.computation_type.name],
-                    (xintvl, yintvl, zintvl),
+                    [xintvl, yintvl, zintvl],
                     sast.OperationType([sast.FieldType.empty() for _ in cinputs],
                                        [sast.FieldType.empty() for _ in coutputs]), cbody))
 
@@ -286,24 +287,24 @@ def _gt4py_to_stencil_ir_type(dtype: gtast.FieldType, default_float_dtype: sast.
         result.dtype = default_float_dtype
     elif dtype == gtast.FieldType.FieldIJ:
         result.dtype = default_float_dtype
-        result.domain = sast.Cartesian.from_tuple((0, None, 0, None, 0, 1))
+        result.domain = sast.Cartesian.from_sequence((0, None, 0, None, 0, 1))
     elif dtype == gtast.FieldType.FieldI:
         result.dtype = default_float_dtype
-        result.domain = sast.Cartesian.from_tuple((0, None, 0, 1, 0, 1))
+        result.domain = sast.Cartesian.from_sequence((0, None, 0, 1, 0, 1))
     elif dtype == gtast.FieldType.FieldJ:
         result.dtype = default_float_dtype
-        result.domain = sast.Cartesian.from_tuple((0, 1, 0, None, 0, 1))
+        result.domain = sast.Cartesian.from_sequence((0, 1, 0, None, 0, 1))
     elif dtype == gtast.FieldType.FieldK:
         result.dtype = default_float_dtype
-        result.domain = sast.Cartesian.from_tuple((0, 1, 0, 1, 0, None))
+        result.domain = sast.Cartesian.from_sequence((0, 1, 0, 1, 0, None))
     elif dtype == gtast.FieldType.int:
         result.dtype = default_int_dtype
-        result.domain = sast.Cartesian.from_tuple((0, 1, 0, 1, 0, 1))
-        result.extent = sast.Extent([sast.OffsetAndInterval((0, 0, 0))])
+        result.domain = sast.Cartesian.from_sequence((0, 1, 0, 1, 0, 1))
+        result.extent = sast.Extent([sast.Offset((0, 0, 0))])
     elif dtype == gtast.FieldType.float:
         result.dtype = default_float_dtype
-        result.domain = sast.Cartesian.from_tuple((0, 1, 0, 1, 0, 1))
-        result.extent = sast.Extent([sast.OffsetAndInterval((0, 0, 0))])
+        result.domain = sast.Cartesian.from_sequence((0, 1, 0, 1, 0, 1))
+        result.extent = sast.Extent([sast.Offset((0, 0, 0))])
     else:
         raise TypeError(f'Unsupported field type "{dtype}"')
 

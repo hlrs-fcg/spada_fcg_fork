@@ -3,7 +3,7 @@ Native class definitions for the spatial stencil Intermediate Representation (IR
 """
 from dataclasses import dataclass, field
 import enum
-from typing import Literal
+from typing import Literal, Sequence
 
 from spatialstencil.syntax.common.basenode import BaseNode
 from spatialstencil.syntax.common import visitor
@@ -98,11 +98,13 @@ class Domain(Node, IRType):
         raise NotImplementedError('Abstract class. Method implemented in subclasses')
 
 
-def _val_or_unk(val: int | None) -> str:
+def _val_or_unk(val: int | None | Literal["?"]) -> str:
     """
     Helper function that prints out a value or a question mark if None.
     """
     if val is None:
+        return '?'
+    if val == '?':
         return '?'
     return str(val)
 
@@ -110,24 +112,58 @@ def _val_or_unk(val: int | None) -> str:
 
 
 @dataclass
-class OffsetAndInterval(Node):
+class Offset(Node):
     """
     Dimension tuple containing an offset and an interval of an ``Extent``.
     """
     # NOTE: We are using variable-length tuples here so that this type is hashable.
-    values: tuple[int | None]
-    interval: tuple[int | None] = field(default_factory=lambda: (0, None, 0, None, 0, None))
+    # This is terrible, instead use the Interval type directly!!!
+
+    # Note: We can actually remove the interval with the new type analysis, because
+    # we will have extents local to scopes.
+    values: tuple[int | Literal["?"], int | Literal["?"], int | Literal["?"]] = ("?", "?", "?")
 
     def validate(self) -> None:
-        # For every dimension, an interval has a start and end point
-        assert len(self.interval) == 2 * len(self.values)
+        assert isinstance(self.values, tuple)
+        assert len(self.values) == 3
+        assert all(self.values is not None for v in self.values)
 
     def as_ir(self, indent: int = 0) -> str:
         output = f'({", ".join(_val_or_unk(v) for v in self.values)})'
-        if self.interval != (0, None, 0, None, 0, None):
-            interval_str = [f'{start}:{end}' for start, end in zip(self.interval[::2], self.interval[1::2])]
-            output += f' in [{", ".join(interval_str)}]'
         return output
+
+    def add(self, other: 'Offset') -> 'Offset':
+        assert all(isinstance(v, int) for v in self.values)
+        assert all(isinstance(v, int) for v in other.values)
+        return Offset((self.values[0] + other.values[0],
+                       self.values[1] + other.values[1],
+                       self.values[2] + other.values[2]))
+
+    def __add__(self, other: 'Offset') -> 'Offset':
+        return self.add(other)
+
+    def __hash__(self):
+        return hash(self.values)
+
+    def __lt__(self, other: 'Offset') -> bool:
+        """
+        Returns True if all values in this offset are less than the values in the other offset.
+        "?" values are considered less than any other value.
+        :param other:
+        :return:
+        """
+        self.validate()
+        other.validate()
+        for self_value, other_value in zip(self.values, other.values):
+            # Treat "?" as less than any integer
+            if self_value == "?" and other_value != "?":
+                return True
+            if self_value != "?" and other_value == "?":
+                return False
+            if self_value != other_value:
+                return self_value < other_value
+        return False
+
 
 
 @dataclass
@@ -135,13 +171,22 @@ class Extent(Node, IRType):
     """
     Extents of a field.
     """
-    extents: list[OffsetAndInterval]
+    extents: list[Offset]
 
     def as_ir(self, indent: int = 0) -> str:
         return "{" + f'{", ".join(e.as_ir() for e in self.extents)}' + "}"
 
     def is_unknown(self) -> bool:
         return all(dim is None for extent in self.extents for dim in extent.values)
+
+    def extent_tuples(self):
+        return [extent.values for extent in self.extents]
+
+    def sort_extents(self):
+        """
+        Sorts the extents in the extent list.
+        """
+        self.extents[:] = sorted(set(self.extents))
 
 
 @dataclass
@@ -157,7 +202,7 @@ class FieldType(Node, IRType):
         """
         return FieldType(
             domain=Cartesian(Interval(), Interval(), Interval()),
-            extent=Extent([OffsetAndInterval((None, None, None))]),
+            extent=Extent([Offset(("?", "?", "?"))]),
             dtype=ScalarType.UNKNOWN)
 
     def validate(self) -> None:
@@ -175,19 +220,17 @@ class OperationType(Node):
     source: list[DataType] = field(default_factory=lambda: [FieldType.empty()])
     destination: list[DataType] | None = None
 
+    def validate(self) -> None:
+        assert isinstance(self.source, list)
+        assert self.destination is None or isinstance(self.destination, list)
+
     def as_ir(self, indent: int = 0) -> str:
-        if isinstance(self.source, list):
-            srcstr = ", ".join(v.as_ir() for v in self.source)
-        else:
-            srcstr = self.source.as_ir()
+        srcstr = ", ".join(v.as_ir() for v in self.source)
 
         if self.destination is None:
             return srcstr
 
-        if isinstance(self.destination, list):
-            dststr = ", ".join(v.as_ir() for v in self.destination)
-        else:
-            dststr = self.destination.as_ir()
+        dststr = ", ".join(v.as_ir() for v in self.destination)
 
         return f'{srcstr} -> {dststr}'
 
@@ -201,7 +244,9 @@ class Interval(Node, IRType):
 
     def as_ir(self, indent: int = 0) -> str:
         return f'{self.start}:{self.end}'
-        #return f'spst.interval<{self.start}, {self.end}>'
+
+    def as_tuple(self) -> tuple[int | None | Literal["?"], int | None | Literal["?"]]:
+        return (self.start, self.end)
 
     def is_unknown(self) -> bool:
         return self.start is None or self.end is None or self.start == "?" or self.end == "?"
@@ -261,6 +306,24 @@ class Interval(Node, IRType):
 
         return Interval(start, end)
 
+    def __hash__(self):
+        if self.start is None:
+            return hash(self.end)
+        elif self.end is None:
+            return hash(self.start)
+        else:
+            return hash((self.start, self.end))
+
+    def __eq__(self, other):
+        return self.start == other.start and self.end == other.end
+
+    def __getitem__(self, item):
+        if item == 0:
+            return self.start
+        elif item == 1:
+            return self.end
+        raise IndexError("Index out of range")
+
 
 @dataclass
 class Cartesian(Domain):
@@ -275,7 +338,6 @@ class Cartesian(Domain):
 
     def as_ir(self, indent: int = 0) -> str:
         return f'[{self.x.as_ir()}, {self.y.as_ir()}, {self.z.as_ir()}]'
-        #return f'spst.cartesian<{self.x.as_ir()}, {self.y.as_ir()}, {self.z.as_ir()}>'
 
     def is_unknown(self) -> bool:
         return self.x.is_unknown() or self.y.is_unknown() or self.z.is_unknown()
@@ -307,38 +369,45 @@ class Cartesian(Domain):
         return Cartesian(self.x.intersect(other.x), self.y.intersect(other.y), self.z.intersect(other.z))
 
     @staticmethod
-    def from_tuple(tup: tuple) -> 'Cartesian':
+    def from_sequence(seq: Sequence[int | None | Literal['?']]) -> 'Cartesian':
         """
         Creates a Cartesian domain from a 6-tuple of integers or "?".
         """
-        return Cartesian(Interval(tup[0], tup[1]), Interval(tup[2], tup[3]), Interval(tup[4], tup[5]))
+        return Cartesian(Interval(seq[0], seq[1]), Interval(seq[2], seq[3]), Interval(seq[4], seq[5]))
 
-    def intersect_with_ranges(self, tup: tuple[int | None]) -> 'Cartesian':
+    def intersect_with_ranges(self, intervals: Sequence[Interval]) -> 'Cartesian':
         """
-        Creates a Cartesian sub-domain from a 6-tuple of intervals
+        Creates a Cartesian sub-domain from 3 intervals
         that may indicate a sub-domain of the original Cartesian domain
         through the use of negative values to indicate an offset from the
         upper bound of the domain and None to indicate the upper bound of the domain.
         """
+        assert len(intervals) == 3
+
+        output_lowerbound = [self.x.start, self.y.start, self.z.start]
         output_upperbound = [self.x.end, self.y.end, self.z.end]
+        assert all(x is not None for x in output_upperbound)
+        result = []
 
-        clean_interval_tuple = []
         for i in range(3):
-            if tup[2 * i] is None:
-                clean_interval_tuple.append(0)
-            elif tup[2 * i] < 0:
-                clean_interval_tuple.append(output_upperbound[i] + tup[2 * i])
-            else:
-                clean_interval_tuple.append(tup[2 * i])
+            assert intervals[i].start != "?"
+            assert intervals[i].end != "?"
 
-            if tup[2 * i + 1] is None:
-                clean_interval_tuple.append(output_upperbound[i])
-            elif tup[2 * i + 1] < 0:
-                clean_interval_tuple.append(output_upperbound[i] + tup[2 * i + 1])
+            if intervals[i].start is None:
+                start = 0
             else:
-                clean_interval_tuple.append(tup[2 * i + 1])
+                start = max(output_lowerbound[i],
+                            output_lowerbound[i] + intervals[i].start)
 
-        domain = Cartesian.from_tuple(clean_interval_tuple)
+            if intervals[i].end is None:
+                end = output_upperbound[i]
+            else:
+                end = min(output_upperbound[i],
+                          output_upperbound[i] + intervals[i].end)
+
+            result.append(Interval(start, end))
+
+        domain = Cartesian(result[0], result[1], result[2])
         return domain
 
     def add(self, tuple) -> 'Cartesian':
@@ -522,6 +591,8 @@ class MaterializeOp(Node, Operation):
     def validate(self) -> None:
         assert isinstance(self.result, Identifier)
         assert isinstance(self.value, Identifier)
+        assert len(self.operation_type.source) == 1
+        assert len(self.operation_type.destination) == 1
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
@@ -568,6 +639,8 @@ class StatementBlock(Node, Operation, Block):
     def validate(self) -> None:
         assert isinstance(self.body[-1], ReturnOp)
         assert len(self.body[-1].values) == len(self.outputs)
+        assert self.operation_type.destination is not None
+        assert len(self.operation_type.destination) == len(self.outputs)
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
@@ -586,6 +659,8 @@ class StatementBlock(Node, Operation, Block):
 class ElseIfBlock(Node, Block):
     """
     A single "else if" block. If condition is None, represents an "else" block
+
+    # TODO: Does not have an operation type!!
     """
     condition: Identifier | None
     body: list[StatementBlock | ReturnOp]
@@ -651,6 +726,15 @@ class ComputationBlock(Node, Operation, Block):
     operation_type: OperationType
     body: list[StatementBlock | IfBlock | MaterializeOp]
 
+    def validate(self) -> None:
+        assert self.operation_type.destination is not None
+        assert len(self.outputs) == len(self.operation_type.destination)
+        assert isinstance(self.schedule, ComputationType)
+        assert isinstance(self.interval, list)
+        assert all(isinstance(i, Interval) for i in self.interval)
+        assert len(self.interval) == 3
+
+
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
         inputs = ', '.join(i.as_ir() for i in self.inputs)
@@ -660,7 +744,7 @@ class ComputationBlock(Node, Operation, Block):
         # Attributes
         result += '{\n'
         result += f'{indent_str} schedule = {self.schedule.name},\n'
-        result += f'{indent_str} interval = ({", ".join(i.as_ir() for i in self.interval)})\n'
+        result += f'{indent_str} interval = [{", ".join(i.as_ir() for i in self.interval)}]\n'
         result += indent_str + '}'
         # Types
         result += f' : {self.operation_type.as_ir()} '
