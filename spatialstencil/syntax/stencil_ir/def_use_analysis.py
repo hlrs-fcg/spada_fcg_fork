@@ -101,7 +101,6 @@ class DefUseAnalysis(sast.NodeVisitor):
         # For now, we do not use the return value as a use
         assert all(isinstance(arg.value, sast.Identifier) for arg in node.values)
 
-        # TODO FIX: This does not work when returning non-zero offsets, need to instead recurse into the return value
         # And create a use for each field access
         for arg, arg_t in zip(node.values, node.operation_type.source):
             # If it's an identifier, directly add the use
@@ -112,5 +111,3 @@ class DefUseAnalysis(sast.NodeVisitor):
                                                        arg_t))
                 else:
                     self.add(arg.value, arg_t)
-            #else:
-                #self.visit(node)

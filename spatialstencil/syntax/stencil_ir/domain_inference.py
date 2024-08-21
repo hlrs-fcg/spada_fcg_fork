@@ -40,7 +40,6 @@ def infer_field_domains(program: sast.Program,
     for computation in reversed(program.computations):
         # Initialize the output extents to be (0, 0, 0)
         if isinstance(computation, sast.ComputationBlock):
-            print(computation)
 
             for node in reversed(list(computation.walk())):
                 if isinstance(node, sast.StatementBlock):
@@ -101,23 +100,16 @@ def _infer_domain_from_extents(output_domain: sast.Cartesian,
     :param extents:
     :return:
     """
-    print(output_domain, extents, intervals)
     assert len(intervals) == 3
     current_domain = copy.deepcopy(output_domain)
 
-    print(current_domain)
-
     for e in extents.extents:
-        print(e)
         # Convert the extent interval into a cartesian domain representing the output
-        # TODO Adapt!
         extent_domain = output_domain.intersect_with_ranges(intervals)
-        print(extent_domain)
         # Expand the domain with the extent values
         extent_domain = extent_domain.add(e.values)
 
         current_domain = current_domain.union(extent_domain)
-        print(current_domain)
 
     return current_domain
 

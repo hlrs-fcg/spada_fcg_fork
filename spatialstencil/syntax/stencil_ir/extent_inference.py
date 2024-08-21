@@ -39,11 +39,6 @@ def infer_field_extents(program: sast.Program):
             if dtype.extent.is_unknown():
                 dtype.extent.extents = [sast.Offset((0, 0, 0))]
 
-    # Debug print the uses
-    # For each field, print the number of uses
-    for field, use in uses.items():
-        print(f"{field}: {len(use)}")
-
     # Start with outputs. Extents always start at (0, 0, 0)
     init_outputs(program.operation_type.destination)
 
@@ -51,7 +46,6 @@ def infer_field_extents(program: sast.Program):
     for computation in reversed(program.computations):
         # Initialize the output extents to be (0, 0, 0)
         if isinstance(computation, sast.ComputationBlock):
-            print(computation)
             init_outputs(computation.operation_type.destination)
 
             for node in reversed(list(computation.walk())):
@@ -98,16 +92,13 @@ class LocalExtentCollector(sast.NodeVisitor):
 
     def visit_StatementBlock(self, node: sast.StatementBlock):
         # Visit only the body (arguments do not count as accesses)
-        print("VISIT", node)
         for b in node.body:
             self.visit(b)
     def visit_Identifier(self, node: sast.Identifier):
-        print("VISIT", node)
         # If a bare identifier (i.e., no subscript) is used, the extent (0, 0, 0) should be added
         self.extents[node.name].add(sast.Offset((0, 0, 0)))
 
     def visit_Subscript(self, node: sast.Subscript):
-        print("VISIT", node.subscript)
         # If a subscript is found, add its subscript to the extents.
         # Make sure not to recursively visit into the subscript to avoid adding (0, 0, 0)
         self.extents[node.value.name].add(sast.Offset((node.subscript[0], node.subscript[1], node.subscript[2])))
@@ -131,7 +122,6 @@ def _walk_StatementBlock(uses: dict[sast.Identifier, list[def_use_analysis.Scope
                          node: sast.StatementBlock) -> None:
     # Get all the uses of the result within the current scope
     # TODO Assumes we have a single output!
-    print("WALK STATEMENT", node)
     assert len(node.outputs) == 1, "Only a single output is supported for now"
     use_offsets = _offsets_of_uses_in_scope(uses, computation, node.outputs[0])
 
@@ -182,6 +172,7 @@ def _walk_IfBlock(uses: dict[sast.Identifier, list[def_use_analysis.ScopedUse]],
 def _walk_ReturnOp(uses: dict[sast.Identifier, list[def_use_analysis.ScopedUse]],
                    computation: sast.ComputationBlock,
                    node: sast.ReturnOp):
+    # TODO: Implement?
     pass
 
 
