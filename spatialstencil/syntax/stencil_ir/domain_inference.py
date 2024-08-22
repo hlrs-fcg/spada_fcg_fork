@@ -88,6 +88,7 @@ def _infer_domain_from_extents(output_domain: sast.Cartesian,
     """
     Given the output domain and extents, infers the domain size of the input field.
     Assuming that the output is accessed at offset (0, 0, 0).
+    # TODO Adapt for non-zero offsets
     :param output_domain:
     :param extents:
     :return:
@@ -188,48 +189,3 @@ class DomainInference(sast.ScopedNodeVisitor):
             if inptype.domain.is_unknown():
                 inptype.domain = copy.deepcopy(in_domain)
         self.pop_scope()
-
-
-
-class DomainAssigner(sast.NodeTransformer):
-    """
-    Sets domain based on given dictionary.
-    """
-
-    def __init__(self, field_domains: dict[str, sast.Cartesian]):
-        super().__init__()
-        self.field_domains = field_domains
-
-    def _modify_typeinfo(self, operation_type: sast.OperationType, inputs: list[sast.Identifier],
-                         outputs: list[sast.Identifier]):
-        """
-        Helper function that updates the type information based on inferred types.
-        """
-        for name, src in zip(inputs, operation_type.source):
-            if name.name in self.field_domains and isinstance(src, sast.FieldType) and src.domain.is_unknown():
-                src.domain = copy.deepcopy(self.field_domains[name.name])
-
-        if operation_type.destination:
-            for name, dst in zip(outputs, operation_type.destination):
-                if name.name in self.field_domains and isinstance(dst, sast.FieldType) and dst.domain.is_unknown():
-                    dst.domain = copy.deepcopy(self.field_domains[name.name])
-
-    def visit_MaterializeOp(self, node: sast.MaterializeOp):
-        self._modify_typeinfo(node.operation_type, [node.value], [node.result])
-        return self.generic_visit(node)
-
-    def visit_StatementBlock(self, node: sast.StatementBlock):
-        self._modify_typeinfo(node.operation_type, node.inputs, node.outputs)
-        return self.generic_visit(node)
-
-    def visit_IfBlock(self, node: sast.IfBlock):
-        self._modify_typeinfo(node.operation_type, [node.condition], node.outputs)
-        return self.generic_visit(node)
-
-    def visit_ComputationBlock(self, node: sast.ComputationBlock):
-        self._modify_typeinfo(node.operation_type, node.inputs, node.outputs)
-        return self.generic_visit(node)
-
-    def visit_Program(self, node: sast.Program):
-        self._modify_typeinfo(node.operation_type, node.inputs, node.outputs)
-        return self.generic_visit(node)

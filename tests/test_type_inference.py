@@ -3,7 +3,8 @@ from pathlib import Path
 
 from spatialstencil.syntax.stencil_ir import type_inference, parser, canonicalization, extent_inference, \
     domain_inference
-from spatialstencil.syntax.stencil_ir.irnodes import ScalarType, Program, Cartesian, Interval, Offset, Extent
+from spatialstencil.syntax.stencil_ir.irnodes import ScalarType, Program, Cartesian, Interval, Offset, Extent, \
+    StatementBlock, MaterializeOp, ComputationBlock, ReturnOp
 
 
 class TestTypeInference(unittest.TestCase):
@@ -83,6 +84,41 @@ class TestTypeInference(unittest.TestCase):
 
         assert result == golden_result
 
+    def test_infer_domains_basic(self):
+        # For every file, run the parser, infer_domains
+        # Check that all domains have been inferred (i.e. no unknown domains)
+
+        files = [
+            Path(__file__).parent / Path('../samples/spst/laplacian_mat_ext.spst'),
+            Path(__file__).parent / Path('../samples/spst/laplacian_no_mat_ext.spst'),
+            Path(__file__).parent / Path('../samples/spst/if_else_ext.spst'),
+            Path(__file__).parent / Path('../samples/spst/multiple_returns_ext.spst'),
+            Path(__file__).parent / Path('../samples/spst/laplacian_mat_sh_ext.spst')
+        ]
+
+        for file in files:
+            with open(file, 'r') as f:
+                program = parser.parse_file(f)
+            print(program.as_ir())
+
+            domain_inference.infer_field_domains(program, Cartesian.from_sequence((0, 128, 0, 128, 0, 80)))
+
+            # Check that all domains have been inferred
+            for computation in program.computations:
+                if isinstance(computation, ComputationBlock):
+                    for statement in computation.body:
+                        for input in statement.operation_type.source:
+                            assert not input.domain.is_unknown()
+                        if isinstance(statement, StatementBlock) or isinstance(statement, MaterializeOp):
+                            for output in statement.operation_type.destination:
+                                assert not output.domain.is_unknown()
+                    for output in computation.operation_type.source:
+                        assert not output.domain.is_unknown()
+                    for input in computation.operation_type.destination:
+                        assert not input.domain.is_unknown()
+                elif isinstance(computation, ReturnOp):
+                    for output in computation.operation_type.source:
+                        assert not output.domain.is_unknown()
 
     def test_infer_expression(self):
         # Parse a simple program
