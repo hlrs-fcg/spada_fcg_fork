@@ -117,7 +117,7 @@ class TestStencilIRParser(unittest.TestCase):
         assert comps[1].outputs == [sast.Identifier('out', version=0)]
 
     def test_versioning_in_ifelse(self):
-        program = self.gtfuncs['test_versioning_in_ifelse']
+        program = self.gtfuncs['versioning_in_ifelse']
         irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program, materialize=False)
 
         comp = irprogram.computations[0]
@@ -256,7 +256,7 @@ def output_overwrite(inp: Field3D, out: Field3D):
         tmp = inp + out
         out = tmp + 1
 
-def test_versioning_in_ifelse(inp: Field3D,
+def versioning_in_ifelse(inp: Field3D,
                               out: Field3D):
     with computation(PARALLEL), interval(...):
         pred1 = inp < 233.16
