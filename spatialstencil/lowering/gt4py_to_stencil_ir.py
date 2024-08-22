@@ -251,6 +251,8 @@ def convert_gt4py_ast_to_stencil_ast(program: gtast.GTProgram, default_float_dty
                     sast.OperationType([sast.FieldType.empty() for _ in cinputs],
                                        [sast.FieldType.empty() for _ in coutputs]), cbody))
 
+    # TODO Add the necessary return statement
+
     return sast.Program(
         outputs=[sast.Identifier(field) for field in sorted(output_fields)],
         name=program.name,
@@ -384,12 +386,12 @@ def _convert_interval_to_computation_body(
             # Add overall return values to each branch
             stmt_body.append(
                 sast.ReturnOp([sast.Expression(so) for so in sorted(all_stmt_outputs)],
-                              sast.OperationType([sast.ScalarType.UNKNOWN for _ in outputs])))
+                              sast.OperationType([sast.FieldType.empty() for _ in outputs])))
             if else_ifs:
                 for else_if in else_ifs:
                     else_if.body.append(
                         sast.ReturnOp([sast.Expression(so) for so in sorted(all_stmt_outputs)],
-                                      sast.OperationType([sast.ScalarType.UNKNOWN for _ in outputs])))
+                                      sast.OperationType([sast.FieldType.empty() for _ in outputs])))
 
             # Create IR node
             body.append(
@@ -403,6 +405,8 @@ def _convert_interval_to_computation_body(
                 ))
         else:
             raise TypeError(f'Unsupported statement type "{type(stmt)}"')
+
+    # TODO Add the necessary return statement
 
     return body, inputs, outputs
 

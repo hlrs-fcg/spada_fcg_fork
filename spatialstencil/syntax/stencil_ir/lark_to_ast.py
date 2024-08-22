@@ -60,7 +60,6 @@ class TreeToAST(lark.Transformer):
     program_body = list
 
     def attributes(self, args, meta=None):
-        print(args)
         result = {}
         for attr_name, attr_val in list(args):
             result[attr_name] = attr_val

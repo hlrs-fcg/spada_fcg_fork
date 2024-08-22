@@ -30,6 +30,7 @@ class TestStencilIRParser(unittest.TestCase):
                     } else {
                         spst.return 0
                     }
+                    spst.return %out
             }
             spst.return %out
         }
@@ -70,7 +71,8 @@ class TestStencilIRParser(unittest.TestCase):
                       spst.field<spst.cartesian<?, ?, ?>, spst.extent<(?, ?, ?)>, f32> -> 
                       spst.field<spst.cartesian<?, ?, ?>, spst.extent<(?, ?, ?)>, f32> {
                           spst.return sqrt(%inp) : f32
-                    }  
+                    }
+                    spst.return %out
             }
             spst.return %out
         }
