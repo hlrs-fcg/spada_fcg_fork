@@ -29,16 +29,6 @@ def infer_field_extents(program: sast.Program):
     def_use = def_use_analysis.DefUseAnalysis(uses)
     def_use.visit(program)
 
-    def init_outputs(dtypes: Sequence[sast.FieldType]):
-        """
-        Initialize the extents of the outputs to be (0, 0, 0)
-        :param dtypes:
-        :return:
-        """
-        for dtype in dtypes:
-            if dtype.extent.is_unknown():
-                dtype.extent.extents = [sast.Offset((0, 0, 0))]
-
     # Start with outputs. Extents always start at (0, 0, 0)
     init_outputs(program.operation_type.destination)
 
@@ -57,6 +47,19 @@ def infer_field_extents(program: sast.Program):
                     _walk_ReturnOp(uses, computation, node)
                 elif isinstance(node, sast.MaterializeOp):
                     _walk_MaterializeOp(uses, computation, node)
+        elif isinstance(computation, sast.ReturnOp):
+            init_outputs(computation.operation_type.source)
+
+def init_outputs(dtypes: Sequence[sast.FieldType]):
+    """
+    Initialize the extents of every element to be (0, 0, 0)
+    :param dtypes:
+    :return:
+    """
+    for dtype in dtypes:
+        assert isinstance(dtype, sast.FieldType)
+        if dtype.extent.is_unknown():
+            dtype.extent.extents[:] = [sast.Offset((0, 0, 0))]
 
 
 class LocalExtentCollector(sast.NodeVisitor):
@@ -110,10 +113,8 @@ def _walk_StatementBlock(uses: dict[sast.Identifier, list[def_use_analysis.Scope
     for output in node.outputs:
         offsets = _offsets_of_uses_in_scope(uses, computation, output)
         use_offsets.extend(offsets)
-        #print(f"Use offsets: {offsets} for {output.name}")
 
     use_offsets = list(set(use_offsets))
-    #print(f"Use offsets: {use_offsets}")
 
     # Compute local extents
     local_extent_collector = LocalExtentCollector()
@@ -124,9 +125,6 @@ def _walk_StatementBlock(uses: dict[sast.Identifier, list[def_use_analysis.Scope
         # Compute the minkowski sum of the local extent and the uses
         local_extent = local_extent_collector.extents[arg.name]
 
-        #print(f"Local extent for {arg.name}: {local_extent}")
-
-        #print(f"Use offsets for {arg.name}: {use_offsets}")
         if len(use_offsets) > 0:
             arg_t.extent.extents = [*_minkowski_sum(local_extent, use_offsets)]
         else:
@@ -134,7 +132,6 @@ def _walk_StatementBlock(uses: dict[sast.Identifier, list[def_use_analysis.Scope
 
         arg_t.extent.sort_extents()
 
-        #print(f"Extent for {arg.name}: {arg_t.extent.extents}")
 
     # For each output, the extent is the union of the uses
     for output, output_t in zip(node.outputs, node.operation_type.destination):
@@ -161,9 +158,11 @@ def _walk_IfBlock(uses: dict[sast.Identifier, list[def_use_analysis.ScopedUse]],
 def _walk_ReturnOp(uses: dict[sast.Identifier, list[def_use_analysis.ScopedUse]],
                    computation: sast.ComputationBlock,
                    node: sast.ReturnOp):
-    # TODO: Implement?
-    pass
-
+    if not isinstance(node.operation_type.source[0], sast.FieldType):
+        # We are presumably within a statement block
+        return
+    # Requires (0, 0, 0) for all inputs
+    init_outputs(node.operation_type.source)
 
 
 def _offsets_of_uses_in_scope(uses: dict[sast.Identifier, list[def_use_analysis.ScopedUse]],
@@ -181,7 +180,6 @@ def _offsets_of_uses_in_scope(uses: dict[sast.Identifier, list[def_use_analysis.
     # Concatenate all the extents from uses_of_result
     use_offsets = []
     for use in uses_of_result:
-        #print(f"Use of {id.name} with extent {use.field_type.extent.extents}")
         use_offsets.extend(use.field_type.extent.extents)
     if len(use_offsets) == 0:
         print(f"WARNING: No uses of {id.name} found within current scope.")

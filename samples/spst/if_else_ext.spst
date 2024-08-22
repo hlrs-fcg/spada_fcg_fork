@@ -1,8 +1,10 @@
-%res = spst.program @ifelseexample(%tin, %f2) {} : spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32>, spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> -> spst.field<[?:?, ?:?, ?:?], {(?,?,?)}, f32> {
+%res = spst.program @ifelseexample(%tin, %f2) {} : spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32>, spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32>
+-> spst.field<[?:?, ?:?, ?:?], {(0, 0, 0)}, f32> {
   %rh = spst.computation (%tin) {
    schedule = PARALLEL,
    interval = [0:None, 0:None, 0:None]
-  } : spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32>, spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> -> spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> {
+  } : spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32>, spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32>
+  -> spst.field<[?:?, ?:?, ?:?], {(0, 0, 0)}, f32> {
     %pred1 = spst.statement (%tin) {} : spst.field<[?:?, ?:?, ?:?], {(0, 0, 0)}, f32>, spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> -> spst.field<[?:?, ?:?, ?:?], {(0, 0, 0)}, f32> {
       spst.return (%tin < 233.16)
     }
@@ -17,19 +19,19 @@
         -> spst.field<[?:?, ?:?, ?:?], {(0, 0, 0)}, f32> {
         spst.return %f2
       }
-      spst.return %qstar#1
+      spst.return %qstar#1: spst.field<[?:?, ?:?, ?:?], {(0, 0, 0)}, f32>
     } elif (%pred2) {
       %qstar#2 = spst.statement (%f2) : spst.field<[?:?, ?:?, ?:?], {(0, 1, 0)}, f32> -> spst.field<[?:?, ?:?, ?:?], {(0, 0, 0)}, f32> {
         spst.return %f2[0, 1, 0]
       }
-      spst.return %qstar#2
+      spst.return %qstar#2 : spst.field<[?:?, ?:?, ?:?], {(0, 0, 0)}, f32>
     } else {
       %qstar#3 = spst.statement (%f2) : spst.field<[?:?, ?:?, ?:?], {(-2, 0, 0), (0, 0, 0)}, f32> -> spst.field<[?:?, ?:?, ?:?], {(0, 0, 0)}, f32> {
         spst.return %f2[-2, 0, 0] + %f2[0, 0, 0]
       }
-      spst.return %qstar#3
+      spst.return %qstar#3 : spst.field<[?:?, ?:?, ?:?], {(0, 0, 0)}, f32>
     }
-    return %qstar
+    return %qstar : spst.field<[?:?, ?:?, ?:?], {(0, 0, 0)}, f32>
   }
-  return %rh
+  return %rh :spst.field<[?:?, ?:?, ?:?], {(0, 0, 0)}, f32>
 }

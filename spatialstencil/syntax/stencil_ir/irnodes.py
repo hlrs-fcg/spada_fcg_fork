@@ -9,6 +9,13 @@ from spatialstencil.syntax.common.basenode import BaseNode
 from spatialstencil.syntax.common import visitor
 
 
+class IRType:
+    """
+    Interface that indicates this node represents a type.
+    """
+    pass
+
+
 class ScalarType(enum.Enum):
     UNKNOWN = enum.auto()  # Not yet type-inferred
     i8 = enum.auto()
@@ -24,6 +31,12 @@ class ScalarType(enum.Enum):
 
     def as_ir(self, indent: int = 0) -> str:
         return self.name
+
+@dataclass(frozen=True)
+class AnyType(IRType):
+
+    def as_ir(self) -> str:
+        return "?"
 
 
 BIT_WIDTH = {
@@ -48,11 +61,6 @@ class ComputationType(enum.Enum):
     BACKWARD = 2
 
 
-class IRType:
-    """
-    Interface that indicates this node represents a type.
-    """
-    pass
 
 
 class Node(BaseNode):
@@ -179,7 +187,7 @@ class Extent(Node, IRType):
         return "{" + f'{", ".join(e.as_ir() for e in self.extents)}' + "}"
 
     def is_unknown(self) -> bool:
-        return all(dim is None for extent in self.extents for dim in extent.values)
+        return all(dim == "?" for extent in self.extents for dim in extent.values)
 
     def extent_tuples(self):
         return [extent.values for extent in self.extents]
@@ -214,7 +222,7 @@ class FieldType(Node, IRType):
         return f'spst.field<{self.domain.as_ir()}, {self.extent.as_ir()}, {self.dtype.as_ir()}>'
 
 
-DataType = FieldType | ScalarType
+DataType = FieldType | ScalarType | AnyType
 
 
 @dataclass
@@ -534,6 +542,8 @@ class Subscript(Node):
 class MathCall(Node):
     """
     A mathematical function call operation for stateless calls
+
+    # TODO: Why do math calls not have types?!
     """
     func: str
     arguments: list['Expression']
@@ -579,14 +589,13 @@ class Block:
 @dataclass
 class ReturnOp(Node, Operation):
     values: list[Expression]
-    operation_type: OperationType = field(default_factory=lambda: OperationType([ScalarType.UNKNOWN]))
+    operation_type: OperationType = field(default_factory=lambda: OperationType([AnyType()]))
 
     def validate(self) -> None:
         assert all(isinstance(v, Expression) for v in self.values)
         assert self.operation_type is not None
         assert self.operation_type.source is not None
         assert len(self.operation_type.source) == len(self.values)
-        assert all(isinstance(source, ScalarType) for source in self.operation_type.source)
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
@@ -747,7 +756,7 @@ class ComputationBlock(Node, Operation, Block):
         assert isinstance(self.interval, list)
         assert all(isinstance(i, Interval) for i in self.interval)
         assert len(self.interval) == 3
-
+        assert isinstance(self.body[-1], ReturnOp)
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
@@ -786,7 +795,7 @@ class Program(Node, Operation, Block):
                     isinstance(comp, ReturnOp) and
                     all(isinstance(v.value, Identifier)
                     for v in comp.values)) for comp in self.computations)
-
+        assert isinstance(self.computations[-1], ReturnOp)
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
@@ -804,6 +813,11 @@ class Program(Node, Operation, Block):
 
 class NodeVisitor(visitor.IRNodeVisitor[Node]):
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(Node, *args, **kwargs)
+
+
+class ScopedNodeVisitor(visitor.ScopedIRNodeVisitor[Node]):
     def __init__(self, *args, **kwargs):
         super().__init__(Node, *args, **kwargs)
 

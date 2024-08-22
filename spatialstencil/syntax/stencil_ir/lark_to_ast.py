@@ -165,7 +165,7 @@ class TreeToAST(lark.Transformer):
         if optype:
             return irnodes.ReturnOp(args[:optype], args[optype])
         else:
-            optype = irnodes.OperationType([irnodes.ScalarType.UNKNOWN for _ in range(len(args))],
+            optype = irnodes.OperationType([irnodes.AnyType() for _ in range(len(args))],
                                            None)
             return irnodes.ReturnOp(args, optype)
     materialize_op = irnodes.MaterializeOp.from_lark

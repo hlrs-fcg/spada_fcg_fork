@@ -32,7 +32,7 @@
             -> field<[?,?,?], {(?, ?, ?)}, f32> {
                 return 2 * %out_mat_2[0, 1, 0]
             }
-        return %out_3, %out_4
+        return %out_3, %out_4 : field<[?,?,?], {(?, ?, ?)}, f32>, field<[?,?,?], {(?, ?, ?)}, f32>
     }
-    return %res_1, %res_2
+    return %res_1, %res_2: field<[?,?,?], {(?, ?, ?)}, f32>, field<[?,?,?], {(?, ?, ?)}, f32>
 }

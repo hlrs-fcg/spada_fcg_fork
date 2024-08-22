@@ -106,9 +106,10 @@ class TestTypeInference(unittest.TestCase):
                           %c = %shortinp[0, 0, 0] + %shortinp[-1, 0, 0]
                           %d = %inp[0, 0, 0] if %inp else %shortinp[-1, 0, 0]
                           spst.return sqrt(%d) : f32
-                    }  
+                    }
+                    spst.return %out: field<[?,?,?], {(?, ?, ?)}, f32>
             }
-            spst.return %out: f32
+            spst.return %out: field<[?,?,?], {(?, ?, ?)}, f32>
         }
         ''')
         exprs = [ex.value for ex in program.computations[0].body[0].body[:-1]]  # assignments
@@ -139,6 +140,7 @@ class TestTypeInference(unittest.TestCase):
         with open(file2, 'r') as f:
             golden_program = parser.parse_file(f)
 
+        print(test_program.as_ir())
         # Infer extents for the program without extents
         extent_inference.infer_field_extents(test_program)
 
@@ -176,6 +178,25 @@ class TestTypeInference(unittest.TestCase):
         self._test_programs_equal(file, file2)
 
 
+    def test_infer_domain_from_extents(self):
+
+        file = Path(__file__).parent / Path('../samples/spst/laplacian_mat_sh.spst')
+        file2 = Path(__file__).parent / Path('../samples/spst/laplacian_mat_ext_dom.spst')
+
+        with open(file, 'r') as f:
+            test_program = parser.parse_file(f)
+
+        extent_inference.infer_field_extents(test_program)
+        domain_inference.infer_field_domains(test_program, Cartesian.from_sequence((0, 128, 0, 128, 0, 80)))
+        test_program = canonicalization.canonicalize(test_program)
+
+        with open(file2, 'r') as f:
+            golden_program = parser.parse_file(f)
+
+        golden_program = canonicalization.canonicalize(golden_program)
+
+        self.assertEqual(golden_program.as_ir(), test_program.as_ir())
+
     def test_canonicalize_extents(self):
         # Parse a simple program
         program = parser.parse_string('''
@@ -190,9 +211,10 @@ class TestTypeInference(unittest.TestCase):
                     %b = spst.statement (%a) {} :
                       field<[?, ?, ?], {(0, 2, 0), (1, 0, 0), (?, ?, 2), (-1, 0, 1)}, f32> -> field<[?, ?, ?], {(0, 0, 0)}, f32> {
                           spst.return %a : f32
-                    }  
+                    }
+                spst.return %b : field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32>
             }
-            spst.return %b: f32
+            spst.return %b : field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32>
         }
         ''')
 
@@ -204,8 +226,9 @@ class TestTypeInference(unittest.TestCase):
     %b = spst.statement (%a) {} : spst.field<[?:?, ?:?, ?:?], {(?, ?, 2), (-1, 0, 1), (0, 2, 0), (1, 0, 0)}, f32> -> spst.field<[?:?, ?:?, ?:?], {(0, 0, 0)}, f32> {
       spst.return %a : f32
     }
+    spst.return %b : spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32>
   }
-  spst.return %b : f32
+  spst.return %b : spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32>
 }'''
 
         cprogram = canonicalization.canonicalize(program)

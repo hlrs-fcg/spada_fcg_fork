@@ -9,28 +9,28 @@ class ScopedUse:
     field_type: sast.FieldType
 
 
-class DefUseAnalysis(sast.NodeVisitor):
+class DefUseAnalysis(sast.ScopedNodeVisitor):
 
     """
     For each field variable, constructs the uses of it,
     storing the field type object and the enclosing scope of it in a dictionary.
     """
 
-    _current_scope: list[sast.ComputationBlock | sast.Program | None]
-
-    def get_scope(self):
-        return self._current_scope[-1]
-
-    def push_scope(self, scope):
-        self._current_scope.append(scope)
-
-    def pop_scope(self):
-        self._current_scope.pop()
-
     def __init__(self, def_use: dict[sast.Identifier, list[ScopedUse]]):
         super().__init__()
         self.def_use = def_use
         self._current_scope = []
+
+    def add(self, node: sast.Identifier, field_type: sast.FieldType):
+        """
+        Adds a use of a field to the def_use dictionary, with the current scope.
+        :param node: The identifier
+        :param field_type: The field type object
+        :return:
+        """
+        if node not in self.def_use:
+            self.def_use[node] = []
+        self.def_use[node].append(ScopedUse(self.get_scope(), field_type))
 
     def visit_StatementBlock(self, node: sast.StatementBlock):
         """
@@ -74,17 +74,6 @@ class DefUseAnalysis(sast.NodeVisitor):
 
         self.generic_visit(node)
 
-    def add(self, node: sast.Identifier, field_type: sast.FieldType):
-        """
-        Adds a use of a field to the def_use dictionary, with the current scope.
-        :param node: The identifier
-        :param field_type: The field type object
-        :return:
-        """
-        if node not in self.def_use:
-            self.def_use[node] = []
-        self.def_use[node].append(ScopedUse(self.get_scope(), field_type))
-
     def visit_ComputationBlock(self, node: sast.ComputationBlock):
         """
         A computation block uses all its inputs
@@ -103,28 +92,10 @@ class DefUseAnalysis(sast.NodeVisitor):
         self.generic_visit(node)
         self.pop_scope()
 
-    @staticmethod
-    def _artificial_type(offset: Sequence[int], scalar_type: sast.ScalarType):
-        return sast.FieldType(sast.Domain(),
-                              sast.Extent([sast.Offset((offset[0], offset[1], offset[2]))]),
-                              scalar_type)
-
-    #def visit_Subscript(self, node: sast.Subscript):
-        ###self.add(node.value, self._artificial_type(node.subscript))
-        # Do not visit the identifier
-
     def visit_ReturnOp(self, node: sast.ReturnOp):
         # A return uses all its arguments
-        # For now, we do not use the return value as a use
         assert all(isinstance(arg.value, sast.Identifier) for arg in node.values)
-
         # And create a use for each field access
         for arg, arg_t in zip(node.values, node.operation_type.source):
-            # If it's an identifier, directly add the use
-            if isinstance(arg.value, sast.Identifier):
-                if isinstance(arg_t, sast.ScalarType):
-                    self.add(arg.value, sast.FieldType(sast.Domain(),
-                                                       sast.Extent([sast.Offset((0, 0, 0))]),
-                                                       arg_t))
-                else:
-                    self.add(arg.value, arg_t)
+            assert isinstance(arg_t, sast.FieldType)
+            self.add(arg.value, arg_t)
