@@ -43,6 +43,23 @@ class DefUseAnalysis(sast.NodeVisitor):
         # WE INTENTIONALLY DO NOT RECURSE INTO THE STATEMENT BLOCK
         # AS IT IS A LOCAL SCOPE
 
+    def visit_MaterializeOp(self, node: sast.MaterializeOp):
+        """
+        A materialize operation uses its argument
+        :param node:
+        :return:
+        """
+        self.add(node.value, node.operation_type.source[0])
+        self.generic_visit(node)
+
+    def visit_MathCall(self, node: sast.MathCall):
+        """
+        A math call implies an access at 0, 0, 0. So we should add it!
+        :param node:
+        :return:
+        """
+        raise NotImplementedError("Math calls are not supported yet")
+
     def visit_IfBlock(self, node: sast.IfBlock):
         """
         An if block uses its condition and the conditions of its if-else blocks.
