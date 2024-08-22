@@ -19,8 +19,8 @@
             {
                 spst.return -4.0 * %in[0, 0, 0] + %in[-1, 0, 0] + %in[1, 0, 0] + %in[0, -1, 0] + %in[0, 1, 0]
             }
-        %out_mat = spst.materialize(%out_1) : field<[?,?,?], {(0, 0, 0)}, f32>
-                                             -> field<[?,?,?], {(0, 1, 0)}, f32>
+        %out_mat = spst.materialize(%out_1) : field<spst.cartesian<?,?,?>, spst.extent<(0, 0, 0)>, f32>
+                                             -> field<spst.cartesian<?,?,?>, spst.extent<(0, 1, 0)>, f32>
         %out_2 = spst.statement(%out_1, %out_mat)
             : spst.field<spst.cartesian<?, ?, ?>, spst.extent<(0, 0, 0)>, f32>,
               spst.field<spst.cartesian<?, ?, ?>, spst.extent<(0, 1, 0)>, f32>

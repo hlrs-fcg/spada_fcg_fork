@@ -21,14 +21,14 @@ class TestStencilIRParser(unittest.TestCase):
                     %b = spst.if (%inp) : field<domain<?, ?, ?>, extent<(?, ?, ?)>, bool> -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
                         spst.return %inp
                     } elif (%arg1) {
-                        spst.return %inp + 1 : field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
+                        spst.return %inp + 1
                     } else {
-                        spst.return 0;
+                        spst.return 0
                     }
                     %out = spst.if (%b) : field<domain<?, ?, ?>, extent<(?, ?, ?)>, bool> -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
                         spst.return %inp
                     } else {
-                        spst.return 0;
+                        spst.return 0
                     }
             }
             spst.return %out

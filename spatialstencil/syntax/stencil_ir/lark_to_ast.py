@@ -118,6 +118,7 @@ class TreeToAST(lark.Transformer):
     subscript = irnodes.Subscript.from_lark
     type_info = lambda self, args: irnodes.OperationType(*([arg] for arg in args))
     type_list_info = lambda self, args: irnodes.OperationType(*args)
+    return_type_info = lambda self, args: irnodes.OperationType(*args)
 
     # Operators
     def unary_op(self, args, meta=None):

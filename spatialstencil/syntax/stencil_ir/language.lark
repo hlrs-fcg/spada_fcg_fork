@@ -142,7 +142,7 @@ statement : id_list "=" "spst.statement" params (attributes)? type_list_info sta
 subscript_slice : posneg_integer_literal ("," posneg_integer_literal)*
 value_expr : test     // Basic value type. See operator precedence for more information
 assign_expr : id_list "=" value_expr (";")? type_info?
-return_expr : ("spst.")? "return" value_expr  ("," value_expr)* (";")? type_info?
+return_expr : ("spst.")? "return" value_expr  ("," value_expr)* (";")? type_list_info?
 ?statement_contents : assign_expr | return_expr
 
 materialize_op : identifier "=" "spst.materialize" "(" identifier ")" type_info?
