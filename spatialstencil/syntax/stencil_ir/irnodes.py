@@ -581,6 +581,13 @@ class ReturnOp(Node, Operation):
     values: list[Expression]
     operation_type: OperationType = field(default_factory=lambda: OperationType([ScalarType.UNKNOWN]))
 
+    def validate(self) -> None:
+        assert all(isinstance(v, Expression) for v in self.values)
+        assert self.operation_type is not None
+        assert self.operation_type.source is not None
+        assert len(self.operation_type.source) == len(self.values)
+        assert all(isinstance(source, ScalarType) for source in self.operation_type.source)
+
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
         return (f'{indent_str}spst.return {", ".join(v.as_ir() for v in self.values)}'
@@ -772,7 +779,14 @@ class Program(Node, Operation, Block):
     inputs: list[Identifier]
     attributes: list[Attribute]
     operation_type: OperationType
-    computations: list[ComputationBlock]
+    computations: list[ComputationBlock | ReturnOp]
+
+    def validate(self) -> None:
+        assert all((isinstance(comp, ComputationBlock) or
+                    isinstance(comp, ReturnOp) and
+                    all(isinstance(v.value, Identifier)
+                    for v in comp.values)) for comp in self.computations)
+
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent

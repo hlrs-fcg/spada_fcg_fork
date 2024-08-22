@@ -60,14 +60,19 @@ class TestTypeInference(unittest.TestCase):
         ]
         extent = Extent(extents)
 
+        # Test 1
         golden_result = Cartesian.from_sequence((0, 128, 0, 128, 0, 80))
 
         intervals = [Interval(0, None), Interval(0, None), Interval(-5, -2)]
+
 
         result = domain_inference._infer_domain_from_extents(output_domain,
                                                              extent,
                                                              intervals)
 
+        assert result == golden_result
+
+        # Test 2
         golden_result = Cartesian.from_sequence((0, 128, 0, 128, 0, 80))
 
         intervals = [Interval(0, None), Interval(0, None), Interval(5, 78)]
@@ -140,6 +145,8 @@ class TestTypeInference(unittest.TestCase):
         # Canonicalize program with extents
         golden_program = canonicalization.canonicalize(golden_program)
 
+        print(test_program.as_ir())
+
         # Check the overall program
         self.assertEqual(golden_program.as_ir(), test_program.as_ir())
 
@@ -149,6 +156,12 @@ class TestTypeInference(unittest.TestCase):
 
         self._test_programs_equal(file, file2)
 
+
+    def test_multiple_returns(self):
+        file = Path(__file__).parent / Path('../samples/spst/multiple_returns.spst')
+        file2 = Path(__file__).parent / Path('../samples/spst/multiple_returns_ext.spst')
+
+        self._test_programs_equal(file, file2)
 
     def test_infer_extent_materialize(self):
         file = Path(__file__).parent / Path('../samples/spst/laplacian_mat_sh.spst')

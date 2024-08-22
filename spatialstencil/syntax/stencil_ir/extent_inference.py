@@ -57,25 +57,7 @@ def infer_field_extents(program: sast.Program):
                     _walk_ReturnOp(uses, computation, node)
                 elif isinstance(node, sast.MaterializeOp):
                     _walk_MaterializeOp(uses, computation, node)
-        elif isinstance(computation, sast.ReturnOp):
-            # TODO?
-            continue
 
-        # Assign the input extents as the union of extents of the uses
-        #for arg, arg_t in zip(computation.inputs, computation.operation_type.source):
-        #    arg_t.extent.extents = []
-        #    for use in uses[arg]:
-        #        if use.definition_scope == computation:
-        #            arg_t.extent.extents.extend(use.field_type.extent.extents)
-        #    arg_t.extent.sort_extents()
-
-    # Assign the input extents as the union of extents of the uses
-    #for arg, arg_t in zip(program.inputs, program.operation_type.source):
-        #arg_t.extent.extents = []
-        #for use in uses[arg]:
-        #    if use.definition_scope == program:
-        #        arg_t.extent.extents.extend(use.field_type.extent.extents)
-        #arg_t.extent.sort_extents()
 
 class LocalExtentCollector(sast.NodeVisitor):
 
@@ -121,9 +103,17 @@ def _walk_StatementBlock(uses: dict[sast.Identifier, list[def_use_analysis.Scope
                          computation: sast.ComputationBlock,
                          node: sast.StatementBlock) -> None:
     # Get all the uses of the result within the current scope
-    # TODO Assumes we have a single output!
-    assert len(node.outputs) == 1, "Only a single output is supported for now"
-    use_offsets = _offsets_of_uses_in_scope(uses, computation, node.outputs[0])
+
+    # We assume that all outputs are uniform, meaning that the uses are given by the union
+    # of the uses of the outputs.
+    use_offsets = []
+    for output in node.outputs:
+        offsets = _offsets_of_uses_in_scope(uses, computation, output)
+        use_offsets.extend(offsets)
+        #print(f"Use offsets: {offsets} for {output.name}")
+
+    use_offsets = list(set(use_offsets))
+    #print(f"Use offsets: {use_offsets}")
 
     # Compute local extents
     local_extent_collector = LocalExtentCollector()
@@ -134,9 +124,9 @@ def _walk_StatementBlock(uses: dict[sast.Identifier, list[def_use_analysis.Scope
         # Compute the minkowski sum of the local extent and the uses
         local_extent = local_extent_collector.extents[arg.name]
 
-        print(f"Local extent for {arg.name}: {local_extent}")
+        #print(f"Local extent for {arg.name}: {local_extent}")
 
-        print(f"Use offsets for {arg.name}: {use_offsets}")
+        #print(f"Use offsets for {arg.name}: {use_offsets}")
         if len(use_offsets) > 0:
             arg_t.extent.extents = [*_minkowski_sum(local_extent, use_offsets)]
         else:
@@ -144,7 +134,7 @@ def _walk_StatementBlock(uses: dict[sast.Identifier, list[def_use_analysis.Scope
 
         arg_t.extent.sort_extents()
 
-        print(f"Extent for {arg.name}: {arg_t.extent.extents}")
+        #print(f"Extent for {arg.name}: {arg_t.extent.extents}")
 
     # For each output, the extent is the union of the uses
     for output, output_t in zip(node.outputs, node.operation_type.destination):
@@ -166,7 +156,6 @@ def _walk_IfBlock(uses: dict[sast.Identifier, list[def_use_analysis.ScopedUse]],
 
     # The input type is [0, 0, 0]
     node.operation_type.source[0].extent.extents[:] = [sast.Offset((0, 0, 0))]
-
 
 
 def _walk_ReturnOp(uses: dict[sast.Identifier, list[def_use_analysis.ScopedUse]],
@@ -192,10 +181,10 @@ def _offsets_of_uses_in_scope(uses: dict[sast.Identifier, list[def_use_analysis.
     # Concatenate all the extents from uses_of_result
     use_offsets = []
     for use in uses_of_result:
-        print(f"Use of {id.name} with extent {use.field_type.extent.extents}")
+        #print(f"Use of {id.name} with extent {use.field_type.extent.extents}")
         use_offsets.extend(use.field_type.extent.extents)
     if len(use_offsets) == 0:
-        print(f"No uses of {id.name} found.")
+        print(f"WARNING: No uses of {id.name} found within current scope.")
 
     # Remove any unknown offsets: THIS SHOULD NOT HAPPEN!
     use_offsets = [o for o in use_offsets if all(i != "?" for i in o)]

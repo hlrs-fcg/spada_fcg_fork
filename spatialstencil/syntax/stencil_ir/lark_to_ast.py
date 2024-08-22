@@ -158,10 +158,15 @@ class TreeToAST(lark.Transformer):
 
     # Operations
     def return_expr(self, args, meta=None):
-        if isinstance(args[-1], irnodes.OperationType):
-            return irnodes.ReturnOp(args[:-1], args[-1])
-        return irnodes.ReturnOp(args)
 
+        # Find the operation type arguments
+        optype = next((i for i in range(len(args)) if isinstance(args[i], irnodes.OperationType)), None)
+        if optype:
+            return irnodes.ReturnOp(args[:optype], args[optype])
+        else:
+            optype = irnodes.OperationType([irnodes.ScalarType.UNKNOWN for _ in range(len(args))],
+                                           None)
+            return irnodes.ReturnOp(args, optype)
     materialize_op = irnodes.MaterializeOp.from_lark
 
     def assign_expr(self, args, meta=None):
@@ -217,9 +222,8 @@ class TreeToAST(lark.Transformer):
             raise ValueError('spst.computation is missing the "schedule" attribute')
         if interval is None:
             raise ValueError('spst.computation is missing the "interval" attribute')
-        intervals = []
+
         assert len(interval) == 3
-        print(interval)
         return irnodes.ComputationBlock(results, inputs, schedule, interval, operation_type, body)
 
     def program(self, args, meta=None):
