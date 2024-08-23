@@ -52,13 +52,6 @@ class DefUseAnalysis(sast.ScopedNodeVisitor):
         self.add(node.value, node.operation_type.source[0])
         self.generic_visit(node)
 
-    def visit_MathCall(self, node: sast.MathCall):
-        """
-        A math call implies an access at 0, 0, 0. So we should add it!
-        :param node:
-        :return:
-        """
-        raise NotImplementedError("Math calls are not supported yet")
 
     def visit_IfBlock(self, node: sast.IfBlock):
         """
@@ -82,9 +75,7 @@ class DefUseAnalysis(sast.ScopedNodeVisitor):
         """
         for arg_id, arg_t in zip(node.inputs, node.operation_type.source):
             self.add(arg_id, arg_t)
-        self.push_scope(node)
-        self.generic_visit(node)
-        self.pop_scope()
+        super().visit_ComputationBlock(node)
 
     def visit_Program(self, node: sast.Program):
         # A program pushes a new scope, we currently do not consider inputs as uses

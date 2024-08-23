@@ -54,16 +54,9 @@ class ExtentInference(sast.ScopedNodeVisitor):
         self.def_use = def_use
         self.uses = uses
 
-    def visit_Program(self, program: sast.Program):
-        self.push_scope(program)
-        self.generic_visit(program)
-        self.pop_scope()
-
     def visit_ComputationBlock(self, node: sast.ComputationBlock):
         _init_outputs(node.operation_type.destination)
-        self.push_scope(node)
-        self.generic_visit(node)
-        self.pop_scope()
+        super().visit_ComputationBlock(node)
 
     def visit_StatementBlock(self, node: sast.StatementBlock):
         computation = self.get_scope()

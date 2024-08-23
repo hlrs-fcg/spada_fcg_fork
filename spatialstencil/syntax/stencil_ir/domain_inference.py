@@ -30,82 +30,6 @@ def infer_field_domains(program: sast.Program,
     dom_inference = DomainInference(def_use, domain)
     dom_inference.visit(program)
 
-    # Warn on still-unknown identifiers
-    #for identifier in potentially_unknown_identifiers:
-    #    if identifier not in field_domains:
-    #        warnings.warn(f'Could not infer domain size for "%{identifier}"')
-
-    # Assign inferred domain sizes across Stencil IR program
-    #print(field_domains)
-    #DomainAssigner(field_domains).visit(program)
-
-def _union_of_domains_of_uses_in_scope(uses: dict[sast.Identifier, Collection[def_use_analysis.ScopedUse]],
-                                       computation: sast.ComputationBlock,
-                                       identifier: sast.Identifier) -> sast.Cartesian:
-    return _union_domains(_domains_of_uses_in_scope(uses, computation, identifier))
-
-
-def _union_domains(domains: list[sast.Domain]) -> sast.Cartesian:
-    """
-    Given a list of domains, returns the union of all domains.
-    """
-    assert len(domains) > 0
-    dom = domains[0]
-    for d in domains[1:]:
-        dom = dom.union(d)
-    return dom
-
-
-def _domains_of_uses_in_scope(uses: dict[sast.Identifier, Collection[def_use_analysis.ScopedUse]],
-                              computation: sast.ComputationBlock | sast.Program,
-                              identifier: sast.Identifier) -> list[sast.Cartesian]:
-    """
-    Get the offsets of the uses of a field in the current scope.
-    :param uses: The uses dictionary
-    :param computation: The current computation block
-    :param identifier: The identifier
-    :return: A list of offsets
-    """
-    assert isinstance(identifier, sast.Identifier)
-
-    uses_of_result = uses.get(identifier) or []
-    uses_of_result = [u for u in uses_of_result if u.definition_scope == computation]
-    # Concatenate all the extents from uses_of_result
-    use_domains = []
-    for use in uses_of_result:
-        use_domains.append(use.field_type.domain)
-    if len(use_domains) == 0:
-        print(f"WARNING: No uses of {identifier.name} found within current scope.")
-
-    assert all(not o.is_unknown() for o in use_domains), f"Domain of uses of {identifier.name} must be known before inference"
-
-    return use_domains
-
-
-def _infer_domain_from_extents(output_domain: sast.Cartesian,
-                               extents: sast.Extent,
-                               intervals: Sequence[sast.Interval]) -> sast.Cartesian:
-    """
-    Given the output domain and extents, infers the domain size of the input field.
-    Assuming that the output is accessed at offset (0, 0, 0).
-    # TODO Adapt for non-zero offsets
-    :param output_domain:
-    :param extents:
-    :return:
-    """
-    assert len(intervals) == 3
-    current_domain = copy.deepcopy(output_domain)
-
-    for e in extents.extents:
-        # Convert the extent interval into a cartesian domain representing the output
-        extent_domain = output_domain.intersect_with_ranges(intervals)
-        # Expand the domain with the extent values
-        extent_domain = extent_domain.add(e.values)
-
-        current_domain = current_domain.union(extent_domain)
-
-    return current_domain
-
 
 class DomainInference(sast.ScopedNodeVisitor):
 
@@ -218,3 +142,70 @@ class DomainInference(sast.ScopedNodeVisitor):
         for inp, inptype in zip(conditions, node.operation_type.source):
             inptype.domain = out_domain
 
+
+def _union_of_domains_of_uses_in_scope(uses: dict[sast.Identifier, Collection[def_use_analysis.ScopedUse]],
+                                       computation: sast.ComputationBlock,
+                                       identifier: sast.Identifier) -> sast.Cartesian:
+    return _union_domains(_domains_of_uses_in_scope(uses, computation, identifier))
+
+
+def _union_domains(domains: list[sast.Domain]) -> sast.Cartesian:
+    """
+    Given a list of domains, returns the union of all domains.
+    """
+    assert len(domains) > 0
+    dom = domains[0]
+    for d in domains[1:]:
+        dom = dom.union(d)
+    return dom
+
+
+def _domains_of_uses_in_scope(uses: dict[sast.Identifier, Collection[def_use_analysis.ScopedUse]],
+                              computation: sast.ComputationBlock | sast.Program,
+                              identifier: sast.Identifier) -> list[sast.Cartesian]:
+    """
+    Get the offsets of the uses of a field in the current scope.
+    :param uses: The uses dictionary
+    :param computation: The current computation block
+    :param identifier: The identifier
+    :return: A list of offsets
+    """
+    assert isinstance(identifier, sast.Identifier)
+
+    uses_of_result = uses.get(identifier) or []
+    uses_of_result = [u for u in uses_of_result if u.definition_scope == computation]
+    # Concatenate all the extents from uses_of_result
+    use_domains = []
+    for use in uses_of_result:
+        use_domains.append(use.field_type.domain)
+    if len(use_domains) == 0:
+        print(f"WARNING: No uses of {identifier.name} found within current scope.")
+
+    assert all(not o.is_unknown() for o in use_domains), f"Domain of uses of {identifier.name} must be known before inference"
+
+    return use_domains
+
+
+def _infer_domain_from_extents(output_domain: sast.Cartesian,
+                               extents: sast.Extent,
+                               intervals: Sequence[sast.Interval]) -> sast.Cartesian:
+    """
+    Given the output domain and extents, infers the domain size of the input field.
+    Assuming that the output is accessed at offset (0, 0, 0).
+    # TODO Adapt for non-zero offsets
+    :param output_domain:
+    :param extents:
+    :return:
+    """
+    assert len(intervals) == 3
+    current_domain = copy.deepcopy(output_domain)
+
+    for e in extents.extents:
+        # Convert the extent interval into a cartesian domain representing the output
+        extent_domain = output_domain.intersect_with_ranges(intervals)
+        # Expand the domain with the extent values
+        extent_domain = extent_domain.add(e.values)
+
+        current_domain = current_domain.union(extent_domain)
+
+    return current_domain

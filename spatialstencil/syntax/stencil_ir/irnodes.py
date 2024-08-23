@@ -828,6 +828,17 @@ class ScopedNodeVisitor(visitor.ScopedIRNodeVisitor[Node]):
         super().__init__(Node, *args, **kwargs)
 
 
+    def visit_Program(self, program: Program):
+        self.push_scope(program)
+        self.generic_visit(program)
+        self.pop_scope()
+
+    def visit_ComputationBlock(self, computation: ComputationBlock):
+        self.push_scope(computation)
+        self.generic_visit(computation)
+        self.pop_scope()
+
+
 class NodeTransformer(visitor.IRNodeTransformer[Node]):
 
     def __init__(self, *args, **kwargs):
