@@ -19,7 +19,7 @@ class TestStencilIRParser(unittest.TestCase):
         assert irprogram.name == 'simple'
         assert [inp.name for inp in irprogram.inputs] == ['inp']
         assert [out.name for out in irprogram.outputs] == ['out']
-        assert len(irprogram.computations) == 1
+        assert len(irprogram.computations) == 2
 
         # Test computation
         comp = irprogram.computations[0]
@@ -40,7 +40,7 @@ class TestStencilIRParser(unittest.TestCase):
         assert irprogram.name == 'unused'
         assert [inp.name for inp in irprogram.inputs] == ['inp']
         assert [out.name for out in irprogram.outputs] == ['out']
-        assert len(irprogram.computations) == 2
+        assert len(irprogram.computations) == 3
 
         # Test computation
         comps = irprogram.computations
@@ -59,7 +59,7 @@ class TestStencilIRParser(unittest.TestCase):
         assert irprogram.name == 'intermediates_versioning'
         assert [inp.name for inp in irprogram.inputs] == ['inp']
         assert [out.name for out in irprogram.outputs] == ['out']
-        assert len(irprogram.computations) == 2
+        assert len(irprogram.computations) == 3
 
         # Test computation
         comps = irprogram.computations
@@ -81,7 +81,7 @@ class TestStencilIRParser(unittest.TestCase):
         assert irprogram.name == 'intermediates_versioning_2'
         assert [inp.name for inp in irprogram.inputs] == ['inp']
         assert [out.name for out in irprogram.outputs] == ['out']
-        assert len(irprogram.computations) == 2
+        assert len(irprogram.computations) == 3
 
         # Test computation
         comps = irprogram.computations
@@ -103,7 +103,7 @@ class TestStencilIRParser(unittest.TestCase):
         assert irprogram.name == 'intermediates_versioning_3'
         assert [inp.name for inp in irprogram.inputs] == ['inp']
         assert [out.name for out in irprogram.outputs] == ['out']
-        assert len(irprogram.computations) == 2
+        assert len(irprogram.computations) == 3
 
         # Test computation
         comps = irprogram.computations
@@ -121,16 +121,28 @@ class TestStencilIRParser(unittest.TestCase):
         irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program, materialize=False)
 
         comp = irprogram.computations[0]
-        assert comp.outputs == [sast.Identifier('out')]
-        assert isinstance(comp.body[0], sast.IfBlock)
-        ifblock = comp.body[0]
+        assert comp.outputs == [sast.Identifier('out', version=1)]
+        
+        # If block (all version 0)
+        assert isinstance(comp.body[1], sast.IfBlock)
+        ifblock = comp.body[1]
         assert ifblock.outputs == [sast.Identifier('out', version=0)]
         stmt = ifblock.body[0]
-        assert stmt.result == sast.Identifier('out', version=1)
+        assert stmt.outputs == [sast.Identifier('out', version=0)]
         assert len(ifblock.else_ifs) == 1
         ifelse_block = ifblock.else_ifs[0]
         stmt2 = ifelse_block.body[0]
-        assert stmt2.result == sast.Identifier('out', version=2)
+        assert stmt2.outputs == [sast.Identifier('out', version=0)]
+        
+        # Successor to if block (version 1)
+        succ = comp.body[2]
+        assert isinstance(succ, sast.StatementBlock)
+        assert succ.outputs == [sast.Identifier('out', version=1)]
+
+        # Return
+        ret = comp.body[3]
+        assert isinstance(ret, sast.ReturnOp)
+        assert succ.outputs == [sast.Identifier('out', version=1)]
 
     def test_lower_mathcall(self):
         program = self.gtfuncs['simple_mathcall']
