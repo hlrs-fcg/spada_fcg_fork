@@ -139,8 +139,11 @@ class TestTypeInference(unittest.TestCase):
             self.assert_infer_domains(program)
 
 
-    def test_infer_extents_and_domains(self):
-
+    def test_infer_extents_and_domains_is_complete(self):
+        """
+        Tests the inference of extents and domains is complete (i.e. no unknown extents or domains)
+        are left in the program.
+        """
         files = [
             Path(__file__).parent / Path('../samples/spst/hdiff.spst'),
             Path(__file__).parent / Path('../samples/spst/vadv.spst')
