@@ -1,6 +1,7 @@
 """
 Contains scalar type inference functionality for the Stencil IR.
 """
+import copy
 from spatialstencil.syntax.stencil_ir import irnodes as sast
 from spatialstencil.syntax.stencil_ir import analysis
 
@@ -57,6 +58,8 @@ def infer_inputs_and_outputs(program: sast.Program):
 
     # Collect inputs/outputs per computation and only include globally-necessary fields in a second pass
     for comp in program.computations:
+        if isinstance(comp, sast.ReturnOp):
+            continue
         collector = analysis.InputOutputCollector()
         collector.visit(comp)
         inputs_per_computation.append(collector.inputs)
@@ -68,12 +71,20 @@ def infer_inputs_and_outputs(program: sast.Program):
 
         # Initialize outputs to final outputs of the block
         comp.outputs = _unique_id_list(collector.outputs, True)
-
+        
     # Reduce outputs based on usage in subsequent computations
     subsequent_names = set(k.name for k in program.outputs)
     for i, comp in reversed(list(enumerate(program.computations))):
+        if isinstance(comp, sast.ReturnOp):
+            continue
         comp.outputs = [out for out in comp.outputs if out.name in subsequent_names]
         comp.operation_type.destination = comp.operation_type.destination[:len(comp.outputs)]  # Adjust type information
+
+        # Modify return statement to match computation outputs
+        assert isinstance(comp.body[-1], sast.ReturnOp)
+        comp.body[-1].values = [sast.Expression(copy.deepcopy(ident)) for ident in comp.outputs]
+        comp.body[-1].operation_type.source = copy.deepcopy(comp.operation_type.destination)
+
         subsequent_names.update(set(k.name for k in comp.inputs + comp.outputs))
 
 
@@ -121,6 +132,7 @@ class TypeInference(sast.NodeTransformer):
         self.field_types: dict[str, sast.ScalarType] = {}  # Types that were already inferred
         self.float_dtype = default_float_dtype
         self.int_dtype = default_int_dtype
+        self.in_statement = False
 
     def _modify_typeinfo(self, operation_type: sast.OperationType, inputs: list[sast.Identifier],
                          outputs: list[sast.Identifier]):
@@ -145,7 +157,14 @@ class TypeInference(sast.NodeTransformer):
     # Scalar operations
     def visit_ReturnOp(self, node: sast.ReturnOp):
         for i, val in enumerate(node.values):
-            node.operation_type.source[i] = _infer_expression(val, self.field_types, self.float_dtype, self.int_dtype)
+            scalar_type = _infer_expression(val, self.field_types, self.float_dtype, self.int_dtype)
+            if self.in_statement:
+                node.operation_type.source[i] = scalar_type
+            else:
+                field_type = sast.FieldType.empty()
+                field_type.dtype = scalar_type
+                node.operation_type.source[i] = field_type
+
         return node
 
     def visit_AssignOp(self, node: sast.AssignOp):
@@ -167,7 +186,9 @@ class TypeInference(sast.NodeTransformer):
     # Non-leaf blocks
     def visit_StatementBlock(self, node: sast.StatementBlock):
         # First traverse children
+        self.in_statement = True
         node = self.generic_visit(node)
+        self.in_statement = False
 
         # Input types should aleady exist
         for src, src_type in zip(node.inputs, node.operation_type.source):

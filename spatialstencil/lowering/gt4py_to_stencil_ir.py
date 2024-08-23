@@ -1,5 +1,6 @@
 import ast
 from collections import defaultdict
+import copy
 from spatialstencil.syntax.gt4py import astnodes as gtast
 from spatialstencil.syntax.common.find_and_replace import PyASTFindReplace
 from spatialstencil.syntax.stencil_ir import irnodes as sast, type_inference
@@ -86,6 +87,7 @@ def field_versioning(program: gtast.GTProgram):
                 elif isinstance(stmt, gtast.GTIfStatement):
                     # TODO Handle if statements
                     pass
+
 
 def constant_propagation(program: gtast.GTProgram):
     """
@@ -186,6 +188,8 @@ class MaterializeIntermediates(sast.NodeTransformer):
 
             # Try to find results
             results: list[sast.Identifier] | None = None
+            if isinstance(stmt, sast.ReturnOp):
+                continue
             stmt: sast.StatementBlock | sast.IfBlock
             results = stmt.outputs
             result_typeinfo = stmt.operation_type.destination
@@ -222,7 +226,7 @@ def convert_gt4py_ast_to_stencil_ast(program: gtast.GTProgram, default_float_dty
                                      default_int_dtype: sast.ScalarType) -> sast.Program:
     input_fields: set[str] = set()
     output_fields: set[str] = set()
-    computations: list[sast.ComputationBlock] = []
+    computations: list[sast.ComputationBlock | sast.ReturnOp] = []
     field_type_by_name = {
         k: _gt4py_to_stencil_ir_type(v, default_float_dtype, default_int_dtype)
         for k, v in zip(program.fields, program.field_types)
@@ -249,7 +253,10 @@ def convert_gt4py_ast_to_stencil_ast(program: gtast.GTProgram, default_float_dty
                     sast.OperationType([sast.FieldType.empty() for _ in cinputs],
                                        [sast.FieldType.empty() for _ in coutputs]), cbody))
 
-    # TODO Add the necessary return statement
+    # Add the necessary return statement
+    computations.append(
+        sast.ReturnOp([sast.Expression(sast.Identifier(field)) for field in sorted(output_fields)],
+                      sast.OperationType([field_type_by_name[field] for field in sorted(output_fields)],)))
 
     return sast.Program(
         outputs=[sast.Identifier(field) for field in sorted(output_fields)],
@@ -404,7 +411,10 @@ def _convert_interval_to_computation_body(
         else:
             raise TypeError(f'Unsupported statement type "{type(stmt)}"')
 
-    # TODO Add the necessary return statement
+    # Add the necessary return statement
+    body.append(
+        sast.ReturnOp([sast.Expression(copy.deepcopy(field)) for field in sorted(outputs)],
+                      sast.OperationType([sast.FieldType.empty() for _ in outputs])))
 
     return body, inputs, outputs
 
