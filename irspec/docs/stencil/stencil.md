@@ -262,7 +262,7 @@ The expression may only contain accesses to the fields `in_1, ... in _n` at the 
     Specifically, every access to `(i, j, k)` is added to every output extent `(x, y, z)`
     and results in an access to `(i+x, j+y, k+z)`.
 
-    This corresponds to a Minkovski sum of the accesses of the statements and the accesses of the output's extent type.
+    This corresponds to a Minkowski sum of the accesses of the statements and the accesses of the output's extent type.
     The arguments to the statement must be a sub-type of the union of all these accesses.
     Specifically, accessing a field with placeholders in their extent type always type checks.
 
@@ -272,7 +272,7 @@ The domains of the inputs must be compatible with the domains of the output:
     Consider the domain $D$ of an input field and the domain $D'$ of the output field,
     some input extent $E$ and output extent $E'$,
     viewing the domains and extents as sets of vectors.
-    Then, we must have that $D \oplus E \supseteq D' \oplus E'$, where $\oplus$ is the Minkovski sum.
+    Then, we must have that $D \oplus E \supseteq D' \oplus E'$, where $\oplus$ is the Minkowski sum.
 
 ### spst.computation
 
