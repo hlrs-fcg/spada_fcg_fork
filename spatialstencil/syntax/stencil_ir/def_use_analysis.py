@@ -63,7 +63,7 @@ class DefUseAnalysis(sast.ScopedNodeVisitor):
             return
         assert isinstance(node, sast.Identifier)
 
-        assert node not in self.use_def, "Program is not in SSA form"
+        assert node not in self.use_def, f"Program is not in SSA form, {node} is defined multiple times"
 
         self.use_def[node] = ScopedDefinition(self.get_scope(), field_type)
 
