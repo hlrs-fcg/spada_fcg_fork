@@ -836,9 +836,44 @@ class ScopedNodeVisitor(visitor.ScopedIRNodeVisitor[Node]):
         self.pop_scope()
 
     def visit_ComputationBlock(self, computation: ComputationBlock):
+        """
+        Visits a computation block.
+        Override pre_visit_ComputationBlock, do_visit_ComputationBlock, and post_visit_ComputationBlock
+        to implement the visitor.
+        :param computation:
+        :return:
+        """
+        self.pre_visit_ComputationBlock(computation)
         self.push_scope(computation)
-        self.generic_visit(computation)
+        self.do_visit_ComputationBlock(computation)
         self.pop_scope()
+        self.post_visit_ComputationBlock(computation)
+
+
+    def pre_visit_ComputationBlock(self, computation: ComputationBlock):
+        """
+        Called before entering the scope of the computation block.
+        :param computation:
+        :return:
+        """
+        pass
+
+    def do_visit_ComputationBlock(self, computation: ComputationBlock):
+        """
+        Called after entering the scope of the computation block.
+        If you want to recurse into the computation block, call self.generic_visit(computation).
+        :param computation:
+        :return:
+        """
+        self.generic_visit(computation)
+
+    def post_visit_ComputationBlock(self, computation: ComputationBlock):
+        """
+        Called after leaving the scope of the computation block.
+        :param computation:
+        :return:
+        """
+        pass
 
 
 class NodeTransformer(visitor.IRNodeTransformer[Node]):

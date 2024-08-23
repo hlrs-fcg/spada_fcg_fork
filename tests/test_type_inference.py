@@ -253,7 +253,6 @@ class TestTypeInference(unittest.TestCase):
 
         self._test_programs_equal(file, file2)
 
-
     def test_multiple_returns(self):
         file = Path(__file__).parent / Path('../samples/spst/multiple_returns.spst')
         file2 = Path(__file__).parent / Path('../samples/spst/multiple_returns_ext.spst')
@@ -272,24 +271,33 @@ class TestTypeInference(unittest.TestCase):
 
         self._test_programs_equal(file, file2)
 
+
+    def assert_extent_and_domain_inference(self, file1, file2):
+        with open(file1, 'r') as f:
+            test_program = parser.parse_file(f)
+        with open(file2, 'r') as f:
+            golden_program = parser.parse_file(f)
+
+        extent_inference.infer_field_extents(test_program)
+        domain_inference.infer_field_domains(test_program, Cartesian.from_sequence((0, 128, 0, 128, 0, 80)))
+        test_program = canonicalization.canonicalize(test_program)
+        golden_program = canonicalization.canonicalize(golden_program)
+
+        self.assertEqual(golden_program.as_ir(), test_program.as_ir())
+
     def test_infer_domain_from_extents_3(self):
 
         file = Path(__file__).parent / Path('../samples/spst/laplacian_mat_sh.spst')
         file2 = Path(__file__).parent / Path('../samples/spst/laplacian_mat_ext_dom.spst')
 
-        with open(file, 'r') as f:
-            test_program = parser.parse_file(f)
+        self.assert_extent_and_domain_inference(file, file2)
 
-        extent_inference.infer_field_extents(test_program)
-        domain_inference.infer_field_domains(test_program, Cartesian.from_sequence((0, 128, 0, 128, 0, 80)))
-        test_program = canonicalization.canonicalize(test_program)
+    def test_domain_inference_no_mat(self):
 
-        with open(file2, 'r') as f:
-            golden_program = parser.parse_file(f)
+        file = Path(__file__).parent / Path('../samples/spst/laplacian_no_mat.spst')
+        file2 = Path(__file__).parent / Path('../samples/spst/laplacian_no_mat_ext_dom.spst')
 
-        golden_program = canonicalization.canonicalize(golden_program)
-
-        self.assertEqual(golden_program.as_ir(), test_program.as_ir())
+        self.assert_extent_and_domain_inference(file, file2)
 
     def test_canonicalize_extents(self):
         # Parse a simple program

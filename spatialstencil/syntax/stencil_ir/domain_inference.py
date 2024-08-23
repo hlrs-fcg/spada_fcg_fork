@@ -10,7 +10,8 @@ from spatialstencil.syntax.stencil_ir.def_use_analysis import ScopedUse
 
 def infer_field_domains(program: sast.Program,
                         domain: sast.Cartesian | None = None,
-                        def_use: dict[sast.Identifier, list[ScopedUse]] | None = None):
+                        def_use: dict[sast.Identifier, list[ScopedUse]] | None = None,
+                        use_def: dict[sast.Identifier, def_use_analysis.ScopedDefinition] | None = None):
     """
     Infers the domain size of a Stencil IR program by traversing it backwards.
     Operates in-place.
@@ -23,9 +24,10 @@ def infer_field_domains(program: sast.Program,
     if domain is None:  # Nothing to do
         return
 
-    if def_use is None:
+    if def_use is None or use_def is None:
         def_use = dict()
-        def_use_analysis.DefUseAnalysis(def_use).visit(program)
+        use_def = dict()
+        def_use_analysis.DefUseAnalysis(def_use, use_def).visit(program)
 
     dom_inference = DomainInference(def_use, domain)
     dom_inference.visit(program)
