@@ -148,6 +148,9 @@ class Offset(Node):
                        self.values[1] + other.values[1],
                        self.values[2] + other.values[2]))
 
+    def is_unknown(self) -> bool:
+        return all(dim == "?" for dim in self.values)
+
     def __add__(self, other: 'Offset') -> 'Offset':
         return self.add(other)
 
