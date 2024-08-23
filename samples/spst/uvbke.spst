@@ -13,7 +13,7 @@
 
    %arg4, %arg5 = spst.computation(%arg0, %arg1, %arg2, %arg3) {
      schedule = PARALLEL,
-     interval = (interval<?, ?>, interval<?, ?>, interval<?, ?>)
+     interval = [interval<None, None>, interval<None, None>, interval<None, None>]
    } : field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
        field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
        field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
@@ -45,6 +45,7 @@
                 %23 = %arg3[0, 0, 0] * %21
                 return %23
         }
+        return %arg4, %arg5
     }
     return %arg4, %arg5
 }

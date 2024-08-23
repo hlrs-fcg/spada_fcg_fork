@@ -12,7 +12,7 @@
    // This stencil contains one parallel computation block
    %arg2 = spst.computation(%arg0, %arg1, %arg3, %arg4) {
      schedule = PARALLEL,
-     interval = (interval<?, ?>, interval<?, ?>, interval<?, ?>)
+     interval = [interval<None, None>, interval<None, None>, interval<None, None>]
    } : field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
        field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
        field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
