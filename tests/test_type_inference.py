@@ -270,8 +270,7 @@ class TestTypeInference(unittest.TestCase):
 
         self._test_programs_equal(file, file2)
 
-
-    def test_infer_domain_from_extents(self):
+    def test_infer_domain_from_extents_3(self):
 
         file = Path(__file__).parent / Path('../samples/spst/laplacian_mat_sh.spst')
         file2 = Path(__file__).parent / Path('../samples/spst/laplacian_mat_ext_dom.spst')
