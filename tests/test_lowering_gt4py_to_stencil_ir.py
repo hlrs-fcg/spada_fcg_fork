@@ -121,7 +121,6 @@ class TestStencilIRParser(unittest.TestCase):
         irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program, materialize=False)
 
         comp = irprogram.computations[0]
-        print(comp)
         assert comp.outputs == [sast.Identifier('out')]
         assert isinstance(comp.body[0], sast.IfBlock)
         ifblock = comp.body[0]
@@ -132,7 +131,6 @@ class TestStencilIRParser(unittest.TestCase):
         ifelse_block = ifblock.else_ifs[0]
         stmt2 = ifelse_block.body[0]
         assert stmt2.result == sast.Identifier('out', version=2)
-        print(comp)
 
     def test_lower_mathcall(self):
         program = self.gtfuncs['simple_mathcall']

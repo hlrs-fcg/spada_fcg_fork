@@ -205,8 +205,6 @@ class TypeInference(sast.NodeTransformer):
         return node
 
 
-
-
 #########################################################################################
 # Internal functions
 
@@ -323,6 +321,3 @@ def _unique_id_list(identifiers: set[sast.Identifier], latest_version: bool) -> 
             versions[k.name] = func(k.version, versions[k.name])
 
     return [sast.Identifier(name, versions[name]) for name in sorted(names)]
-
-
-

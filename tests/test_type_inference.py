@@ -93,8 +93,6 @@ class TestTypeInference(unittest.TestCase):
         """
         domain_inference.infer_field_domains(program, Cartesian.from_sequence((0, 128, 0, 128, 0, 80)))
 
-        print(program.as_ir())
-
         # Check that all domains have been inferred
         for computation in program.computations:
             if isinstance(computation, ComputationBlock):
@@ -134,7 +132,6 @@ class TestTypeInference(unittest.TestCase):
         for file in files:
             with open(file, 'r') as f:
                 program = parser.parse_file(f)
-            print(program.as_ir())
 
             self.assert_infer_domains(program)
 
@@ -154,11 +151,9 @@ class TestTypeInference(unittest.TestCase):
         for file in files:
             with open(file, 'r') as f:
                 program = parser.parse_file(f)
-            print(program.as_ir())
 
             # extent inference
             extent_inference.infer_field_extents(program)
-            print(program.as_ir())
 
             # Assert all statements have extents
             for computation in program.computations:
@@ -235,14 +230,11 @@ class TestTypeInference(unittest.TestCase):
         with open(file2, 'r') as f:
             golden_program = parser.parse_file(f)
 
-        print(test_program.as_ir())
         # Infer extents for the program without extents
         extent_inference.infer_field_extents(test_program)
 
         # Canonicalize program with extents
         golden_program = canonicalization.canonicalize(golden_program)
-
-        print(test_program.as_ir())
 
         # Check the overall program
         self.assertEqual(golden_program.as_ir(), test_program.as_ir())
@@ -334,7 +326,6 @@ class TestTypeInference(unittest.TestCase):
 }'''
 
         cprogram = canonicalization.canonicalize(program)
-        print(cprogram.as_ir())
         assert cprogram.as_ir() == canonical
 
 

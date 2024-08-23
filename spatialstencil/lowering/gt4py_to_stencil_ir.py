@@ -36,8 +36,6 @@ def lower_gt4py_to_stencil_ir(program: gtast.GTProgram,
     # Infer which fields are intermediate (before materialize pass)
     type_inference.infer_inputs_and_outputs(new_ast)
 
-    print(new_ast.as_ir())
-
     # Insert materialize for all fields
     if materialize:
         # Perform a first round of shape inference to skip certain materializations
