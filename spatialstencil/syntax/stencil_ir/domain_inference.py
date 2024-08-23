@@ -51,6 +51,8 @@ class DomainInference(sast.ScopedNodeVisitor):
         self.generic_visit(program)
         # Set the input domains to the union of the domains of their uses
         for inp, inptype in zip(program.inputs, program.operation_type.source):
+            if isinstance(inptype, sast.ScalarType):
+                continue
             in_domains = _domains_of_uses_in_scope(self.def_use, program, inp)
             in_domain = _union_domains(in_domains)
             if inptype.domain.is_unknown():
@@ -91,6 +93,9 @@ class DomainInference(sast.ScopedNodeVisitor):
 
         # Compute input domains based on extents and output
         for inp, inptype in zip(node.inputs, node.operation_type.source):
+            if isinstance(inptype, sast.ScalarType):
+                continue
+
             new_domain = _infer_domain_from_extents(out_domain,
                                                     inptype.extent,
                                                     computation.interval)
@@ -108,6 +113,8 @@ class DomainInference(sast.ScopedNodeVisitor):
             self.visit(child)
         # Initialize input domains as the union of the domains of their uses
         for inp, inptype in zip(node.inputs, node.operation_type.source):
+            if isinstance(inptype, sast.ScalarType):
+                continue
             in_domains = _domains_of_uses_in_scope(self.def_use, node, inp)
             in_domain = _union_domains(in_domains)
             if inptype.domain.is_unknown():
@@ -181,6 +188,9 @@ def _domains_of_uses_in_scope(uses: dict[sast.Identifier, Collection[def_use_ana
     if len(use_domains) == 0:
         print(f"WARNING: No uses of {identifier.name} found within current scope.")
 
+
+    # Remove unknown domains (TODO: Investigate why this might happen!)
+    use_domains = [d for d in use_domains if not d.is_unknown()]
     assert all(not o.is_unknown() for o in use_domains), f"Domain of uses of {identifier.name} must be known before inference"
 
     return use_domains

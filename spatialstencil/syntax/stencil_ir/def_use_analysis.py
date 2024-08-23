@@ -28,6 +28,8 @@ class DefUseAnalysis(sast.ScopedNodeVisitor):
         :param field_type: The field type object
         :return:
         """
+        assert isinstance(node, sast.Identifier)
+
         if node not in self.def_use:
             self.def_use[node] = []
         self.def_use[node].append(ScopedUse(self.get_scope(), field_type))
@@ -63,7 +65,8 @@ class DefUseAnalysis(sast.ScopedNodeVisitor):
         self.add(node.condition, node.operation_type.source[0])
 
         for elif_block in node.else_ifs:
-            self.add(elif_block.condition, node.operation_type.source[0])
+            if elif_block.condition:
+                self.add(elif_block.condition, node.operation_type.source[0])
 
         self.generic_visit(node)
 
@@ -87,6 +90,14 @@ class DefUseAnalysis(sast.ScopedNodeVisitor):
         # A return uses all its arguments
         assert all(isinstance(arg.value, sast.Identifier) for arg in node.values)
         # And create a use for each field access
-        for arg, arg_t in zip(node.values, node.operation_type.source):
+        for i in range(len(node.values)):
+
+            arg, arg_t = node.values[i].value, node.operation_type.source[i]
+
+            # TODO This is a hot-fix! Should be done elsewhere.
+            if isinstance(arg_t, sast.AnyType):
+                node.operation_type.source[i] = sast.FieldType.empty()
+                arg_t = node.operation_type.source[i]
+
             assert isinstance(arg_t, sast.FieldType)
-            self.add(arg.value, arg_t)
+            self.add(arg, arg_t)

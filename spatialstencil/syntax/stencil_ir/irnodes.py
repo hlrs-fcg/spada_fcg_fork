@@ -394,7 +394,9 @@ class Cartesian(Domain):
         Creates a Cartesian sub-domain from 3 intervals
         that may indicate a sub-domain of the original Cartesian domain
         through the use of negative values to indicate an offset from the
-        upper bound of the domain and None to indicate the upper bound of the domain.
+        upper bound of the domain and None to indicate the upper or lower bound of the domain.
+        For example None:None denotes the entire domain's dimension,
+        0:-1 denotes the entire domain except the last element.
         """
         assert len(intervals) == 3
 
@@ -408,8 +410,8 @@ class Cartesian(Domain):
             assert intervals[i].end != "?"
 
             if intervals[i].start is None:
-                # TODO CHECK IF RIGHT
-                start = 0
+                # If none, we take the lower bound of the domain
+                start = output_lowerbound[i]
             elif intervals[i].start < 0:
                 start = output_upperbound[i] + intervals[i].start
             else:

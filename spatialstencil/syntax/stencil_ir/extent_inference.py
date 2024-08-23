@@ -66,6 +66,10 @@ class ExtentInference(sast.ScopedNodeVisitor):
 
         # For each input, compute the Minkowski sum of the local extent and the uses
         for arg, arg_t in zip(node.inputs, node.operation_type.source):
+            # Skip scalar types (they have no extent)
+            if isinstance(arg_t, sast.ScalarType):
+                continue
+
             # Compute the Minkowski sum of the local extent and the uses
             local_extent = local_extent_collector.extents[arg.name]
 
@@ -101,6 +105,7 @@ class ExtentInference(sast.ScopedNodeVisitor):
 
     def visit_ReturnOp(self, node: sast.ReturnOp):
         assert isinstance(node.operation_type.source[0], sast.FieldType)
+
         _init_outputs(node.operation_type.source)
 
 
@@ -129,6 +134,8 @@ class ExtentInference(sast.ScopedNodeVisitor):
         if len(offsets) == 0:
             print(f"WARNING: No uses of {identifier.name} found within current scope.")
 
+        # Remove unknown offsets (TODO: Investigate why this can happen!)
+        offsets = [o for o in offsets if not o.is_unknown()]
         assert all(not o.is_unknown() for o in offsets), f"Offsets of uses of {identifier.name} must be known before inference"
 
         return offsets

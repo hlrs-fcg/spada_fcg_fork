@@ -84,6 +84,41 @@ class TestTypeInference(unittest.TestCase):
 
         assert result == golden_result
 
+
+    def assert_infer_domains(self, program: Program):
+        """
+        Asserts that all domains have been inferred
+        :param program:
+        :return:
+        """
+        domain_inference.infer_field_domains(program, Cartesian.from_sequence((0, 128, 0, 128, 0, 80)))
+
+        print(program.as_ir())
+
+        # Check that all domains have been inferred
+        for computation in program.computations:
+            if isinstance(computation, ComputationBlock):
+                for statement in computation.body:
+                    for input in statement.operation_type.source:
+                        if isinstance(input, ScalarType):
+                            continue
+                        assert not input.domain.is_unknown()
+                    if isinstance(statement, StatementBlock) or isinstance(statement, MaterializeOp):
+                        for output in statement.operation_type.destination:
+                            assert not output.domain.is_unknown()
+                for output in computation.operation_type.source:
+                    if isinstance(output, ScalarType):
+                        continue
+                    assert not output.domain.is_unknown()
+                for input in computation.operation_type.destination:
+                    if isinstance(input, ScalarType):
+                        continue
+                    assert not input.domain.is_unknown()
+            elif isinstance(computation, ReturnOp):
+                for output in computation.operation_type.source:
+                    assert not output.domain.is_unknown()
+
+
     def test_infer_domains_is_complete(self):
         # For every file, run the parser, infer_domains
         # Check that all domains have been inferred (i.e. no unknown domains)
@@ -101,26 +136,43 @@ class TestTypeInference(unittest.TestCase):
                 program = parser.parse_file(f)
             print(program.as_ir())
 
-            domain_inference.infer_field_domains(program, Cartesian.from_sequence((0, 128, 0, 128, 0, 80)))
+            self.assert_infer_domains(program)
 
+
+    def test_infer_extents_and_domains(self):
+
+        files = [
+            Path(__file__).parent / Path('../samples/spst/hdiff.spst'),
+            Path(__file__).parent / Path('../samples/spst/vadv.spst')
+        ]
+
+        for file in files:
+            with open(file, 'r') as f:
+                program = parser.parse_file(f)
             print(program.as_ir())
 
-            # Check that all domains have been inferred
+            # extent inference
+            extent_inference.infer_field_extents(program)
+            print(program.as_ir())
+
+            # Assert all statements have extents
             for computation in program.computations:
                 if isinstance(computation, ComputationBlock):
                     for statement in computation.body:
-                        for input in statement.operation_type.source:
-                            assert not input.domain.is_unknown()
                         if isinstance(statement, StatementBlock) or isinstance(statement, MaterializeOp):
+                            for input in statement.operation_type.source:
+                                if isinstance(input, ScalarType):
+                                    continue
+                                assert not input.extent.is_unknown()
                             for output in statement.operation_type.destination:
-                                assert not output.domain.is_unknown()
-                    for output in computation.operation_type.source:
-                        assert not output.domain.is_unknown()
-                    for input in computation.operation_type.destination:
-                        assert not input.domain.is_unknown()
+                                assert not output.extent.is_unknown()
                 elif isinstance(computation, ReturnOp):
                     for output in computation.operation_type.source:
-                        assert not output.domain.is_unknown()
+                        assert not output.extent.is_unknown()
+
+            # domain inference
+            self.assert_infer_domains(program)
+
 
     def test_infer_expression(self):
         # Parse a simple program
