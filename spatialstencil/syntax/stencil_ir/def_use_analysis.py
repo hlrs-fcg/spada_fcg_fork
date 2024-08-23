@@ -80,11 +80,6 @@ class DefUseAnalysis(sast.ScopedNodeVisitor):
             self.add(arg_id, arg_t)
         super().visit_ComputationBlock(node)
 
-    def visit_Program(self, node: sast.Program):
-        # A program pushes a new scope, we currently do not consider inputs as uses
-        self.push_scope(node)
-        self.generic_visit(node)
-        self.pop_scope()
 
     def visit_ReturnOp(self, node: sast.ReturnOp):
         # A return uses all its arguments
