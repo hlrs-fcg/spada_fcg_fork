@@ -35,17 +35,6 @@ def infer_field_extents(program: sast.Program):
     extent_inference = ExtentInference(def_use, uses)
     extent_inference.visit(program)
 
-def _init_outputs(dtypes: Sequence[sast.FieldType]):
-    """
-    Initialize the extents of every element to be (0, 0, 0)
-    :param dtypes:
-    :return:
-    """
-    for dtype in dtypes:
-        assert isinstance(dtype, sast.FieldType)
-        if dtype.extent.is_unknown():
-            dtype.extent.extents[:] = [sast.Offset((0, 0, 0))]
-
 
 class ExtentInference(sast.ScopedNodeVisitor):
 
@@ -143,6 +132,18 @@ class ExtentInference(sast.ScopedNodeVisitor):
         assert all(not o.is_unknown() for o in offsets), f"Offsets of uses of {identifier.name} must be known before inference"
 
         return offsets
+
+
+def _init_outputs(dtypes: Sequence[sast.FieldType]):
+    """
+    Initialize the extents of every element to be (0, 0, 0)
+    :param dtypes:
+    :return:
+    """
+    for dtype in dtypes:
+        assert isinstance(dtype, sast.FieldType)
+        if dtype.extent.is_unknown():
+            dtype.extent.extents[:] = [sast.Offset((0, 0, 0))]
 
 
 def _minkowski_sum(a: Collection[sast.Offset],
