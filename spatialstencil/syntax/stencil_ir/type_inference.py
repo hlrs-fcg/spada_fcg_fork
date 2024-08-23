@@ -300,9 +300,15 @@ def _infer_expression(expr: sast.Expression, field_types: dict[str, sast.ScalarT
 
     # Fields
     if isinstance(val, sast.Identifier):
-        return field_types[val.name]
+        ftype = field_types[val.name]
+        if isinstance(ftype, sast.FieldType):
+            return ftype.dtype
+        return ftype
     if isinstance(val, sast.Subscript):
-        return field_types[val.value.name]
+        ftype = field_types[val.value.name]
+        if isinstance(ftype, sast.FieldType):
+            return ftype.dtype
+        return ftype
 
     nested_infer_expression = lambda ex: _infer_expression(ex, field_types, default_float_dtype, default_int_dtype)
 
