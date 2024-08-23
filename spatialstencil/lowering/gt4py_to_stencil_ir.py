@@ -234,8 +234,8 @@ def convert_gt4py_ast_to_stencil_ast(program: gtast.GTProgram, default_float_dty
     for computation in program.computations:
         for interval in computation.intervals:  # Computation + interval becomes an spst.computation block
             # Horizontal intervals always cover the entire field in GT4Py
-            xintvl = sast.Interval(0, None)
-            yintvl = sast.Interval(0, None)
+            xintvl = sast.Interval(None, None)
+            yintvl = sast.Interval(None, None)
             zintvl = sast.Interval(interval.start, interval.end)
 
             cbody, cinputs, coutputs = _convert_interval_to_computation_body(interval.statements)
