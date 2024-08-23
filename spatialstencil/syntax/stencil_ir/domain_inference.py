@@ -189,3 +189,32 @@ class DomainInference(sast.ScopedNodeVisitor):
             if inptype.domain.is_unknown():
                 inptype.domain = copy.deepcopy(in_domain)
         self.pop_scope()
+
+    def visit_IfBlock(self, node: sast.IfBlock):
+        # We need to infer the domain of the outputs based on the uses of the outputs
+        # We will compute the output for the union of the uses.
+        computation = self.get_scope_with_type(sast.ComputationBlock)
+        assert computation
+        assert isinstance(computation, sast.ComputationBlock)
+
+        domains = []
+        for out, outtype in zip(node.outputs, node.operation_type.destination):
+            out_domain = _domains_of_uses_in_scope(self.def_use, computation, out)
+            domains.extend(out_domain)
+
+        out_domain = _union_domains(domains)
+        for outtype in node.operation_type.destination:
+            outtype.domain = copy.deepcopy(out_domain)
+
+        # Visit the condition, body, and else_ifs
+        self.generic_visit(node)
+
+        # The input domain must match the output domain
+        # as it serves as a mask for which output to use
+        conditions = [node.condition]
+        for elifblock in node.else_ifs:
+            conditions.append(elifblock.condition)
+
+        for inp, inptype in zip(conditions, node.operation_type.source):
+            inptype.domain = out_domain
+

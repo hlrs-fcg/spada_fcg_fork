@@ -662,6 +662,7 @@ class StatementBlock(Node, Operation, Block):
         assert len(self.body[-1].values) == len(self.outputs)
         assert self.operation_type.destination is not None
         assert len(self.operation_type.destination) == len(self.outputs)
+        assert len(self.operation_type.source) == len(self.inputs)
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
@@ -752,6 +753,7 @@ class ComputationBlock(Node, Operation, Block):
     def validate(self) -> None:
         assert self.operation_type.destination is not None
         assert len(self.outputs) == len(self.operation_type.destination)
+        assert len(self.inputs) == len(self.operation_type.source)
         assert isinstance(self.schedule, ComputationType)
         assert isinstance(self.interval, list)
         assert all(isinstance(i, Interval) for i in self.interval)

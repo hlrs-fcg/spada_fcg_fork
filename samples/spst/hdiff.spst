@@ -48,7 +48,7 @@
                 return 0 if (%res_y * (%in[0,1,0] - %in[0,0,0]) > 0) else %res_y
         }
         // Output
-        %out = spst.statement(%in, %coeff, %flx, %fly) {} : 
+        %out = spst.statement(%in, %coeff, %flx, %fly) {} :
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
@@ -58,6 +58,7 @@
                     %flx[0,0,0] - %flx[-1,0,0] + %fly[0,0,0] - %fly[0, -1, 0]
                 )
         }
+        return %out
     }
     return %out
 }

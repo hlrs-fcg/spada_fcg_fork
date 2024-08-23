@@ -84,7 +84,7 @@ class TestTypeInference(unittest.TestCase):
 
         assert result == golden_result
 
-    def test_infer_domains_basic(self):
+    def test_infer_domains_is_complete(self):
         # For every file, run the parser, infer_domains
         # Check that all domains have been inferred (i.e. no unknown domains)
 
@@ -102,6 +102,8 @@ class TestTypeInference(unittest.TestCase):
             print(program.as_ir())
 
             domain_inference.infer_field_domains(program, Cartesian.from_sequence((0, 128, 0, 128, 0, 80)))
+
+            print(program.as_ir())
 
             # Check that all domains have been inferred
             for computation in program.computations:
@@ -127,13 +129,13 @@ class TestTypeInference(unittest.TestCase):
           field<domain<?, ?, ?>, extent<(?, ?, ?)>, i32>,
           field<domain<?, ?, ?>, extent<(?, ?, ?)>, i16> ->
           field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
-            %out = spst.computation(%inp) {
+            %out = spst.computation(%inp, %shortinp) {
               schedule = PARALLEL,
               interval = [interval<?, ?>, interval<?, ?>, interval<?, ?>]
             } : field<domain<?, ?, ?>, extent<(?, ?, ?)>, i32>,
                 field<domain<?, ?, ?>, extent<(?, ?, ?)>, i16> ->
                 field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
-                    %out = spst.statement (%inp) {} :
+                    %out = spst.statement (%inp, %shortinp) {} :
                       spst.field<spst.cartesian<?, ?, ?>, spst.extent<(?, ?, ?)>, i32>,
                       spst.field<spst.cartesian<?, ?, ?>, spst.extent<(?, ?, ?)>, i16> ->
                       spst.field<spst.cartesian<?, ?, ?>, spst.extent<(?, ?, ?)>, f32> {

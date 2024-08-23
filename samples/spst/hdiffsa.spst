@@ -56,7 +56,7 @@
                 return 0 if (%21 > 0) else %17
         }
         // Output
-        %arg2 = spst.statement(%arg0, %10, %11, %arg1) {} : 
+        %arg2 = spst.statement(%arg0, %10, %11, %arg1) {} :
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
             field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
@@ -67,6 +67,7 @@
                 %23 = %arg0[0, 0, 0] + %arg1[0, 0, 0] * (%15 + %18)
                 return %23
         }
+        return %arg2
     }
     return %arg2
 }

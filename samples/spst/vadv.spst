@@ -54,6 +54,7 @@
 
             return %ccol, %dcol
         }
+        return %ccol, %dcol
     }
 
     %ccol, %dcol = spst.computation(%wcon, %ccol, %dcol, %dtr_stage, %u_stage, %u_pos, %utens_stage) {
@@ -105,6 +106,7 @@
 
             return %ccol, %dcol
         }
+        return %ccol, %dcol
     }
 
     %dcol = spst.computation(%wcon, %ccol, %dcol, %dtr_stage, %u_stage, %u_pos, %utens_stage) {
@@ -148,6 +150,7 @@
 
             return %dcol
         }
+        return %dcol
     }
 
     %data_col, %utens_stage_out = spst.computation(%dcol, %dtr_stage, %u_pos) {
@@ -172,6 +175,7 @@
 
             return %data_col, %utens_stage_out
         }
+        return %data_col, %utens_stage_out
     }
 
     %utens_stage_out = spst.computation(%dcol, %dtr_stage, %u_pos, %data_col) {
@@ -196,6 +200,7 @@
 
             return %utens_stage_out
         }
+        return %utens_stage_out
     }
     return %utens_stage_out
 }
