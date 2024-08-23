@@ -389,14 +389,13 @@ def _convert_interval_to_computation_body(
             inputs.update(stmt_inputs)
 
             # Add overall return values to each branch
-            stmt_body.append(
-                sast.ReturnOp([sast.Expression(so) for so in sorted(all_stmt_outputs)],
-                              sast.OperationType([sast.FieldType.empty() for _ in outputs])))
+            stmt_body[-1] = sast.ReturnOp([sast.Expression(so) for so in sorted(all_stmt_outputs)],
+                                          sast.OperationType([sast.FieldType.empty() for _ in all_stmt_outputs]))
             if else_ifs:
                 for else_if in else_ifs:
-                    else_if.body.append(
-                        sast.ReturnOp([sast.Expression(so) for so in sorted(all_stmt_outputs)],
-                                      sast.OperationType([sast.FieldType.empty() for _ in outputs])))
+                    else_if.body[-1] = sast.ReturnOp([sast.Expression(so) for so in sorted(all_stmt_outputs)],
+                                                     sast.OperationType(
+                                                         [sast.FieldType.empty() for _ in all_stmt_outputs]))
 
             # Create IR node
             body.append(
