@@ -35,6 +35,9 @@ identifier : "%" suffix_id ("#" digits)?
 !unknown_type : "UNKNOWN"
 ?standard_type : float_type | int_type | uint_type | bool_type | unknown_type
 
+// Any type
+any_type : "?"
+
 // Built-in enumerations
 !schedule_type : "PARALLEL" | "FORWARD" | "BACKWARD"
 ?enum_literal : schedule_type
@@ -58,7 +61,7 @@ domain_type : ("spst.")? ("domain" | "cartesian") "<" domain_list ">" | "[" doma
 field_type : ("spst.")? "field" "<" domain_type "," extent_type "," standard_type ">"
 
 ?builtin_type : field_type | domain_type | extent_type | interval_type | multi_interval_type | computation_interval
-?field_or_scalar_type : field_type | standard_type
+?field_or_scalar_type : field_type | standard_type | any_type
 
 ////////////////////////////////////////////////////
 // Operators and operator precedence

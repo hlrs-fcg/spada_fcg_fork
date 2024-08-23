@@ -38,6 +38,9 @@ class AnyType(IRType):
     def as_ir(self) -> str:
         return "?"
 
+    def is_unknown(self) -> bool:
+        return True
+
 
 BIT_WIDTH = {
     ScalarType.UNKNOWN: 0,
@@ -115,8 +118,6 @@ def _val_or_unk(val: int | None | Literal["?"]) -> str:
     if val == '?':
         return '?'
     return str(val)
-
-
 
 
 @dataclass
