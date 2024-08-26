@@ -87,9 +87,9 @@ class TestTypeInference(unittest.TestCase):
 
     def assert_infer_domains(self, program: Program):
         """
-        Asserts that all domains have been inferred
-        :param program:
-        :return:
+        Asserts that all domains have been inferred. Raises assertion exceptions on failure.
+
+        :param program: The program to test.
         """
         domain_inference.infer_field_domains(program, Cartesian.from_sequence((0, 128, 0, 128, 0, 80)))
 
@@ -101,7 +101,7 @@ class TestTypeInference(unittest.TestCase):
                         if isinstance(input, ScalarType):
                             continue
                         assert not input.domain.is_unknown()
-                    if isinstance(statement, StatementBlock) or isinstance(statement, MaterializeOp):
+                    if isinstance(statement, (StatementBlock, MaterializeOp)):
                         for output in statement.operation_type.destination:
                             assert not output.domain.is_unknown()
                 for output in computation.operation_type.source:
@@ -159,7 +159,7 @@ class TestTypeInference(unittest.TestCase):
             for computation in program.computations:
                 if isinstance(computation, ComputationBlock):
                     for statement in computation.body:
-                        if isinstance(statement, StatementBlock) or isinstance(statement, MaterializeOp):
+                        if isinstance(statement, (StatementBlock, MaterializeOp)):
                             for input in statement.operation_type.source:
                                 if isinstance(input, ScalarType):
                                     continue
