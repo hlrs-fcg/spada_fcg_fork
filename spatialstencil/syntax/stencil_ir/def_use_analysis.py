@@ -57,8 +57,8 @@ class DefUseAnalysis(sast.ScopedNodeVisitor):
     def add_definition(self, node: sast.Identifier, field_type: sast.FieldType):
         """
         Adds a definition of a field to the use_def dictionary, with the current scope.
+
         :param node: The identifier
-        :return:
         """
         if self.use_def is None:
             return
@@ -83,10 +83,9 @@ class DefUseAnalysis(sast.ScopedNodeVisitor):
 
     def visit_MaterializeOp(self, node: sast.MaterializeOp):
         """
-        A materialize operation uses its argument
-        and defines its output.
-        :param node:
-        :return:
+        A materialize operation uses its argument and defines its output.
+
+        :param node: The node to visit.
         """
         self.add_use(node.value, node.operation_type.source[0])
         self.add_definition(node.result, node.operation_type.destination[0])
@@ -97,10 +96,9 @@ class DefUseAnalysis(sast.ScopedNodeVisitor):
         """
         An if block uses its condition and the conditions of its if-else blocks.
         The if-else blocks share the same type as the if block.
-
         An if block defines its outputs.
-        :param node:
-        :return:
+
+        :param node:  The node to visit.
         """
         self.add_use(node.condition, node.operation_type.source[0])
 
@@ -115,10 +113,9 @@ class DefUseAnalysis(sast.ScopedNodeVisitor):
 
     def pre_visit_ComputationBlock(self, node: sast.ComputationBlock):
         """
-        A computation block uses all its inputs.
-        and defines all its outputs.
-        :param node:
-        :return:
+        A computation block uses all its inputs and defines all its outputs.
+
+        :param node: The node to visit.
         """
         for arg_id, arg_t in zip(node.inputs, node.operation_type.source):
             self.add_use(arg_id, arg_t)
@@ -128,8 +125,8 @@ class DefUseAnalysis(sast.ScopedNodeVisitor):
     def do_visit_ComputationBlock(self, node: ComputationBlock):
         """
         Within the computation block, all inputs are defined.
-        :param node:
-        :return:
+
+        :param node: The node to visit.
         """
         for arg_id, arg_t in zip(node.inputs, node.operation_type.source):
             self.add_definition(arg_id, arg_t)

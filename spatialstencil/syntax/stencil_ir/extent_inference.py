@@ -120,6 +120,7 @@ class ExtentInference(sast.ScopedNodeVisitor):
     def _offsets_of_uses_in_scope(self, computation: sast.ComputationBlock, identifier: sast.Identifier):
         """
         Get the offsets of the uses of a field in the current scope.
+
         :param computation: The current computation block
         :param identifier: The identifier
         :return: A list of offsets
@@ -143,8 +144,8 @@ class ExtentInference(sast.ScopedNodeVisitor):
 def _init_outputs(dtypes: Sequence[sast.FieldType]):
     """
     Initialize the extents of every element to be (0, 0, 0)
-    :param dtypes:
-    :return:
+
+    :param dtypes: Field type elements to set.
     """
     for dtype in dtypes:
         assert isinstance(dtype, sast.FieldType)
@@ -155,10 +156,11 @@ def _init_outputs(dtypes: Sequence[sast.FieldType]):
 def _minkowski_sum(a: Collection[sast.Offset],
                    b: Collection[sast.Offset]) -> set[sast.Offset]:
     """
-    Compute the minkowski sum of two sets of extents
-    :param a:
-    :param b:
-    :return:
+    Compute the Minkowski sum of two sets of extents.
+
+    :param a: First set operand.
+    :param b: Second set operand.
+    :return: The Minkowski sum set result.
     """
     result = set()
     for a_extent in a:

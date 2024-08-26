@@ -241,7 +241,7 @@ class TreeToAST(lark.Transformer):
 
 # Helper functions
 def _make_dimtuple(tup):
-    return tuple((dim for dim in tup))
+    return tuple(tup)
 
 
 def _make_offset_and_interval(extent_tuple):
