@@ -39,7 +39,7 @@ class DefUseAnalysis(sast.ScopedNodeVisitor):
         self.use_def = use_def
         self._current_scope = []
 
-    def add_use(self, node: sast.Identifier, field_type: sast.FieldType):
+    def add_use(self, node: sast.Identifier, field_type: sast.FieldType) -> None:
         """
         Adds a use of a field to the def_use dictionary, with the current scope.
 
@@ -54,11 +54,12 @@ class DefUseAnalysis(sast.ScopedNodeVisitor):
             self.def_use[node] = []
         self.def_use[node].append(ScopedUse(self.get_scope(), field_type))
 
-    def add_definition(self, node: sast.Identifier, field_type: sast.FieldType):
+    def add_definition(self, node: sast.Identifier, field_type: sast.FieldType) -> None:
         """
         Adds a definition of a field to the use_def dictionary, with the current scope.
 
         :param node: The identifier
+        :param field_type: The field type object
         """
         if self.use_def is None:
             return
@@ -69,11 +70,7 @@ class DefUseAnalysis(sast.ScopedNodeVisitor):
         self.use_def[node] = ScopedDefinition(self.get_scope(), field_type)
 
     def visit_StatementBlock(self, node: sast.StatementBlock):
-        """
-        A statement uses all its argument types and defines all its outputs.
-
-        :param node: The node to visit.
-        """
+        # A statement uses all its argument types and defines all its outputs.
         for arg_id, arg_t in zip(node.inputs, node.operation_type.source):
             self.add_use(arg_id, arg_t)
         for out_id, out_t in zip(node.outputs, node.operation_type.destination):
@@ -82,24 +79,17 @@ class DefUseAnalysis(sast.ScopedNodeVisitor):
         # AS IT IS A LOCAL SCOPE
 
     def visit_MaterializeOp(self, node: sast.MaterializeOp):
-        """
-        A materialize operation uses its argument and defines its output.
-
-        :param node: The node to visit.
-        """
+        # A materialize operation uses its argument and defines its output.
         self.add_use(node.value, node.operation_type.source[0])
         self.add_definition(node.result, node.operation_type.destination[0])
         self.generic_visit(node)
 
 
     def visit_IfBlock(self, node: sast.IfBlock):
-        """
-        An if block uses its condition and the conditions of its if-else blocks.
-        The if-else blocks share the same type as the if block.
-        An if block defines its outputs.
+        # An if block uses its condition and the conditions of its if-else blocks.
+        # The if-else blocks share the same type as the if block.
+        # An if block defines its outputs.
 
-        :param node:  The node to visit.
-        """
         self.add_use(node.condition, node.operation_type.source[0])
 
         for elif_block in node.else_ifs:
@@ -112,22 +102,17 @@ class DefUseAnalysis(sast.ScopedNodeVisitor):
         self.generic_visit(node)
 
     def pre_visit_ComputationBlock(self, node: sast.ComputationBlock):
-        """
-        A computation block uses all its inputs and defines all its outputs.
+        # A computation block uses all its inputs and defines all its outputs.
 
-        :param node: The node to visit.
-        """
         for arg_id, arg_t in zip(node.inputs, node.operation_type.source):
             self.add_use(arg_id, arg_t)
         for out_id, out_t in zip(node.outputs, node.operation_type.destination):
             self.add_definition(out_id, out_t)
 
     def do_visit_ComputationBlock(self, node: ComputationBlock):
-        """
-        Within the computation block, all inputs are defined.
 
-        :param node: The node to visit.
-        """
+        # Within the computation block, all inputs are defined.
+
         for arg_id, arg_t in zip(node.inputs, node.operation_type.source):
             self.add_definition(arg_id, arg_t)
         self.generic_visit(node)

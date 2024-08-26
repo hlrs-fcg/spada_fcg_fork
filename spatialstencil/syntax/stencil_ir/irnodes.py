@@ -125,11 +125,6 @@ class Offset(Node):
     """
     Dimension tuple containing an offset and an interval of an ``Extent``.
     """
-    # NOTE: We are using variable-length tuples here so that this type is hashable.
-    # This is terrible, instead use the Interval type directly!!!
-
-    # Note: We can actually remove the interval with the new type analysis, because
-    # we will have extents local to scopes.
     values: tuple[int | Literal["?"], int | Literal["?"], int | Literal["?"]] = ("?", "?", "?")
 
     def validate(self) -> None:
@@ -161,6 +156,7 @@ class Offset(Node):
         """
         Returns True if all values in this offset are less than the values in the other offset.
         "?" values are considered less than any other value.
+
         :param other:
         :return:
         """
@@ -251,8 +247,14 @@ class OperationType(Node):
 
 @dataclass
 class Interval(Node, IRType):
-    # NOTE: We are using "?" to represent unknown values
-    # NOTE: The None value can represent the limit relative to a known upper bound.
+
+    """
+    Interval domain type in one dimension.
+
+    We are using "?" to represent unknown values
+    he None value represents the absence of a limit
+    so start = None represents -inf and end = None represents +inf.
+    """
     start: int | Literal["?"] | None = "?"
     end: int | Literal["?"] | None = "?"
 
@@ -269,7 +271,7 @@ class Interval(Node, IRType):
         """
         Returns the union of two intervals.
         If one value is unknown, the other value is returned.
-        TODO Check?
+
         Assumes none of the values is None.
         """
         assert self.start is not None
@@ -296,6 +298,7 @@ class Interval(Node, IRType):
     def intersect(self, other: 'Interval'):
         """
         Returns the intersection of two intervals.
+
         :param other:
         :return:
         """
@@ -548,8 +551,6 @@ class Subscript(Node):
 class MathCall(Node):
     """
     A mathematical function call operation for stateless calls
-
-    # TODO: Why do math calls not have types?!
     """
     func: str
     arguments: list['Expression']
@@ -687,8 +688,6 @@ class StatementBlock(Node, Operation, Block):
 class ElseIfBlock(Node, Block):
     """
     A single "else if" block. If condition is None, represents an "else" block
-
-    # TODO: Does not have an operation type!!
     """
     condition: Identifier | None
     body: list[StatementBlock | ReturnOp]
@@ -831,6 +830,12 @@ class ScopedNodeVisitor(visitor.ScopedIRNodeVisitor[Node]):
 
 
     def visit_Program(self, program: Program):
+        """
+        Visits a program.
+
+        :param program:
+        :return:
+        """
         self.push_scope(program)
         self.generic_visit(program)
         self.pop_scope()
@@ -840,6 +845,7 @@ class ScopedNodeVisitor(visitor.ScopedIRNodeVisitor[Node]):
         Visits a computation block.
         Override pre_visit_ComputationBlock, do_visit_ComputationBlock, and post_visit_ComputationBlock
         to implement the visitor.
+
         :param computation:
         :return:
         """
@@ -853,6 +859,7 @@ class ScopedNodeVisitor(visitor.ScopedIRNodeVisitor[Node]):
     def pre_visit_ComputationBlock(self, computation: ComputationBlock):
         """
         Called before entering the scope of the computation block.
+
         :param computation:
         :return:
         """
@@ -862,6 +869,7 @@ class ScopedNodeVisitor(visitor.ScopedIRNodeVisitor[Node]):
         """
         Called after entering the scope of the computation block.
         If you want to recurse into the computation block, call self.generic_visit(computation).
+
         :param computation:
         :return:
         """
@@ -870,6 +878,7 @@ class ScopedNodeVisitor(visitor.ScopedIRNodeVisitor[Node]):
     def post_visit_ComputationBlock(self, computation: ComputationBlock):
         """
         Called after leaving the scope of the computation block.
+
         :param computation:
         :return:
         """
