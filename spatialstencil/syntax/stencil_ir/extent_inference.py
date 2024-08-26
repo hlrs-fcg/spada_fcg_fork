@@ -19,8 +19,7 @@ def infer_field_extents(program: sast.Program):
 
     The 'local' extents are computed using an ExtentCollector.
 
-    :param program:
-    :return:
+    :param program: The program whose extents should be inferred (operates in-place).
     """
 
     # Create the def-use analysis object
