@@ -27,7 +27,7 @@ class DefUseAnalysis(sast.ScopedNodeVisitor):
     """
     def __init__(self,
                  def_use: dict[sast.Identifier, list[ScopedUse]] = None,
-                 use_def: dict[sast.Identifier, ScopedDefinition] = None):
+                 use_def: dict[sast.Identifier, list[ScopedDefinition]] = None):
         """
         Initializes the def-use and use-def analysis.
 
@@ -65,9 +65,17 @@ class DefUseAnalysis(sast.ScopedNodeVisitor):
             return
         assert isinstance(node, sast.Identifier)
 
-        assert node not in self.use_def, f"Program is not in SSA form, {node} is defined multiple times"
+        if node not in self.use_def:
+            self.use_def[node] = []
 
-        self.use_def[node] = ScopedDefinition(self.get_scope(), field_type)
+        scope = self.get_scope()
+
+        # Check if the definition is already in the scope and raise an error if it is (not in SSA)
+        for def_scope in self.use_def[node]:
+            if def_scope.definition_scope == scope:
+                raise ValueError(f"SSA Error: Identifier {node} is defined twice in the same scope: \n {scope.as_ir()}")
+
+        self.use_def[node].append(ScopedDefinition(scope, field_type))
 
     def visit_StatementBlock(self, node: sast.StatementBlock):
         # A statement uses all its argument types and defines all its outputs.

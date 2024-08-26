@@ -1,3 +1,4 @@
+import itertools
 import warnings
 from typing import Sequence, Collection
 
@@ -5,13 +6,13 @@ import spatialstencil.syntax.stencil_ir.irnodes as sast
 import copy
 
 from spatialstencil.syntax.stencil_ir import def_use_analysis
-from spatialstencil.syntax.stencil_ir.def_use_analysis import ScopedUse
+from spatialstencil.syntax.stencil_ir.def_use_analysis import ScopedUse, ScopedDefinition
 
 
 def infer_field_domains(program: sast.Program,
                         domain: sast.Cartesian | None = None,
                         def_use: dict[sast.Identifier, list[ScopedUse]] | None = None,
-                        use_def: dict[sast.Identifier, def_use_analysis.ScopedDefinition] | None = None):
+                        use_def: dict[sast.Identifier, list[ScopedDefinition]] | None = None):
     """
     Infers the domain size of a Stencil IR program by traversing it backwards.
     Operates in-place.
@@ -37,7 +38,7 @@ class DomainInference(sast.ScopedNodeVisitor):
 
     def __init__(self,
                  def_use: dict[sast.Identifier, list[ScopedUse]],
-                 use_def: dict[sast.Identifier, def_use_analysis.ScopedDefinition],
+                 use_def: dict[sast.Identifier, list[ScopedDefinition]],
                  result_domain: sast.Cartesian):
         super().__init__(reverse=True)
         self.domain = result_domain
@@ -74,7 +75,7 @@ class DomainInference(sast.ScopedNodeVisitor):
         node.operation_type.destination[0].domain = copy.deepcopy(domain)
 
         # The input is given similarly as for a statement that accesses the offsets in the materialize op
-        def_extents = self.use_def[node.value].field_type.extent.extents
+        def_extents = self._union_of_offsets_of_in_scope_definitions(node.value, computation)
 
         # Compute extents that are relative to the def_extents.
         relative = sast.Extent(_offsets_relative_to_defining_offsets(node.operation_type.destination[0].extent.extents,
@@ -112,8 +113,8 @@ class DomainInference(sast.ScopedNodeVisitor):
             if isinstance(inptype, sast.ScalarType):
                 continue
 
-            # Determine the offsets of the definition of the input:
-            in_extents = self.use_def[inp].field_type.extent.extents
+            # Determine the offsets of the definition of the input
+            in_extents = self._union_of_offsets_of_in_scope_definitions(inp, computation)
 
             # Compute inptype extents that are relative to the in_extents.
             relative_extent = sast.Extent(_offsets_relative_to_defining_offsets(inptype.extent.extents, in_extents))
@@ -171,6 +172,29 @@ class DomainInference(sast.ScopedNodeVisitor):
 
         for inp, inptype in zip(conditions, node.operation_type.source):
             inptype.domain = out_domain
+
+    def _in_scope_definitions(self, value: sast.Identifier, scope: sast.ComputationBlock) -> list[ScopedDefinition]:
+        """
+        Get the definitions of a field in the current scope.
+
+        :param value: The identifier of the field
+        :param scope: The current scope (computation block or program)
+        :return: A list of scoped definitions
+        """
+        return [d for d in self.use_def[value] if d.definition_scope == scope]
+
+    def _union_of_offsets_of_in_scope_definitions(self,
+                                                  value: sast.Identifier,
+                                                  scope: sast.ComputationBlock) -> list[sast.Offset]:
+        """
+        Get the offsets of the definitions of a field in the current scope.
+
+        :param value: The identifier of the field
+        :param scope: The current scope (computation block or program)
+        :return: A list of offsets
+        """
+        return list(itertools.chain.from_iterable(d.field_type.extent.extents
+                                                  for d in self._in_scope_definitions(value, scope)))
 
 
 def _union_of_domains_of_uses_in_scope(uses: dict[sast.Identifier, Collection[def_use_analysis.ScopedUse]],
