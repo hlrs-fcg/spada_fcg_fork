@@ -103,7 +103,7 @@ class TreeToAST(lark.Transformer):
         return irnodes.Cartesian(*intervals)
 
     def extent_type(self, args, meta=None):
-        return irnodes.Extent([_make_offset_and_interval(a) for a in args[0]])
+        return irnodes.Extent([_make_offset(a) for a in args[0]])
 
     field_type = irnodes.FieldType.from_lark
     interval_type = irnodes.Interval.from_lark
@@ -224,7 +224,9 @@ class TreeToAST(lark.Transformer):
         if interval is None:
             raise ValueError('spst.computation is missing the "interval" attribute')
 
-        assert len(interval) == 3
+        if len(interval) != 3:
+            raise ValueError(f'Expected 3-tuple for interval, got {interval}')
+
         return irnodes.ComputationBlock(results, inputs, schedule, interval, operation_type, body)
 
     def program(self, args, meta=None):
@@ -244,9 +246,9 @@ def _make_dimtuple(tup):
     return tuple(tup)
 
 
-def _make_offset_and_interval(extent_tuple):
-    if len(extent_tuple) == 2:
-        assert False, "NOT SUPPORTED"
+def _make_offset(extent_tuple):
+    if len(extent_tuple) != 1 and len(extent_tuple[0]) != 3:
+        raise ValueError(f"Expected 3-tuple nested in a length 1 sequence, got {extent_tuple}")
     assert isinstance(extent_tuple, tuple)
     return irnodes.Offset(extent_tuple[0])
 
