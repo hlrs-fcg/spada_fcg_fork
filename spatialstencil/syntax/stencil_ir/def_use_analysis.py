@@ -30,6 +30,7 @@ class DefUseAnalysis(sast.ScopedNodeVisitor):
                  use_def: dict[sast.Identifier, ScopedDefinition] = None):
         """
         Initializes the def-use and use-def analysis.
+
         :param def_use: If None, the def-use analysis is disabled.
         :param use_def: If None, the use-def analysis is disabled.
         """
