@@ -70,10 +70,9 @@ class DefUseAnalysis(sast.ScopedNodeVisitor):
 
     def visit_StatementBlock(self, node: sast.StatementBlock):
         """
-        A statement uses all its argument types
-        and defines all its outputs.
-        :param node:
-        :return:
+        A statement uses all its argument types and defines all its outputs.
+
+        :param node: The node to visit.
         """
         for arg_id, arg_t in zip(node.inputs, node.operation_type.source):
             self.add_use(arg_id, arg_t)
