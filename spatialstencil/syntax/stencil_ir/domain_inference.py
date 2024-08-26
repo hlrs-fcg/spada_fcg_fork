@@ -174,6 +174,7 @@ def _domains_of_uses_in_scope(uses: dict[sast.Identifier, Collection[def_use_ana
                               identifier: sast.Identifier) -> list[sast.Cartesian]:
     """
     Get the offsets of the uses of a field in the current scope.
+
     :param uses: The uses dictionary
     :param computation: The current computation block
     :param identifier: The identifier
