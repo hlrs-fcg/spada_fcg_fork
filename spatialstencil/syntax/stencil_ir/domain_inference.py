@@ -60,7 +60,7 @@ class DomainInference(sast.ScopedNodeVisitor):
         for inp, inptype in zip(program.inputs, program.operation_type.source):
             if isinstance(inptype, sast.ScalarType):
                 continue
-            in_domains = _domains_of_uses_in_scope(self.def_use, program, inp)
+            in_domains = self._domains_of_uses_in_scope(program, inp)
             in_domain = _union_domains(in_domains)
             if inptype.domain.is_unknown():
                 inptype.domain = in_domain
@@ -71,7 +71,7 @@ class DomainInference(sast.ScopedNodeVisitor):
         assert computation
         assert isinstance(computation, sast.ComputationBlock)
         # Initialize materialize op types with the domain of the result
-        domain = _union_of_domains_of_uses_in_scope(self.def_use, computation, node.result)
+        domain = self._union_of_domains_of_uses_in_scope(computation, node.result)
         node.operation_type.destination[0].domain = copy.deepcopy(domain)
 
         # The input is given similarly as for a statement that accesses the offsets in the materialize op
@@ -96,13 +96,15 @@ class DomainInference(sast.ScopedNodeVisitor):
                 node.operation_type.source[i].domain = copy.deepcopy(self.domain)
 
     def visit_StatementBlock(self, node: sast.StatementBlock):
+        print(node.as_ir())
         computation = self.get_scope_with_type(sast.ComputationBlock)
+        print(computation.as_ir())
         assert computation
         assert isinstance(computation, sast.ComputationBlock)
         # The output domains are given by the union of the domains of their uses
         out_domains = []
         for out, outtype in zip(node.outputs, node.operation_type.destination):
-            out_domains.extend(_domains_of_uses_in_scope(self.def_use, computation, out))
+            out_domains.extend(self._domains_of_uses_in_scope(computation, out))
         out_domain = _union_domains(out_domains)
         # Initialize output domains with the domain of the result
         for outtype in node.operation_type.destination:
@@ -139,7 +141,7 @@ class DomainInference(sast.ScopedNodeVisitor):
         for inp, inptype in zip(node.inputs, node.operation_type.source):
             if isinstance(inptype, sast.ScalarType):
                 continue
-            in_domains = _domains_of_uses_in_scope(self.def_use, node, inp)
+            in_domains = self._domains_of_uses_in_scope(node, inp)
             in_domain = _union_domains(in_domains)
             if inptype.domain.is_unknown():
                 inptype.domain = copy.deepcopy(in_domain)
@@ -154,7 +156,7 @@ class DomainInference(sast.ScopedNodeVisitor):
 
         domains = []
         for out, outtype in zip(node.outputs, node.operation_type.destination):
-            out_domain = _domains_of_uses_in_scope(self.def_use, computation, out)
+            out_domain = self._domains_of_uses_in_scope(computation, out)
             domains.extend(out_domain)
 
         out_domain = _union_domains(domains)
@@ -196,11 +198,38 @@ class DomainInference(sast.ScopedNodeVisitor):
         return list(itertools.chain.from_iterable(d.field_type.extent.extents
                                                   for d in self._in_scope_definitions(value, scope)))
 
+    def _union_of_domains_of_uses_in_scope(self,
+                                          computation: sast.ComputationBlock,
+                                          identifier: sast.Identifier) -> sast.Cartesian:
+        return _union_domains(self._domains_of_uses_in_scope(computation, identifier))
 
-def _union_of_domains_of_uses_in_scope(uses: dict[sast.Identifier, Collection[def_use_analysis.ScopedUse]],
-                                       computation: sast.ComputationBlock,
-                                       identifier: sast.Identifier) -> sast.Cartesian:
-    return _union_domains(_domains_of_uses_in_scope(uses, computation, identifier))
+    def _domains_of_uses_in_scope(self,
+                                  computation: sast.ComputationBlock | sast.Program,
+                                  identifier: sast.Identifier) -> list[sast.Cartesian]:
+        """
+        Get the offsets of the uses of a field in the current scope.
+
+        :param uses: The uses dictionary
+        :param computation: The current computation block
+        :param identifier: The identifier
+        :return: A list of offsets
+        """
+        assert isinstance(identifier, sast.Identifier)
+
+        uses_of_result = self.def_use.get(identifier) or []
+        uses_of_result = [u for u in uses_of_result if u.definition_scope == computation]
+        # Concatenate all the extents from uses_of_result
+        use_domains = []
+        for use in uses_of_result:
+            use_domains.append(use.field_type.domain)
+        if len(use_domains) == 0:
+            print(f"WARNING: No uses of {identifier.as_ir()} found within current scope.")
+
+        # assert no unknown domains
+        assert all(not o.is_unknown()
+                   for o in use_domains), f"Domain of uses of {identifier.name} must be known before inference"
+
+        return use_domains
 
 
 def _union_domains(domains: list[sast.Domain]) -> sast.Cartesian:
@@ -214,43 +243,14 @@ def _union_domains(domains: list[sast.Domain]) -> sast.Cartesian:
     return dom
 
 
-def _domains_of_uses_in_scope(uses: dict[sast.Identifier, Collection[def_use_analysis.ScopedUse]],
-                              computation: sast.ComputationBlock | sast.Program,
-                              identifier: sast.Identifier) -> list[sast.Cartesian]:
-    """
-    Get the offsets of the uses of a field in the current scope.
-
-    :param uses: The uses dictionary
-    :param computation: The current computation block
-    :param identifier: The identifier
-    :return: A list of offsets
-    """
-    assert isinstance(identifier, sast.Identifier)
-
-    uses_of_result = uses.get(identifier) or []
-    uses_of_result = [u for u in uses_of_result if u.definition_scope == computation]
-    # Concatenate all the extents from uses_of_result
-    use_domains = []
-    for use in uses_of_result:
-        use_domains.append(use.field_type.domain)
-    if len(use_domains) == 0:
-        print(f"WARNING: No uses of {identifier.name} found within current scope.")
-
-
-    # Remove unknown domains (TODO: Investigate why this might happen!)
-    use_domains = [d for d in use_domains if not d.is_unknown()]
-    assert all(not o.is_unknown() for o in use_domains), f"Domain of uses of {identifier.name} must be known before inference"
-
-    return use_domains
-
-
 def _infer_domain_from_extents(output_domain: sast.Cartesian,
                                extents: sast.Extent,
                                intervals: Sequence[sast.Interval]) -> sast.Cartesian:
     """
     Given the output domain and extents, infers the domain size of the input field.
     Assuming that the output is accessed at offset (0, 0, 0).
-    # TODO Adapt for non-zero offsets
+    # TODO Double-Check for non-zero output offsets
+
     :param output_domain:
     :param extents:
     :return:
