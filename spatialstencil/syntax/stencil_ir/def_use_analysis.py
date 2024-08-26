@@ -42,9 +42,9 @@ class DefUseAnalysis(sast.ScopedNodeVisitor):
     def add_use(self, node: sast.Identifier, field_type: sast.FieldType):
         """
         Adds a use of a field to the def_use dictionary, with the current scope.
+
         :param node: The identifier
         :param field_type: The field type object
-        :return:
         """
         if self.def_use is None:
             return
