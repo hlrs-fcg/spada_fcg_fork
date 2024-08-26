@@ -29,16 +29,20 @@ def infer_field_domains(program: sast.Program,
         use_def = dict()
         def_use_analysis.DefUseAnalysis(def_use, use_def).visit(program)
 
-    dom_inference = DomainInference(def_use, domain)
+    dom_inference = DomainInference(def_use, use_def, domain)
     dom_inference.visit(program)
 
 
 class DomainInference(sast.ScopedNodeVisitor):
 
-    def __init__(self, def_use: dict[sast.Identifier, list[ScopedUse]], result_domain: sast.Cartesian):
+    def __init__(self,
+                 def_use: dict[sast.Identifier, list[ScopedUse]],
+                 use_def: dict[sast.Identifier, def_use_analysis.ScopedDefinition],
+                 result_domain: sast.Cartesian):
         super().__init__(reverse=True)
         self.domain = result_domain
         self.def_use = def_use
+        self.use_def = use_def
 
     def __post_init__(self):
         assert self.reverse
@@ -68,7 +72,17 @@ class DomainInference(sast.ScopedNodeVisitor):
         # Initialize materialize op types with the domain of the result
         domain = _union_of_domains_of_uses_in_scope(self.def_use, computation, node.result)
         node.operation_type.destination[0].domain = copy.deepcopy(domain)
-        node.operation_type.source[0].domain = copy.deepcopy(domain)
+
+        # The input is given similarly as for a statement that accesses the offsets in the materialize op
+        def_extents = self.use_def[node.value].field_type.extent.extents
+
+        # Compute extents that are relative to the def_extents.
+        relative = sast.Extent(_offsets_relative_to_defining_offsets(node.operation_type.destination[0].extent.extents,
+                                                                     def_extents))
+
+        node.operation_type.source[0].domain = _infer_domain_from_extents(domain,
+                                                                          relative,
+                                                                          computation.interval)
 
     def visit_ReturnOp(self, node: sast.ReturnOp):
         scope = self.get_scope()
@@ -98,8 +112,15 @@ class DomainInference(sast.ScopedNodeVisitor):
             if isinstance(inptype, sast.ScalarType):
                 continue
 
+            # Determine the offsets of the definition of the input:
+            in_extents = self.use_def[inp].field_type.extent.extents
+
+            # Compute inptype extents that are relative to the in_extents.
+            relative_extent = sast.Extent(_offsets_relative_to_defining_offsets(inptype.extent.extents, in_extents))
+
+            # Compute the domain of the input based on the extents and the output domain
             new_domain = _infer_domain_from_extents(out_domain,
-                                                    inptype.extent,
+                                                    relative_extent,
                                                     computation.interval)
             # Take max value from current domain if in dictionary
             inptype.domain = inptype.domain.union(new_domain)
@@ -222,3 +243,33 @@ def _infer_domain_from_extents(output_domain: sast.Cartesian,
         current_domain = current_domain.union(extent_domain)
 
     return current_domain
+
+
+def _offsets_relative_to_defining_offsets(offsets: list[sast.Offset],
+                                          defining_offsets: list[sast.Offset]) -> list[sast.Offset]:
+    """
+    Given a list of offsets and a list of defining offsets, returns the offsets relative to the defining offsets.
+    That is, the closest defining offset is subtracted from the offset.
+    If multiple defining offsets are equally close, the first one is chosen.
+    Any unknown defining offsets are ignored.
+
+    For example, if we have defining offsets [(0, 0, 0), (1, -1, 0), (?, ?, ?)] and offests [(0, 0, 0), (1, -2, 0)]
+    the result is [(0, 0, 0), (0, 1, 0)]
+
+    :param offsets: The offsets to make relative
+    :param defining_offsets: The offsets of the defining variable.
+    """
+    relative_offsets = []
+    for offset in offsets:
+        min_offset = offset
+        min_distance = float('inf')
+        for def_offset in defining_offsets:
+            if def_offset.is_unknown():
+                continue
+            relative_offset = offset - def_offset
+            distance = relative_offset.l1_norm()
+            if distance < min_distance:
+                min_offset = relative_offset
+                min_distance = distance
+        relative_offsets.append(min_offset)
+    return relative_offsets

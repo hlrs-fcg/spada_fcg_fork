@@ -149,6 +149,15 @@ class Offset(Node):
     def __add__(self, other: 'Offset') -> 'Offset':
         return self.add(other)
 
+    def __sub__(self, other: 'Offset') -> 'Offset':
+        assert all(isinstance(v, int) for v in self.values)
+        assert all(isinstance(v, int) for v in other.values)
+        return Offset(tuple(self.values[i]-other.values[i] for i in range(3)))
+
+    def l1_norm(self) -> int:
+        assert all(isinstance(v, int) for v in self.values)
+        return sum(abs(v) for v in self.values)
+
     def __hash__(self):
         return hash(self.values)
 
