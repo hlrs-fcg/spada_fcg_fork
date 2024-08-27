@@ -1,3 +1,4 @@
+import warnings
 from collections import defaultdict
 from typing import Sequence, Collection
 
@@ -134,16 +135,14 @@ class ExtentInference(sast.ScopedNodeVisitor):
             # Any use is by a view type
             assert isinstance(use.field_type, sast.ViewType)
             if use.field_type.extent.is_unknown():
-                print(f"WARNING: Extent of {identifier.name} is unknown in use.")
-                offsets.extend([sast.Offset((0, 0, 0))])
+                raise ValueError(f"Extent of {identifier.name} is unknown in use in scope {computation.as_ir()}")
             else:
                 offsets.extend(use.field_type.extent.extents)
-            print(f"Adding use of {identifier.as_ir()} with extent {use.field_type.extent.extents}")
-        if len(offsets) == 0:
-            print(f"WARNING: No uses of {identifier.name} found within current scope.")
 
-        # Remove unknown offsets (TODO: Investigate why this can happen!)
-        #offsets = [o for o in offsets if not o.is_unknown()]
+        if len(offsets) == 0:
+            warnings.warn(f"No uses of {identifier.name} found within current scope.")
+
+        # Make sure all offsets are known
         assert all(not o.is_unknown() for o in offsets), f"Offsets of uses of {identifier.as_ir()} must be known before inference"
 
         return offsets
