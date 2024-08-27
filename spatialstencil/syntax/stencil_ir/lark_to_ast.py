@@ -105,7 +105,7 @@ class TreeToAST(lark.Transformer):
     def extent_type(self, args, meta=None):
         return irnodes.Extent([_make_offset(a) for a in args[0]])
 
-    field_type = irnodes.ViewType.from_lark
+    view_type = irnodes.ViewType.from_lark
     interval_type = irnodes.Interval.from_lark
     any_type = lambda self, args: irnodes.AnyType()
 
