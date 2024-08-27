@@ -44,9 +44,10 @@ class TestTypeInference(unittest.TestCase):
 
         intervals = [Interval(0, None), Interval(0, None), Interval(0, -2)]
 
+        output_domain = output_domain.intersect_with_ranges(intervals)
+
         result = domain_inference._infer_domain_from_extents(output_domain,
-                                                             extent,
-                                                             intervals)
+                                                             extent)
 
         assert result == golden_result
 
@@ -62,14 +63,14 @@ class TestTypeInference(unittest.TestCase):
         extent = Extent(extents)
 
         # Test 1
-        golden_result = Cartesian.from_sequence((0, 128, 0, 128, 0, 80))
+        golden_result = Cartesian.from_sequence((0, 128, 0, 128, 70, 80))
 
         intervals = [Interval(0, None), Interval(0, None), Interval(-5, -2)]
 
+        domain = output_domain.intersect_with_ranges(intervals)
 
-        result = domain_inference._infer_domain_from_extents(output_domain,
-                                                             extent,
-                                                             intervals)
+        result = domain_inference._infer_domain_from_extents(domain,
+                                                             extent)
 
         assert result == golden_result
 
@@ -78,9 +79,10 @@ class TestTypeInference(unittest.TestCase):
 
         intervals = [Interval(0, None), Interval(0, None), Interval(5, 78)]
 
-        result = domain_inference._infer_domain_from_extents(output_domain,
-                                                             extent,
-                                                             intervals)
+        domain = output_domain.intersect_with_ranges(intervals)
+
+        result = domain_inference._infer_domain_from_extents(domain,
+                                                             extent)
 
         assert result == golden_result
 
@@ -136,6 +138,26 @@ class TestTypeInference(unittest.TestCase):
             self.assert_infer_domains(program)
 
 
+    def test_vertical_intervals(self):
+        file = Path(__file__).parent / Path('../samples/spst/vertical_intervals.spst')
+        file2 = Path(__file__).parent / Path('../samples/spst/vertical_intervals_ext_dom.spst')
+        with open(file, 'r') as f:
+            program = parser.parse_file(f)
+        with open(file2, 'r') as f:
+            golden_program = parser.parse_file(f)
+        # extent inference
+        extent_inference.infer_field_extents(program)
+        print(program.as_ir())
+
+        # domain inference
+        domain_inference.infer_field_domains(program, Cartesian.from_sequence((0, 128, 0, 128, 0, 80)))
+
+        program = canonicalization.canonicalize(program)
+        golden_program = canonicalization.canonicalize(golden_program)
+
+        self.assertEqual(golden_program.as_ir(), program.as_ir())
+
+
     def test_infer_extents_and_domains_is_complete(self):
         """
         Tests the inference of extents and domains is complete (i.e. no unknown extents or domains)
@@ -144,6 +166,7 @@ class TestTypeInference(unittest.TestCase):
         files = [
             Path(__file__).parent / Path('../samples/spst/hdiff.spst'),
             Path(__file__).parent / Path('../samples/spst/vadv.spst'),
+            #Path(__file__).parent / Path('../samples/spst/vadv_3.spst'),
             Path(__file__).parent / Path('../samples/spst/hdiffsa.spst'),
             Path(__file__).parent / Path('../samples/spst/uvbke.spst'),
         ]

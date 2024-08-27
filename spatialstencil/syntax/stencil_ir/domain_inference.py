@@ -82,8 +82,7 @@ class DomainInference(sast.ScopedNodeVisitor):
                                                                      def_extents))
 
         node.operation_type.source[0].domain = _infer_domain_from_extents(domain,
-                                                                          relative,
-                                                                          computation.interval)
+                                                                          relative)
 
     def visit_ReturnOp(self, node: sast.ReturnOp):
         scope = self.get_scope()
@@ -91,14 +90,14 @@ class DomainInference(sast.ScopedNodeVisitor):
             # Initialize return op types with the domain of the computation block's result
             for i in range(len(node.values)):
                 node.operation_type.source[i].domain = copy.deepcopy(scope.operation_type.destination[i].domain)
+
         elif isinstance(scope, sast.Program):
             for i in range(len(node.values)):
                 node.operation_type.source[i].domain = copy.deepcopy(self.domain)
 
     def visit_StatementBlock(self, node: sast.StatementBlock):
-        print(node.as_ir())
-        computation = self.get_scope_with_type(sast.ComputationBlock)
-        print(computation.as_ir())
+        computation = self.get_scope()
+
         assert computation
         assert isinstance(computation, sast.ComputationBlock)
         # The output domains are given by the union of the domains of their uses
@@ -123,16 +122,16 @@ class DomainInference(sast.ScopedNodeVisitor):
 
             # Compute the domain of the input based on the extents and the output domain
             new_domain = _infer_domain_from_extents(out_domain,
-                                                    relative_extent,
-                                                    computation.interval)
+                                                    relative_extent)
+
             # Take max value from current domain if in dictionary
             inptype.domain = inptype.domain.union(new_domain)
 
     def visit_ComputationBlock(self, node: sast.ComputationBlock):
-        # Initialize output domains with the domain of the result
+        # Initialize output domains with the domain of the result intersected with the interval
         for out, outtype in zip(node.outputs, node.operation_type.destination):
             if outtype.domain.is_unknown():
-                outtype.domain = copy.deepcopy(self.domain)
+                outtype.domain = self.domain.intersect_with_ranges(node.interval)
 
         self.push_scope(node)
         for child in reversed(node.body):
@@ -221,6 +220,7 @@ class DomainInference(sast.ScopedNodeVisitor):
         # Concatenate all the extents from uses_of_result
         use_domains = []
         for use in uses_of_result:
+            # What if the use is of an input field??
             use_domains.append(use.field_type.domain)
         if len(use_domains) == 0:
             print(f"WARNING: No uses of {identifier.as_ir()} found within current scope.")
@@ -244,25 +244,21 @@ def _union_domains(domains: list[sast.Domain]) -> sast.Cartesian:
 
 
 def _infer_domain_from_extents(output_domain: sast.Cartesian,
-                               extents: sast.Extent,
-                               intervals: Sequence[sast.Interval]) -> sast.Cartesian:
+                               extents: sast.Extent) -> sast.Cartesian:
     """
     Given the output domain and extents, infers the domain size of the input field.
     Assuming that the output is accessed at offset (0, 0, 0).
     # TODO Double-Check for non-zero output offsets
 
-    :param output_domain:
-    :param extents:
-    :return:
+    :param output_domain: The domain of the output field
+    :param extents: The extents of the input field
+    :return: The inferred domain of the input field
     """
-    assert len(intervals) == 3
     current_domain = copy.deepcopy(output_domain)
 
     for e in extents.extents:
-        # Convert the extent interval into a cartesian domain representing the output
-        extent_domain = output_domain.intersect_with_ranges(intervals)
         # Expand the domain with the extent values
-        extent_domain = extent_domain.add(e.values)
+        extent_domain = output_domain.add(e.values)
 
         current_domain = current_domain.union(extent_domain)
 
