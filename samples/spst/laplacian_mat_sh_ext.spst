@@ -1,8 +1,8 @@
 // Version with materialize to prevent recomputation, uses short-hand syntax
 // After extent inference
 %pres = spst.program (%in) {} :
-       view<[?, ?, ?], {(?, ?, ?)}, f32>
-    -> view<[?, ?, ?], {(0, 0, 0)}, f32>
+       field<[?, ?, ?], f32>
+    -> field<[?, ?, ?], f32>
 {
     %res = spst.computation (%in)
     {

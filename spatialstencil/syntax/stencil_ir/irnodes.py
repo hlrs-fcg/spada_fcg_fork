@@ -217,7 +217,7 @@ class ViewType(Node, IRType):
     @classmethod
     def empty(cls) -> 'ViewType':
         """
-        Creates an empty (not type/shape-inferred) field type.
+        Creates an empty (not type/shape-inferred) view type.
         """
         return ViewType(
             domain=Cartesian(Interval(), Interval(), Interval()),
@@ -230,8 +230,28 @@ class ViewType(Node, IRType):
     def as_ir(self, indent: int = 0) -> str:
         return f'spst.view<{self.domain.as_ir()}, {self.extent.as_ir()}, {self.dtype.as_ir()}>'
 
+@dataclass
+class FieldType(Node, IRType):
+    domain: Domain
+    dtype: ScalarType
 
-DataType = ViewType | ScalarType | AnyType
+    @classmethod
+    def empty(cls) -> 'FieldType':
+        """
+        Creates an empty (not type/shape-inferred) field type.
+        """
+        return FieldType(
+            domain=Cartesian(Interval(), Interval(), Interval()),
+            dtype=ScalarType.UNKNOWN)
+
+    def validate(self) -> None:
+        assert self.dtype != ScalarType.f64
+
+    def as_ir(self, indent: int = 0) -> str:
+        return f'spst.field<{self.domain.as_ir()}, {self.dtype.as_ir()}>'
+
+
+DataType = ViewType | FieldType | ScalarType | AnyType
 
 
 @dataclass
@@ -811,6 +831,9 @@ class Program(Node, Operation, Block):
                     isinstance(comp, ReturnOp) and
                     all(isinstance(v.value, Identifier)
                     for v in comp.values)) for comp in self.computations)
+        # Program arguments must be fields (not views)
+        assert all(isinstance(i, (FieldType, ScalarType, AnyType)) for i in self.operation_type.source)
+        assert all(isinstance(i, (FieldType, ScalarType, AnyType)) for i in self.operation_type.destination)
         assert isinstance(self.computations[-1], ReturnOp)
 
     def as_ir(self, indent: int = 0) -> str:

@@ -3,8 +3,8 @@
 
 
 %pres = spst.program (%in) {} :
-    spst.view<spst.cartesian<-1:129,-1:130,0:80>, spst.extent<(?, ?, ?)>, f32>
-    -> spst.view<spst.cartesian<0:128,0:128,0:80>, spst.extent<(0, 0, 0)>, f32>
+    spst.field<spst.cartesian<-1:129,-1:130,0:80>, f32>
+    -> spst.field<spst.cartesian<0:128,0:128,0:80>, f32>
 {
     %res = spst.computation (%in)
     {

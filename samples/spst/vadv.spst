@@ -5,13 +5,13 @@
 
 // Note that utens_stage is both an input and output. converted to SSA
 %pres = spst.program @vadv(%utens_stage, %u_stage, %wcon, %u_pos, %utens, %dtr_stage) {} :
-        view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-        view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-        view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-        view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-        view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+        field<domain<?, ?, ?>, f32>,
+        field<domain<?, ?, ?>, f32>,
+        field<domain<?, ?, ?>, f32>,
+        field<domain<?, ?, ?>, f32>,
+        field<domain<?, ?, ?>, f32>,
         f32
-     -> view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
+     -> field<domain<?, ?, ?>, f32> {
 
     %ccol#3, %dcol#3 = spst.computation(%wcon, %dtr_stage, %u_stage, %u_pos, %utens, %utens_stage) {
      schedule = FORWARD,

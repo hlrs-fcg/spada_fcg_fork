@@ -4,12 +4,12 @@
  **/
 
 %pres, %pres2 = spst.program @uvbke(%arg0, %arg1, %arg2, %arg3) {} :
-       view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-       view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-       view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-       view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
-    -> view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-       view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
+       field<[?, ?, ?], f32>,
+       field<[?, ?, ?], f32>,
+       field<[?, ?, ?], f32>,
+       field<[?, ?, ?], f32>
+    -> field<[?, ?, ?], f32>,
+       field<[?, ?, ?], f32> {
 
    %arg4, %arg5 = spst.computation(%arg0, %arg1, %arg2, %arg3) {
      schedule = PARALLEL,

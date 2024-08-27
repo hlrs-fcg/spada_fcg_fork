@@ -4,11 +4,11 @@
  **/
 
 %res = spst.program @hdiffsa(%arg0, %arg1, %arg3, %arg4) {} :
-       view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-       view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-       view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-       view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
-    -> view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
+       field<domain<?, ?, ?>, f32>,
+       field<domain<?, ?, ?>, f32>,
+       field<domain<?, ?, ?>, f32>,
+       field<domain<?, ?, ?>, f32>
+    -> field<domain<?, ?, ?>, f32> {
    // This stencil contains one parallel computation block
    %arg2 = spst.computation(%arg0, %arg1, %arg3, %arg4) {
      schedule = PARALLEL,

@@ -191,9 +191,9 @@ class TestTypeInference(unittest.TestCase):
         # Parse a simple program
         program = parser.parse_string('''
         %out = spst.program (%inp, %shortinp) {} : 
-          view<domain<?, ?, ?>, extent<(?, ?, ?)>, i32>,
-          view<domain<?, ?, ?>, extent<(?, ?, ?)>, i16> ->
-          view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
+          field<domain<?, ?, ?>, i32>,
+          field<domain<?, ?, ?>, i16> ->
+          field<domain<?, ?, ?>, f32> {
             %out = spst.computation(%inp, %shortinp) {
               schedule = PARALLEL,
               interval = [interval<?, ?>, interval<?, ?>, interval<?, ?>]
@@ -328,8 +328,8 @@ class TestTypeInference(unittest.TestCase):
         # Parse a simple program
         program = parser.parse_string('''
         %b = spst.program (%a) {} : 
-          view<[?, ?, ?], {(0, 0, 0), (0, -1, 0), (0, 0, 0)}, f32> ->
-          view<[?, ?, ?], {(?, ?, ?)}, f32> {
+          field<[?, ?, ?], f32> ->
+          field<[?, ?, ?], f32> {
             %b = spst.computation(%a) {
               schedule = PARALLEL,
               interval = [0:None, 0:None, 0:None]
@@ -345,7 +345,7 @@ class TestTypeInference(unittest.TestCase):
         }
         ''')
 
-        canonical = '''%b = spst.program(%a) {} : spst.view<[?:?, ?:?, ?:?], {(0, -1, 0), (0, 0, 0)}, f32> -> spst.view<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> {
+        canonical = '''%b = spst.program(%a) {} : spst.field<[?:?, ?:?, ?:?], f32> -> spst.field<[?:?, ?:?, ?:?], f32> {
   %b = spst.computation (%a) {
    schedule = PARALLEL,
    interval = [0:None, 0:None, 0:None]

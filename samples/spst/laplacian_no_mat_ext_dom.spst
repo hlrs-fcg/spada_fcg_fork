@@ -1,8 +1,8 @@
 // Version with inferred extents
 // Without materialize
 %pres = spst.program (%in) {} :
-       view<[-1:129, -1:130, 0:80], {(?, ?, ?)}, f32>
-    -> view<[0:128, 0:128, 0:80], {(0, 0, 0)}, f32>
+       field<[-1:129, -1:130, 0:80], f32>
+    -> field<[0:128, 0:128, 0:80], f32>
 {
     %res = spst.computation (%in)
     {

@@ -107,6 +107,7 @@ class TreeToAST(lark.Transformer):
 
     view_type = irnodes.ViewType.from_lark
     interval_type = irnodes.Interval.from_lark
+    field_type = irnodes.FieldType.from_lark
     any_type = lambda self, args: irnodes.AnyType()
 
     # Basic types

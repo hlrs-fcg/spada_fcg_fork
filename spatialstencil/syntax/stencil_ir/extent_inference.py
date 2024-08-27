@@ -131,7 +131,8 @@ class ExtentInference(sast.ScopedNodeVisitor):
         # Concatenate all the extents from uses_of_result
         offsets = []
         for use in uses_of_result:
-            # TODO: Differentiate if the definition is a view or a field.
+            # Any use is by a view type
+            assert isinstance(use.field_type, sast.ViewType)
             if use.field_type.extent.is_unknown():
                 print(f"WARNING: Extent of {identifier.name} is unknown in use.")
                 offsets.extend([sast.Offset((0, 0, 0))])
@@ -155,8 +156,7 @@ def _init_outputs(dtypes: Sequence[sast.ViewType]):
     :param dtypes: Field type elements to set.
     """
     for dtype in dtypes:
-        assert isinstance(dtype, sast.ViewType)
-        if dtype.extent.is_unknown():
+        if isinstance(dtype, sast.ViewType) and dtype.extent.is_unknown():
             dtype.extent.extents[:] = [sast.Offset((0, 0, 0))]
 
 

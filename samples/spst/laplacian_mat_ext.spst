@@ -2,8 +2,8 @@
 // Version 2, with cast_extent to prevent type-propagation
 
 %pres = spst.program (%in) {} :
-    view<domain<?, ?, ?>, spst.extent<(?, ?, ?)>, f32>
-    -> view<domain<?, ?, ?>, spst.extent<(0, 0, 0)>, f32>
+    field<domain<?, ?, ?>, f32>
+    -> field<domain<?, ?, ?>, f32>
 {
     %res = spst.computation (%in)
     {

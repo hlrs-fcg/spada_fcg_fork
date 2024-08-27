@@ -11,8 +11,8 @@ class TestStencilIRParser(unittest.TestCase):
         """
         src = '''
         %out = spst.program (%inp) {} : 
-          view<domain<?, ?, ?>, extent<(?, ?, ?)>, bool> ->
-          view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
+          field<domain<?, ?, ?>, bool> ->
+          field<domain<?, ?, ?>, f32> {
             %out = spst.computation(%inp) {
               schedule = PARALLEL,
               interval = [interval<?, ?>, interval<?, ?>, interval<?, ?>]
@@ -60,8 +60,8 @@ class TestStencilIRParser(unittest.TestCase):
         """
         src = '''
         %out = spst.program (%inp) {} : 
-          view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
-          view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
+          field<domain<?, ?, ?>, f32> ->
+          field<domain<?, ?, ?>, f32> {
             %out = spst.computation(%inp) {
               schedule = PARALLEL,
               interval = [interval<?, ?>, interval<?, ?>, interval<?, ?>]

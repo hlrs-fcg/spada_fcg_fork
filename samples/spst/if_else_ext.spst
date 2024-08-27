@@ -1,5 +1,5 @@
-%res = spst.program @ifelseexample(%tin, %f2) {} : spst.view<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32>, spst.view<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32>
--> spst.view<[?:?, ?:?, ?:?], {(0, 0, 0)}, f32> {
+%res = spst.program @ifelseexample(%tin, %f2) {} : field<[?,?,?], f32> , field<[?,?,?], f32>
+-> field<[?,?,?], f32> {
   %rh = spst.computation (%tin, %f2) {
    schedule = PARALLEL,
    interval = [0:None, 0:None, 0:None]

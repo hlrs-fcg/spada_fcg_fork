@@ -1,8 +1,8 @@
 // Version with materialize to prevent recomputation, uses short-hand syntax
 // Before type-inference
 %pres_1, %pres_2 = spst.program (%in) {} :
-       view<[?, ?, ?], {(?, ?, ?)}, f32>
-    -> view<[?, ?, ?], {(?, ?, ?)}, f32>, view<[?,?,?], {(?, ?, ?)}, f32>
+       field<[?, ?, ?], f32>
+    -> field<[?, ?, ?], f32>, field<[?,?,?], f32>
 {
     %res_1, %res_2 = spst.computation (%in)
     {

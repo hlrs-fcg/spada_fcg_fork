@@ -1,4 +1,4 @@
-%pres_1 = spst.program(%in) {} : spst.view<[0:128, 0:128, 0:80], {(?, ?, ?)}, f32> -> spst.view<[0:128, 0:128, 0:80], {(0, 0, 0)}, f32> {
+%pres_1 = spst.program(%in) {} : spst.field<[0:128, 0:128, 0:80], f32> -> spst.field<[0:128, 0:128, 0:80], f32> {
   %res_1 = spst.computation (%in) {
    schedule = FORWARD,
    interval = [0:None, 0:None, 0:-1]

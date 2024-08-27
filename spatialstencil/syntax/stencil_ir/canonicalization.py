@@ -31,7 +31,8 @@ class CanonicalizeExtents(sast.NodeTransformer):
 
         if operation_type.destination:
             for dst in operation_type.destination:
-                dst.extent.sort_extents()
+                if isinstance(dst, sast.ViewType):
+                    dst.extent.sort_extents()
 
     def visit_MaterializeOp(self, node: sast.MaterializeOp):
         self._modify_typeinfo(node.operation_type)

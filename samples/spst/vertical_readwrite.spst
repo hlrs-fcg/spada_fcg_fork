@@ -1,7 +1,7 @@
 
 %pres_1 = spst.program (%in, %rw) {} :
-       view<[?, ?, ?], {(?, ?, ?)}, f32>, view<[?, ?, ?], {(?, ?, ?)}, f32>
-    -> view<[?, ?, ?], {(?, ?, ?)}, f32>
+      field<[?, ?, ?], f32>, field<[?, ?, ?], f32>
+    -> field<[?, ?, ?], f32>
 {
     %out, %rw#1 = spst.computation (%in, %rw)
     {

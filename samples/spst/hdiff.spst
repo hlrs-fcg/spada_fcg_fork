@@ -4,9 +4,9 @@
  **/
 
 %res = spst.program @hdiff(%in, %coeff) {} :
-       view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-       view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
-    -> view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
+       field<domain<?, ?, ?>, f32>,
+       field<domain<?, ?, ?>, f32>
+    -> field<domain<?, ?, ?>, f32> {
    // This stencil contains one parallel computation block
    %out = spst.computation(%in, %coeff) {
      schedule = PARALLEL,
