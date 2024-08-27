@@ -8,12 +8,12 @@ from spatialstencil.syntax.stencil_ir.irnodes import ComputationBlock
 @dataclass
 class ScopedUse:
     definition_scope: sast.ComputationBlock | sast.Program
-    field_type: sast.FieldType
+    field_type: sast.ViewType
 
 @dataclass
 class ScopedDefinition:
     definition_scope: sast.ComputationBlock | sast.Program
-    field_type: sast.FieldType
+    field_type: sast.ViewType
 
 
 class DefUseAnalysis(sast.ScopedNodeVisitor):
@@ -39,7 +39,7 @@ class DefUseAnalysis(sast.ScopedNodeVisitor):
         self.use_def = use_def
         self._current_scope = []
 
-    def add_use(self, node: sast.Identifier, field_type: sast.FieldType) -> None:
+    def add_use(self, node: sast.Identifier, field_type: sast.ViewType) -> None:
         """
         Adds a use of a field to the def_use dictionary, with the current scope.
 
@@ -54,7 +54,7 @@ class DefUseAnalysis(sast.ScopedNodeVisitor):
             self.def_use[node] = []
         self.def_use[node].append(ScopedUse(self.get_scope(), field_type))
 
-    def add_definition(self, node: sast.Identifier, field_type: sast.FieldType) -> None:
+    def add_definition(self, node: sast.Identifier, field_type: sast.ViewType) -> None:
         """
         Adds a definition of a field to the use_def dictionary, with the current scope.
 
@@ -139,8 +139,8 @@ class DefUseAnalysis(sast.ScopedNodeVisitor):
 
             # TODO This is a hot-fix! Should be done elsewhere.
             if isinstance(arg_t, sast.AnyType):
-                node.operation_type.source[i] = sast.FieldType.empty()
+                node.operation_type.source[i] = sast.ViewType.empty()
                 arg_t = node.operation_type.source[i]
 
-            assert isinstance(arg_t, sast.FieldType)
+            assert isinstance(arg_t, sast.ViewType)
             self.add_use(arg, arg_t)

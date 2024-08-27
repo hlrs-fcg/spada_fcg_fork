@@ -4,56 +4,56 @@
  **/
 
 %res = spst.program @hdiff(%in, %coeff) {} :
-       field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-       field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
-    -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
+       view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+       view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
+    -> view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
    // This stencil contains one parallel computation block
    %out = spst.computation(%in, %coeff) {
      schedule = PARALLEL,
      interval = [interval<None, None>, interval<None, None>, interval<0, None>]
-   } : field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-       field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
-    -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
+   } : view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+       view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
+    -> view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
         // Stencil statements
         // Laplacian
         %lap = spst.statement(%in) {} : 
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
                 %lap = 4.0 * %in[0, 0, 0] - (
                     %in[1, 0, 0] + %in[-1, 0, 0] + %in[0, 1, 0] + %in[0, -1, 0]
                 )
                 return %lap
         }
         %res_x = spst.statement(%lap) {} : 
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
                 return %lap[1, 0, 0] - %lap[0, 0, 0]
         }
         %res_y = spst.statement(%lap) {} : 
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
                 return %lap[0, 1, 0] - %lap[0, 0, 0]
         }
         // Horizontal fluxes
         %flx = spst.statement(%in, %res_x) {} : 
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
                 return 0 if (%res_x * (%in[1,0,0] - %in[0,0,0]) > 0) else %res_x
         }
         %fly = spst.statement(%in, %res_y) {} : 
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
                 return 0 if (%res_y * (%in[0,1,0] - %in[0,0,0]) > 0) else %res_y
         }
         // Output
         %out = spst.statement(%in, %coeff, %flx, %fly) {} :
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
-            field<domain<?, ?, ?>, extent<(0, 0, 0)>, f32> {
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
+            view<domain<?, ?, ?>, extent<(0, 0, 0)>, f32> {
                 return %in[0,0,0] - %coeff[0,0,0] * (
                     %flx[0,0,0] - %flx[-1,0,0] + %fly[0,0,0] - %fly[0, -1, 0]
                 )

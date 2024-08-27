@@ -26,7 +26,7 @@ class CanonicalizeExtents(sast.NodeTransformer):
         Helper function that updates the type information based on inferred types.
         """
         for src in operation_type.source:
-            if isinstance(src, sast.FieldType):
+            if isinstance(src, sast.ViewType):
                 src.extent.sort_extents()
 
         if operation_type.destination:

@@ -103,7 +103,7 @@ class ExtentInference(sast.ScopedNodeVisitor):
         self.generic_visit(node)
 
     def visit_ReturnOp(self, node: sast.ReturnOp):
-        assert isinstance(node.operation_type.source[0], sast.FieldType)
+        assert isinstance(node.operation_type.source[0], sast.ViewType)
 
         _init_outputs(node.operation_type.source)
 
@@ -148,14 +148,14 @@ class ExtentInference(sast.ScopedNodeVisitor):
         return offsets
 
 
-def _init_outputs(dtypes: Sequence[sast.FieldType]):
+def _init_outputs(dtypes: Sequence[sast.ViewType]):
     """
     Initialize the extents of every element to be (0, 0, 0)
 
     :param dtypes: Field type elements to set.
     """
     for dtype in dtypes:
-        assert isinstance(dtype, sast.FieldType)
+        assert isinstance(dtype, sast.ViewType)
         if dtype.extent.is_unknown():
             dtype.extent.extents[:] = [sast.Offset((0, 0, 0))]
 

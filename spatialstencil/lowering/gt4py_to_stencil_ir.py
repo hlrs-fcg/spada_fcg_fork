@@ -213,7 +213,7 @@ class MaterializeIntermediates(sast.NodeTransformer):
                         sast.MaterializeOp(
                             result=materialized,
                             value=result,
-                            operation_type=sast.OperationType([sast.FieldType.empty()], [sast.FieldType.empty()])))
+                            operation_type=sast.OperationType([sast.ViewType.empty()], [sast.ViewType.empty()])))
 
         for i, out in enumerate(node.outputs):
             node.outputs[i] = self.visit(out)
@@ -250,8 +250,8 @@ def convert_gt4py_ast_to_stencil_ast(program: gtast.GTProgram, default_float_dty
                 sast.ComputationBlock(
                     coutputs, cinputs, sast.ComputationType[computation.computation_type.name],
                     [xintvl, yintvl, zintvl],
-                    sast.OperationType([sast.FieldType.empty() for _ in cinputs],
-                                       [sast.FieldType.empty() for _ in coutputs]), cbody))
+                    sast.OperationType([sast.ViewType.empty() for _ in cinputs],
+                                       [sast.ViewType.empty() for _ in coutputs]), cbody))
 
     # Add the necessary return statement
     computations.append(
@@ -288,8 +288,8 @@ def _parse_field(name: str) -> sast.Identifier:
 
 
 def _gt4py_to_stencil_ir_type(dtype: gtast.FieldType, default_float_dtype: sast.ScalarType,
-                              default_int_dtype: sast.ScalarType) -> sast.FieldType:
-    result = sast.FieldType.empty()
+                              default_int_dtype: sast.ScalarType) -> sast.ViewType:
+    result = sast.ViewType.empty()
 
     # TODO(later): Try to use GT4Py type annotations if explicit
     if dtype == gtast.FieldType.Field3D:
@@ -353,8 +353,8 @@ def _convert_interval_to_computation_body(
                     outputs=[_parse_field(stmt.target)],
                     inputs=stmt_inputs,
                     attributes=[],
-                    operation_type=sast.OperationType([sast.FieldType.empty() for _ in stmt_inputs],
-                                                      [sast.FieldType.empty()]),
+                    operation_type=sast.OperationType([sast.ViewType.empty() for _ in stmt_inputs],
+                                                      [sast.ViewType.empty()]),
                     body=[
                         sast.ReturnOp([sast.Expression(OperationConverter().visit(stmt.body))]),
                     ]))
@@ -390,12 +390,12 @@ def _convert_interval_to_computation_body(
 
             # Add overall return values to each branch
             stmt_body[-1] = sast.ReturnOp([sast.Expression(so) for so in sorted(all_stmt_outputs)],
-                                          sast.OperationType([sast.FieldType.empty() for _ in all_stmt_outputs]))
+                                          sast.OperationType([sast.ViewType.empty() for _ in all_stmt_outputs]))
             if else_ifs:
                 for else_if in else_ifs:
                     else_if.body[-1] = sast.ReturnOp([sast.Expression(so) for so in sorted(all_stmt_outputs)],
                                                      sast.OperationType(
-                                                         [sast.FieldType.empty() for _ in all_stmt_outputs]))
+                                                         [sast.ViewType.empty() for _ in all_stmt_outputs]))
 
             # Create IR node
             body.append(
@@ -404,8 +404,8 @@ def _convert_interval_to_computation_body(
                     condition=_parse_field(stmt.condition.id),
                     body=stmt_body,
                     else_ifs=else_ifs,
-                    operation_type=sast.OperationType([sast.FieldType.empty()],
-                                                      [sast.FieldType.empty() for _ in all_stmt_outputs]),
+                    operation_type=sast.OperationType([sast.ViewType.empty()],
+                                                      [sast.ViewType.empty() for _ in all_stmt_outputs]),
                 ))
         else:
             raise TypeError(f'Unsupported statement type "{type(stmt)}"')
@@ -413,7 +413,7 @@ def _convert_interval_to_computation_body(
     # Add the necessary return statement
     body.append(
         sast.ReturnOp([sast.Expression(copy.deepcopy(field)) for field in sorted(outputs)],
-                      sast.OperationType([sast.FieldType.empty() for _ in outputs])))
+                      sast.OperationType([sast.ViewType.empty() for _ in outputs])))
 
     return body, inputs, outputs
 

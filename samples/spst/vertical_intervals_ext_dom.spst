@@ -1,21 +1,21 @@
-%pres_1 = spst.program(%in) {} : spst.field<[0:128, 0:128, 0:80], {(?, ?, ?)}, f32> -> spst.field<[0:128, 0:128, 0:80], {(0, 0, 0)}, f32> {
+%pres_1 = spst.program(%in) {} : spst.view<[0:128, 0:128, 0:80], {(?, ?, ?)}, f32> -> spst.view<[0:128, 0:128, 0:80], {(0, 0, 0)}, f32> {
   %res_1 = spst.computation (%in) {
    schedule = FORWARD,
    interval = [0:None, 0:None, 0:-1]
-  } : spst.field<[0:128, 0:128, 0:80], {(?, ?, ?)}, f32> -> spst.field<[0:128, 0:128, 0:79], {(0, 0, 0)}, f32> {
-    %out_1 = spst.statement (%in) {} : spst.field<[0:128, 0:128, 0:80], {(0, 0, 0), (0, 0, 1)}, f32> -> spst.field<[0:128, 0:128, 0:79], {(0, 0, 0)}, f32> {
+  } : spst.view<[0:128, 0:128, 0:80], {(?, ?, ?)}, f32> -> spst.view<[0:128, 0:128, 0:79], {(0, 0, 0)}, f32> {
+    %out_1 = spst.statement (%in) {} : spst.view<[0:128, 0:128, 0:80], {(0, 0, 0), (0, 0, 1)}, f32> -> spst.view<[0:128, 0:128, 0:79], {(0, 0, 0)}, f32> {
       spst.return (%in[0, 0, 0] - %in[0, 0, 1]) : ?
     }
-    spst.return %out_1 : spst.field<[0:128, 0:128, 0:79], {(0, 0, 0)}, f32>
+    spst.return %out_1 : spst.view<[0:128, 0:128, 0:79], {(0, 0, 0)}, f32>
   }
   %res_1#1 = spst.computation (%in) {
    schedule = FORWARD,
    interval = [0:None, 0:None, -1:None]
-  } : spst.field<[0:128, 0:128, 79:80], {(?, ?, ?)}, f32> -> spst.field<[0:128, 0:128, 79:80], {(0, 0, 0)}, f32> {
-    %out_1 = spst.statement (%in) {} : spst.field<[0:128, 0:128, 79:80], {(0, 0, 0)}, f32> -> spst.field<[0:128, 0:128, 79:80], {(0, 0, 0)}, f32> {
+  } : spst.view<[0:128, 0:128, 79:80], {(?, ?, ?)}, f32> -> spst.view<[0:128, 0:128, 79:80], {(0, 0, 0)}, f32> {
+    %out_1 = spst.statement (%in) {} : spst.view<[0:128, 0:128, 79:80], {(0, 0, 0)}, f32> -> spst.view<[0:128, 0:128, 79:80], {(0, 0, 0)}, f32> {
       spst.return %in[0, 0, 0] : ?
     }
-    spst.return %out_1 : spst.field<[0:128, 0:128, 79:80], {(0, 0, 0)}, f32>
+    spst.return %out_1 : spst.view<[0:128, 0:128, 79:80], {(0, 0, 0)}, f32>
   }
-  spst.return %res_1#1 : spst.field<[0:128, 0:128, 0:80], {(0, 0, 0)}, f32>
+  spst.return %res_1#1 : spst.view<[0:128, 0:128, 0:80], {(0, 0, 0)}, f32>
 }

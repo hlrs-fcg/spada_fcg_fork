@@ -5,35 +5,35 @@
 
 // Note that utens_stage is both an input and output. converted to SSA
 %pres = spst.program @vadv(%utens_stage, %u_stage, %wcon, %u_pos, %utens, %dtr_stage) {} :
-        field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-        field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-        field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-        field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-        field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+        view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+        view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+        view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+        view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+        view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
         f32
-     -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
+     -> view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
 
     %ccol#3, %dcol#3 = spst.computation(%wcon, %dtr_stage, %u_stage, %u_pos, %utens, %utens_stage) {
      schedule = FORWARD,
      interval = [interval<None, None>, interval<None, None>, interval<0, 1>] } :
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
             f32,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
-         -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
+         -> view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
     {
         %ccol, %dcol = spst.statement(%wcon, %dtr_stage, %u_stage, %u_pos, %utens, %utens_stage) {} :
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
                 f32,
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
-             -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
+             -> view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
         {
             %gcv = 0.25 * (%wcon[1, 0, 1] + %wcon[0, 0, 1])
             %cs = %gcv * 0.5 // = BET_M
@@ -60,26 +60,26 @@
     %ccol#4, %dcol#4 = spst.computation(%wcon, %ccol#3, %dcol#3, %dtr_stage, %u_stage, %u_pos, %utens_stage) {
      schedule = FORWARD,
      interval = [interval<None, None>, interval<None, None>, interval<1, -1>] } :
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
             f32,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
-         -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
+         -> view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
     {
         %ccol#5, %dcol#5 = spst.statement(%wcon, %ccol#3, %dcol#3, %dtr_stage, %u_stage, %u_pos, %utens_stage) {} :
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
                 f32,
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
-             -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
+             -> view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
         {
             %gav = -0.25 * (%wcon[1, 0, 0] + %wcon[0, 0, 0])
             %gcv = 0.25 * (%wcon[1, 0, 1] + %wcon[0, 0, 1])
@@ -89,7 +89,7 @@
 
             %acol = %gav * 0.5 // = BET_P
             %ccol#6 = %gcv * 0.5 // = BET_P
-            %bcol = %dtr_stage - %acol[0, 0, 0] - %ccol#3[0, 0, 0]
+            %bcol = %dtr_stage - %acol[0, 0, 0] - %ccol#6[0, 0, 0]
 
             // Update the d column
             %correction_term = -%as_ * (%u_stage[0, 0, -1] - %u_stage[0, 0, 0]) - %cs * (
@@ -112,24 +112,24 @@
     %dcol#8 = spst.computation(%wcon, %ccol#4, %dcol#4, %dtr_stage, %u_stage, %u_pos, %utens_stage) {
      schedule = FORWARD,
      interval = [interval<None, None>, interval<None, None>, interval<-1, None>] } :
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
             f32,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
-         -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
+         -> view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
     {
         %dcol#9 = spst.statement(%wcon, %ccol#4, %dcol#4, %dtr_stage, %u_stage, %u_pos, %utens_stage) {} :
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
                 f32,
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
-             -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
+             -> view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
         {
             %gav = -0.25 * (%wcon[1, 0, 0] + %wcon[0, 0, 0])
 
@@ -156,18 +156,18 @@
     %data_col, %utens_stage_out = spst.computation(%dcol#8, %dtr_stage, %u_pos) {
      schedule = BACKWARD,
      interval = [interval<None, None>, interval<None, None>, interval<-1, None>] } :
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
             f32,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
-         -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
+         -> view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
     {
         %data_col#1, %utens_stage_out#1 = spst.statement(%dcol#8, %dtr_stage, %u_pos) {} :
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
                 f32,
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
-             -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
+             -> view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
         {
             %datacol = %dcol#8[0, 0, 0]
             %data_col#2 = %datacol
@@ -181,18 +181,18 @@
     %utens_stage_out#3 = spst.computation(%dcol#8, %dtr_stage, %u_pos, %data_col) {
      schedule = BACKWARD,
      interval = [interval<None, None>, interval<None, None>, interval<0, -1>] } :
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
             f32,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
-         -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
+         -> view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
     {
         %utens_stage_out#4 = spst.statement(%dcol#8, %dtr_stage, %u_pos, %data_col) {} :
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
                 f32,
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
-             -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
+             -> view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
         {
             %datacol#2 = %dcol#8[0, 0, 0] - %ccol#4[0, 0, 0] * %data_col[0, 0, 1]
             %data_col#3 = %datacol#2

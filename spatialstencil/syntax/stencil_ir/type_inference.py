@@ -141,7 +141,7 @@ class TypeInference(sast.NodeTransformer):
         """
         for i, (name, src) in enumerate(zip(inputs, operation_type.source)):
             scalartype = self.field_types[name.name]
-            if isinstance(src, sast.FieldType):
+            if isinstance(src, sast.ViewType):
                 src.dtype = scalartype
             else:  # Scalar type
                 operation_type.source[i] = scalartype
@@ -149,7 +149,7 @@ class TypeInference(sast.NodeTransformer):
         if operation_type.destination:
             for i, (name, dst) in enumerate(zip(outputs, operation_type.destination)):
                 scalartype = self.field_types[name.name]
-                if isinstance(dst, sast.FieldType):
+                if isinstance(dst, sast.ViewType):
                     dst.dtype = scalartype
                 else:  # Scalar type
                     operation_type.destination[i] = scalartype
@@ -161,7 +161,7 @@ class TypeInference(sast.NodeTransformer):
             if self.in_statement:
                 node.operation_type.source[i] = scalar_type
             else:
-                field_type = sast.FieldType.empty()
+                field_type = sast.ViewType.empty()
                 field_type.dtype = scalar_type
                 node.operation_type.source[i] = field_type
 
@@ -301,12 +301,12 @@ def _infer_expression(expr: sast.Expression, field_types: dict[str, sast.ScalarT
     # Fields
     if isinstance(val, sast.Identifier):
         ftype = field_types[val.name]
-        if isinstance(ftype, sast.FieldType):
+        if isinstance(ftype, sast.ViewType):
             return ftype.dtype
         return ftype
     if isinstance(val, sast.Subscript):
         ftype = field_types[val.value.name]
-        if isinstance(ftype, sast.FieldType):
+        if isinstance(ftype, sast.ViewType):
             return ftype.dtype
         return ftype
 

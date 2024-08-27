@@ -58,7 +58,7 @@ extent_type : ("spst.")? "extent" "<" extent_tuple_list ">" | "{" extent_tuple_l
 
 domain_list : (interval_type | unknown_dim_literal) ("," (interval_type | unknown_dim_literal))*
 domain_type : ("spst.")? ("domain" | "cartesian") "<" domain_list ">" | "[" domain_list "]"
-field_type : ("spst.")? "field" "<" domain_type "," extent_type "," standard_type ">"
+field_type : ("spst.")? "view" "<" domain_type "," extent_type "," standard_type ">"
 
 ?builtin_type : field_type | domain_type | extent_type | interval_type | multi_interval_type | computation_interval
 ?field_or_scalar_type : field_type | standard_type | any_type

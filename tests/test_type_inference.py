@@ -191,28 +191,28 @@ class TestTypeInference(unittest.TestCase):
         # Parse a simple program
         program = parser.parse_string('''
         %out = spst.program (%inp, %shortinp) {} : 
-          field<domain<?, ?, ?>, extent<(?, ?, ?)>, i32>,
-          field<domain<?, ?, ?>, extent<(?, ?, ?)>, i16> ->
-          field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
+          view<domain<?, ?, ?>, extent<(?, ?, ?)>, i32>,
+          view<domain<?, ?, ?>, extent<(?, ?, ?)>, i16> ->
+          view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
             %out = spst.computation(%inp, %shortinp) {
               schedule = PARALLEL,
               interval = [interval<?, ?>, interval<?, ?>, interval<?, ?>]
-            } : field<domain<?, ?, ?>, extent<(?, ?, ?)>, i32>,
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, i16> ->
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
+            } : view<domain<?, ?, ?>, extent<(?, ?, ?)>, i32>,
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, i16> ->
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
                     %out = spst.statement (%inp, %shortinp) {} :
-                      spst.field<spst.cartesian<?, ?, ?>, spst.extent<(?, ?, ?)>, i32>,
-                      spst.field<spst.cartesian<?, ?, ?>, spst.extent<(?, ?, ?)>, i16> ->
-                      spst.field<spst.cartesian<?, ?, ?>, spst.extent<(?, ?, ?)>, f32> {
+                      spst.view<spst.cartesian<?, ?, ?>, spst.extent<(?, ?, ?)>, i32>,
+                      spst.view<spst.cartesian<?, ?, ?>, spst.extent<(?, ?, ?)>, i16> ->
+                      spst.view<spst.cartesian<?, ?, ?>, spst.extent<(?, ?, ?)>, f32> {
                           %a = -%inp * 0.25
                           %b = %inp[0, 0, 0] + %inp[-1, 0, 0]
                           %c = %shortinp[0, 0, 0] + %shortinp[-1, 0, 0]
                           %d = %inp[0, 0, 0] if %inp else %shortinp[-1, 0, 0]
                           spst.return sqrt(%d) : f32
                     }
-                    spst.return %out: field<[?,?,?], {(?, ?, ?)}, f32>
+                    spst.return %out: view<[?,?,?], {(?, ?, ?)}, f32>
             }
-            spst.return %out: field<[?,?,?], {(?, ?, ?)}, f32>
+            spst.return %out: view<[?,?,?], {(?, ?, ?)}, f32>
         }
         ''')
         exprs = [ex.value for ex in program.computations[0].body[0].body[:-1]]  # assignments
@@ -328,34 +328,34 @@ class TestTypeInference(unittest.TestCase):
         # Parse a simple program
         program = parser.parse_string('''
         %b = spst.program (%a) {} : 
-          field<[?, ?, ?], {(0, 0, 0), (0, -1, 0), (0, 0, 0)}, f32> ->
-          field<[?, ?, ?], {(?, ?, ?)}, f32> {
+          view<[?, ?, ?], {(0, 0, 0), (0, -1, 0), (0, 0, 0)}, f32> ->
+          view<[?, ?, ?], {(?, ?, ?)}, f32> {
             %b = spst.computation(%a) {
               schedule = PARALLEL,
               interval = [0:None, 0:None, 0:None]
-            } : field<[?, ?, ?], {(0, 0, 0), (0, -1, 0), (0, 0, 0)}, f32> ->
-                field<[?, ?, ?], {(?, ?, ?)}, f32> {
+            } : view<[?, ?, ?], {(0, 0, 0), (0, -1, 0), (0, 0, 0)}, f32> ->
+                view<[?, ?, ?], {(?, ?, ?)}, f32> {
                     %b = spst.statement (%a) {} :
-                      field<[?, ?, ?], {(0, 2, 0), (1, 0, 0), (?, ?, 2), (-1, 0, 1)}, f32> -> field<[?, ?, ?], {(0, 0, 0)}, f32> {
+                      view<[?, ?, ?], {(0, 2, 0), (1, 0, 0), (?, ?, 2), (-1, 0, 1)}, f32> -> view<[?, ?, ?], {(0, 0, 0)}, f32> {
                           spst.return %a : f32
                     }
-                spst.return %b : field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32>
+                spst.return %b : view<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32>
             }
-            spst.return %b : field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32>
+            spst.return %b : view<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32>
         }
         ''')
 
-        canonical = '''%b = spst.program(%a) {} : spst.field<[?:?, ?:?, ?:?], {(0, -1, 0), (0, 0, 0)}, f32> -> spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> {
+        canonical = '''%b = spst.program(%a) {} : spst.view<[?:?, ?:?, ?:?], {(0, -1, 0), (0, 0, 0)}, f32> -> spst.view<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> {
   %b = spst.computation (%a) {
    schedule = PARALLEL,
    interval = [0:None, 0:None, 0:None]
-  } : spst.field<[?:?, ?:?, ?:?], {(0, -1, 0), (0, 0, 0)}, f32> -> spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> {
-    %b = spst.statement (%a) {} : spst.field<[?:?, ?:?, ?:?], {(?, ?, 2), (-1, 0, 1), (0, 2, 0), (1, 0, 0)}, f32> -> spst.field<[?:?, ?:?, ?:?], {(0, 0, 0)}, f32> {
+  } : spst.view<[?:?, ?:?, ?:?], {(0, -1, 0), (0, 0, 0)}, f32> -> spst.view<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32> {
+    %b = spst.statement (%a) {} : spst.view<[?:?, ?:?, ?:?], {(?, ?, 2), (-1, 0, 1), (0, 2, 0), (1, 0, 0)}, f32> -> spst.view<[?:?, ?:?, ?:?], {(0, 0, 0)}, f32> {
       spst.return %a : f32
     }
-    spst.return %b : spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32>
+    spst.return %b : spst.view<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32>
   }
-  spst.return %b : spst.field<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32>
+  spst.return %b : spst.view<[?:?, ?:?, ?:?], {(?, ?, ?)}, f32>
 }'''
 
         cprogram = canonicalization.canonicalize(program)

@@ -209,17 +209,17 @@ class Extent(Node, IRType):
 
 
 @dataclass
-class FieldType(Node, IRType):
+class ViewType(Node, IRType):
     domain: Domain
     extent: Extent
     dtype: ScalarType
 
     @classmethod
-    def empty(cls) -> 'FieldType':
+    def empty(cls) -> 'ViewType':
         """
         Creates an empty (not type/shape-inferred) field type.
         """
-        return FieldType(
+        return ViewType(
             domain=Cartesian(Interval(), Interval(), Interval()),
             extent=Extent([Offset(("?", "?", "?"))]),
             dtype=ScalarType.UNKNOWN)
@@ -228,15 +228,15 @@ class FieldType(Node, IRType):
         assert self.dtype != ScalarType.f64
 
     def as_ir(self, indent: int = 0) -> str:
-        return f'spst.field<{self.domain.as_ir()}, {self.extent.as_ir()}, {self.dtype.as_ir()}>'
+        return f'spst.view<{self.domain.as_ir()}, {self.extent.as_ir()}, {self.dtype.as_ir()}>'
 
 
-DataType = FieldType | ScalarType | AnyType
+DataType = ViewType | ScalarType | AnyType
 
 
 @dataclass
 class OperationType(Node):
-    source: list[DataType] = field(default_factory=lambda: [FieldType.empty()])
+    source: list[DataType] = field(default_factory=lambda: [ViewType.empty()])
     destination: list[DataType] | None = None
 
     def validate(self) -> None:
