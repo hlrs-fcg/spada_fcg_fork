@@ -83,6 +83,19 @@ class DefUseAnalysis(sast.ScopedNodeVisitor):
             self.add_use(arg_id, arg_t)
         for out_id, out_t in zip(node.outputs, node.operation_type.destination):
             self.add_definition(out_id, out_t)
+        # Moreover, it uses all the arguments to its compute scope (if the scope is forward or backward)
+        scope = self.get_scope()
+        assert isinstance(scope, ComputationBlock)
+
+        #print(f"Visiting statement block {node.as_ir()}")
+        for arg_id, arg_t in zip(node.outputs, node.operation_type.destination):
+            if scope.schedule in (sast.ComputationType.FORWARD, sast.ComputationType.BACKWARD):
+                # Find the arguments that have the same name as the output
+                for compute_arg, compute_arg_t in zip(scope.inputs, scope.operation_type.source):
+                    if compute_arg.name == arg_id.name:
+                        self.add_use(arg_id, compute_arg_t)
+                        print(f"Adding use of {arg_id.as_ir()} to {compute_arg_t.as_ir()} in {scope.as_ir()}")
+
         # WE INTENTIONALLY DO NOT RECURSE INTO THE STATEMENT BLOCK
         # AS IT IS A LOCAL SCOPE
 

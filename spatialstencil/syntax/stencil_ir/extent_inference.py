@@ -127,16 +127,23 @@ class ExtentInference(sast.ScopedNodeVisitor):
         """
         uses_of_result = self.uses.get(identifier) or []
         uses_of_result = [u for u in uses_of_result if u.definition_scope == computation]
+
         # Concatenate all the extents from uses_of_result
         offsets = []
         for use in uses_of_result:
-            offsets.extend(use.field_type.extent.extents)
+            # TODO: Differentiate if the definition is a view or a field.
+            if use.field_type.extent.is_unknown():
+                print(f"WARNING: Extent of {identifier.name} is unknown in use.")
+                offsets.extend([sast.Offset((0, 0, 0))])
+            else:
+                offsets.extend(use.field_type.extent.extents)
+            print(f"Adding use of {identifier.as_ir()} with extent {use.field_type.extent.extents}")
         if len(offsets) == 0:
             print(f"WARNING: No uses of {identifier.name} found within current scope.")
 
         # Remove unknown offsets (TODO: Investigate why this can happen!)
-        offsets = [o for o in offsets if not o.is_unknown()]
-        assert all(not o.is_unknown() for o in offsets), f"Offsets of uses of {identifier.name} must be known before inference"
+        #offsets = [o for o in offsets if not o.is_unknown()]
+        assert all(not o.is_unknown() for o in offsets), f"Offsets of uses of {identifier.as_ir()} must be known before inference"
 
         return offsets
 
