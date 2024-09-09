@@ -54,6 +54,10 @@ def lower_gt4py_to_stencil_ir(program: gtast.GTProgram,
     # Perform type/shape inference in stencil IR language
     type_inference.infer_types(new_ast, default_float_dtype, default_int_dtype, domain)
 
+    # Validate the new AST (we updated values in place, so we need to revalidate)
+    for n in new_ast.walk():
+        n.validate()
+
     return new_ast
 
 

@@ -793,6 +793,7 @@ class ComputationBlock(Node, Operation, Block):
         assert all(isinstance(i, Interval) for i in self.interval)
         assert len(self.interval) == 3
         assert isinstance(self.body[-1], ReturnOp)
+        assert len(self.body[-1].values) == len(self.outputs)
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
