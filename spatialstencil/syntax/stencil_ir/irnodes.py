@@ -782,7 +782,7 @@ class ComputationBlock(Node, Operation, Block):
     schedule: ComputationType
     interval: list[Interval]
     operation_type: OperationType
-    body: list[StatementBlock | IfBlock | MaterializeOp]
+    body: list[StatementBlock | IfBlock | MaterializeOp | ReturnOp]
 
     def validate(self) -> None:
         assert self.operation_type.destination is not None

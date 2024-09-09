@@ -253,6 +253,7 @@ def convert_gt4py_ast_to_stencil_ast(program: gtast.GTProgram, default_float_dty
                     sast.OperationType([sast.ViewType.empty() for _ in cinputs],
                                        [sast.ViewType.empty() for _ in coutputs]), cbody))
 
+
     # Add the necessary return statement
     computations.append(
         sast.ReturnOp([sast.Expression(sast.Identifier(field)) for field in sorted(output_fields)],
@@ -263,10 +264,19 @@ def convert_gt4py_ast_to_stencil_ast(program: gtast.GTProgram, default_float_dty
         name=program.name,
         inputs=[sast.Identifier(field) for field in sorted(input_fields)],
         attributes={},
-        operation_type=sast.OperationType([field_type_by_name[field] for field in sorted(input_fields)],
-                                          [field_type_by_name[field] for field in sorted(output_fields)]),
+        operation_type=sast.OperationType([_view_as_field(field_type_by_name[field]) for field in sorted(input_fields)],
+                                          [_view_as_field(field_type_by_name[field]) for field in sorted(output_fields)]),
         computations=computations,
     )
+
+
+def _view_as_field(view: sast.ViewType) -> sast.FieldType:
+    """
+    Converts a view type to a field type.
+    :param view: The view type to convert.
+    :return: The field type, dropping the extent information.
+    """
+    return sast.FieldType(view.domain, view.dtype)
 
 
 # Helper functions
