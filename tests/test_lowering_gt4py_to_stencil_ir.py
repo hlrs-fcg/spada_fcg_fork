@@ -100,6 +100,7 @@ class TestStencilIRParser(unittest.TestCase):
     def test_lower_gt4py_intermediates_5(self):
         program = self.gtfuncs['intermediates_versioning_3']
         irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program, materialize=False)
+        print(irprogram.as_ir())
         assert irprogram.name == 'intermediates_versioning_3'
         assert [inp.name for inp in irprogram.inputs] == ['inp']
         assert [out.name for out in irprogram.outputs] == ['out']
@@ -112,13 +113,15 @@ class TestStencilIRParser(unittest.TestCase):
 
         # Test input/output collection
         assert comps[0].inputs == [sast.Identifier('inp')]
-        assert comps[0].outputs == [sast.Identifier('tmp', version=1)]
-        assert comps[1].inputs == [sast.Identifier('tmp', version=1)]
+        assert comps[0].outputs == [sast.Identifier('tmp', version=0)]
+        assert comps[1].inputs == [sast.Identifier('tmp', version=0)]
         assert comps[1].outputs == [sast.Identifier('out', version=0)]
 
     def test_versioning_in_ifelse(self):
         program = self.gtfuncs['versioning_in_ifelse']
         irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program, materialize=False)
+
+        print(irprogram.as_ir())
 
         comp = irprogram.computations[0]
         assert comp.outputs == [sast.Identifier('out', version=1)]
@@ -126,23 +129,23 @@ class TestStencilIRParser(unittest.TestCase):
         # If block (all version 0)
         assert isinstance(comp.body[1], sast.IfBlock)
         ifblock = comp.body[1]
-        assert ifblock.outputs == [sast.Identifier('out', version=0)]
+        assert ifblock.outputs == [sast.Identifier('out', version=2)]
         stmt = ifblock.body[0]
         assert stmt.outputs == [sast.Identifier('out', version=0)]
         assert len(ifblock.else_ifs) == 1
         ifelse_block = ifblock.else_ifs[0]
         stmt2 = ifelse_block.body[0]
-        assert stmt2.outputs == [sast.Identifier('out', version=0)]
+        assert stmt2.outputs == [sast.Identifier('out', version=1)]
         
         # Successor to if block (version 1)
         succ = comp.body[2]
         assert isinstance(succ, sast.StatementBlock)
-        assert succ.outputs == [sast.Identifier('out', version=1)]
+        assert succ.outputs == [sast.Identifier('out', version=3)]
 
         # Return
         ret = comp.body[3]
         assert isinstance(ret, sast.ReturnOp)
-        assert succ.outputs == [sast.Identifier('out', version=1)]
+        assert succ.outputs == [sast.Identifier('out', version=3)]
 
     def test_lower_mathcall(self):
         program = self.gtfuncs['simple_mathcall']
@@ -161,12 +164,13 @@ class TestStencilIRParser(unittest.TestCase):
     def test_lower_gt4py_if(self):
         program = self.gtfuncs['satadjust_specific_humidity']
         irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program)
+        print(irprogram.as_ir())
         comp = irprogram.computations[0]
         assert comp.outputs == [sast.Identifier('rh')]
         assert isinstance(comp.body[2], sast.IfBlock)
         ifblock = comp.body[2]
         assert len(ifblock.else_ifs) == 2
-        assert ifblock.outputs == [sast.Identifier('qstar')]
+        assert ifblock.outputs == [sast.Identifier('qstar', version=3)]
 
     def test_lower_gt4py_nested_if(self):
         program = self.gtfuncs['satadjust_specific_humidity_nestedif']

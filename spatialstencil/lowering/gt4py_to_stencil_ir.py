@@ -4,6 +4,7 @@ import copy
 from spatialstencil.syntax.gt4py import astnodes as gtast
 from spatialstencil.syntax.common.find_and_replace import PyASTFindReplace
 from spatialstencil.syntax.stencil_ir import irnodes as sast, type_inference
+from spatialstencil.syntax.stencil_ir.ssa import SSAVisitor
 
 
 def lower_gt4py_to_stencil_ir(program: gtast.GTProgram,
@@ -29,13 +30,18 @@ def lower_gt4py_to_stencil_ir(program: gtast.GTProgram,
     constant_propagation(program)
 
     # Unique naming
-    field_versioning(program)
+    #field_versioning(program)
 
     # Build new tree structure (that matches the language)
     new_ast = convert_gt4py_ast_to_stencil_ast(program, default_float_dtype, default_int_dtype)
 
+    SSAVisitor().visit(new_ast)
+
     # Infer which fields are intermediate (before materialize pass)
     type_inference.infer_inputs_and_outputs(new_ast)
+
+    # The input output pass messes up the SSA form, so we need to reapply it
+    SSAVisitor().visit(new_ast)
 
     # Insert materialize for all fields
     if materialize:

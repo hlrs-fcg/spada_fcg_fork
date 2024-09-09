@@ -869,8 +869,18 @@ class ScopedNodeVisitor(visitor.ScopedIRNodeVisitor[Node]):
         :return:
         """
         self.push_scope(program)
-        self.generic_visit(program)
+        self.do_visit_Program(program)
         self.pop_scope()
+
+    def do_visit_Program(self, program: Program):
+        """
+        Called after entering the scope of the program.
+        If you want to recurse into the program, call self.generic_visit(program).
+
+        :param program:
+        :return:
+        """
+        self.generic_visit(program)
 
     def visit_ComputationBlock(self, computation: ComputationBlock):
         """

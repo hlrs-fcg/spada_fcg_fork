@@ -6,6 +6,7 @@ from spatialstencil.syntax.stencil_ir import type_inference, parser, canonicaliz
 from spatialstencil.syntax.stencil_ir.irnodes import ScalarType, Program, Cartesian, Interval, Offset, Extent, \
     StatementBlock, MaterializeOp, ComputationBlock, ReturnOp
 
+from spatialstencil.syntax.stencil_ir.ssa import ScopedVersion, SSAVisitor
 
 class TestTypeInference(unittest.TestCase):
 
@@ -136,6 +137,20 @@ class TestTypeInference(unittest.TestCase):
                 program = parser.parse_file(f)
 
             self.assert_infer_domains(program)
+
+    def test_ssa_versioning(self):
+        file1 = Path(__file__).parent / Path('../samples/spst/versioning.spst')
+        with open(file1, 'r') as f:
+            program = parser.parse_file(f)
+
+        SSAVisitor().visit(program)
+
+        file2 = Path(__file__).parent / Path('../samples/spst/versioning_ssa.spst')
+
+        with open(file2, 'r') as f:
+            golden_program = parser.parse_file(f)
+
+        self.assertEqual(golden_program.as_ir(), program.as_ir())
 
 
     def test_vertical_intervals(self):
