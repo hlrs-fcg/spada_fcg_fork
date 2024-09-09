@@ -1,7 +1,6 @@
 import copy
-from collections import defaultdict
 from dataclasses import dataclass
-from typing import Sequence, Mapping
+from typing import Mapping
 
 import spatialstencil.syntax.stencil_ir.irnodes as sast
 from spatialstencil.syntax.stencil_ir.irnodes import ComputationBlock, Program
@@ -14,6 +13,7 @@ class ScopedVersion:
     """
     scope: sast.ComputationBlock | sast.Program
     version: int
+
 
 class SSAVisitor(sast.ScopedNodeVisitor):
     """

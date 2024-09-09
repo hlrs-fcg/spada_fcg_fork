@@ -73,11 +73,17 @@ def infer_inputs_and_outputs(program: sast.Program):
         comp.outputs = _unique_id_list(collector.outputs, True)
         
     # Reduce outputs based on usage in subsequent computations
-    subsequent_names = set(k.name for k in program.outputs)
+    in_scope_names = set(k.name for k in program.outputs)
+    # Add all inputs to the set of subsequent names
+    for comp in program.computations:
+        if isinstance(comp, sast.ReturnOp):
+            continue
+        in_scope_names.update(set(k.name for k in comp.inputs))
+
     for i, comp in reversed(list(enumerate(program.computations))):
         if isinstance(comp, sast.ReturnOp):
             continue
-        comp.outputs = [out for out in comp.outputs if out.name in subsequent_names]
+        comp.outputs = [out for out in comp.outputs if out.name in in_scope_names]
         comp.operation_type.destination = comp.operation_type.destination[:len(comp.outputs)]  # Adjust type information
 
         # Modify return statement to match computation outputs
@@ -85,7 +91,7 @@ def infer_inputs_and_outputs(program: sast.Program):
         comp.body[-1].values = [sast.Expression(copy.deepcopy(ident)) for ident in comp.outputs]
         comp.body[-1].operation_type.source = copy.deepcopy(comp.operation_type.destination)
 
-        subsequent_names.update(set(k.name for k in comp.inputs + comp.outputs))
+        in_scope_names.update(set(k.name for k in comp.inputs + comp.outputs))
 
 
 def infer_scalar_types(program: sast.Program, default_float_dtype: sast.ScalarType, default_int_dtype: sast.ScalarType):

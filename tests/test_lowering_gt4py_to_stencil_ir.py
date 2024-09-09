@@ -92,7 +92,7 @@ class TestStencilIRParser(unittest.TestCase):
         assert [inp.name for inp in comps[0].inputs] == ['inp']
         assert [out.name for out in comps[0].outputs] == ['interim', 'tmp']
         assert [inp.name for inp in comps[1].inputs] == ['interim', 'tmp']
-        assert [out.name for out in comps[1].outputs] == ['out']
+        assert [out.name for out in comps[1].outputs] == ['out', 'tmp']
         extents = analysis.collect_extents(comps[0])
         assert next(iter(extents['inp'].values())) == {(0, -1, 0)}
         assert next(iter(extents['tmp'].values())) == {(1, 0, 0), (0, 0, 0)}
@@ -115,7 +115,7 @@ class TestStencilIRParser(unittest.TestCase):
         assert comps[0].inputs == [sast.Identifier('inp')]
         assert comps[0].outputs == [sast.Identifier('tmp', version=0)]
         assert comps[1].inputs == [sast.Identifier('tmp', version=0)]
-        assert comps[1].outputs == [sast.Identifier('out', version=0)]
+        assert comps[1].outputs == [sast.Identifier('out', version=0), sast.Identifier('tmp', version=1)]
 
     def test_versioning_in_ifelse(self):
         program = self.gtfuncs['versioning_in_ifelse']
