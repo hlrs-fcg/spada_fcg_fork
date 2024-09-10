@@ -100,7 +100,6 @@ class TestStencilIRParser(unittest.TestCase):
     def test_lower_gt4py_intermediates_5(self):
         program = self.gtfuncs['intermediates_versioning_3']
         irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program, materialize=False)
-        print(irprogram.as_ir())
         assert irprogram.name == 'intermediates_versioning_3'
         assert [inp.name for inp in irprogram.inputs] == ['inp']
         assert [out.name for out in irprogram.outputs] == ['out']
@@ -120,8 +119,6 @@ class TestStencilIRParser(unittest.TestCase):
     def test_versioning_in_ifelse(self):
         program = self.gtfuncs['versioning_in_ifelse']
         irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program, materialize=False)
-
-        print(irprogram.as_ir())
 
         comp = irprogram.computations[0]
         assert comp.outputs == [sast.Identifier('out', version=1)]
@@ -164,7 +161,6 @@ class TestStencilIRParser(unittest.TestCase):
     def test_lower_gt4py_if(self):
         program = self.gtfuncs['satadjust_specific_humidity']
         irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program)
-        print(irprogram.as_ir())
         comp = irprogram.computations[0]
         assert comp.outputs == [sast.Identifier('rh')]
         assert isinstance(comp.body[2], sast.IfBlock)
