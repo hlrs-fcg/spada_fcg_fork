@@ -171,7 +171,6 @@ class TestTypeInference(unittest.TestCase):
         files = [
             Path(__file__).parent / Path('../samples/spst/hdiff.spst'),
             Path(__file__).parent / Path('../samples/spst/vadv.spst'),
-            #Path(__file__).parent / Path('../samples/spst/vadv_3.spst'),
             Path(__file__).parent / Path('../samples/spst/hdiffsa.spst'),
             Path(__file__).parent / Path('../samples/spst/uvbke.spst'),
         ]
