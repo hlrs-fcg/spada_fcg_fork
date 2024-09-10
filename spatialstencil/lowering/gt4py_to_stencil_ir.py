@@ -1,8 +1,10 @@
 import ast
 from collections import defaultdict
+import copy
 from spatialstencil.syntax.gt4py import astnodes as gtast
 from spatialstencil.syntax.common.find_and_replace import PyASTFindReplace
 from spatialstencil.syntax.stencil_ir import irnodes as sast, type_inference
+from spatialstencil.syntax.stencil_ir.ssa import SSAVisitor
 
 
 def lower_gt4py_to_stencil_ir(program: gtast.GTProgram,
@@ -28,13 +30,18 @@ def lower_gt4py_to_stencil_ir(program: gtast.GTProgram,
     constant_propagation(program)
 
     # Unique naming
-    field_versioning(program)
+    #field_versioning(program)
 
     # Build new tree structure (that matches the language)
     new_ast = convert_gt4py_ast_to_stencil_ast(program, default_float_dtype, default_int_dtype)
 
+    SSAVisitor().visit(new_ast)
+
     # Infer which fields are intermediate (before materialize pass)
     type_inference.infer_inputs_and_outputs(new_ast)
+
+    # The input output pass messes up the SSA form, so we need to reapply it
+    SSAVisitor().visit(new_ast)
 
     # Insert materialize for all fields
     if materialize:
@@ -43,8 +50,13 @@ def lower_gt4py_to_stencil_ir(program: gtast.GTProgram,
 
         new_ast = MaterializeIntermediates().visit(new_ast)
 
+    domain = sast.Cartesian.from_sequence((0, domain[0], 0, domain[1], 0, domain[2])) if domain else None
     # Perform type/shape inference in stencil IR language
     type_inference.infer_types(new_ast, default_float_dtype, default_int_dtype, domain)
+
+    # Validate the new AST (we updated values in place, so we need to revalidate)
+    for n in new_ast.walk():
+        n.validate()
 
     return new_ast
 
@@ -60,29 +72,31 @@ def field_versioning(program: gtast.GTProgram):
     for comp in program.computations:
         for intvl in comp.intervals:
             for stmt in intvl.statements:
-                if not isinstance(stmt, gtast.GTComputeStatement):
-                    continue
 
-                # First, replace elements in body (to avoid self-reference clashes)
-                replacer = PyASTFindReplace(replacements)
-                stmt.body = replacer.visit(stmt.body)
-                used_identifiers.update(replacer.encountered_names)
+                if isinstance(stmt, gtast.GTComputeStatement):
 
-                # Name clash, add version
-                if stmt.target in names:
-                    # Special case: if the target is an output is never read/overwritten, keep version zero
-                    if (stmt.target in program.fields and stmt.target not in name_to_version and
-                            stmt.target not in used_identifiers):
-                        name_to_version[stmt.target] = 0
-                        continue
+                    # First, replace elements in body (to avoid self-reference clashes)
+                    replacer = PyASTFindReplace(replacements)
+                    stmt.body = replacer.visit(stmt.body)
+                    used_identifiers.update(replacer.encountered_names)
 
-                    # TODO(later): Do not make new version if intervals do not overlap?
-                    old_name = stmt.target
-                    name_to_version[stmt.target] += 1
-                    stmt.target = f'{stmt.target}#{name_to_version[stmt.target]}'
-                    replacements[old_name] = ast.Name(id=stmt.target)
-                else:
-                    names.add(stmt.target)
+                    # Name clash, add version
+                    if stmt.target in names:
+                        # Special case: if the target is an output is never read/overwritten, keep version zero
+                        if (stmt.target in program.fields and stmt.target not in name_to_version and
+                                stmt.target not in used_identifiers):
+                            name_to_version[stmt.target] = 0
+                            continue
+
+                        old_name = stmt.target
+                        name_to_version[stmt.target] += 1
+                        stmt.target = f'{stmt.target}#{name_to_version[stmt.target]}'
+                        replacements[old_name] = ast.Name(id=stmt.target)
+                    else:
+                        names.add(stmt.target)
+                elif isinstance(stmt, gtast.GTIfStatement):
+                    # TODO Handle if statements
+                    pass
 
 
 def constant_propagation(program: gtast.GTProgram):
@@ -184,6 +198,8 @@ class MaterializeIntermediates(sast.NodeTransformer):
 
             # Try to find results
             results: list[sast.Identifier] | None = None
+            if isinstance(stmt, sast.ReturnOp):
+                continue
             stmt: sast.StatementBlock | sast.IfBlock
             results = stmt.outputs
             result_typeinfo = stmt.operation_type.destination
@@ -207,7 +223,7 @@ class MaterializeIntermediates(sast.NodeTransformer):
                         sast.MaterializeOp(
                             result=materialized,
                             value=result,
-                            operation_type=sast.OperationType([sast.FieldType.empty()], [sast.FieldType.empty()])))
+                            operation_type=sast.OperationType([sast.ViewType.empty()], [sast.ViewType.empty()])))
 
         for i, out in enumerate(node.outputs):
             node.outputs[i] = self.visit(out)
@@ -220,7 +236,7 @@ def convert_gt4py_ast_to_stencil_ast(program: gtast.GTProgram, default_float_dty
                                      default_int_dtype: sast.ScalarType) -> sast.Program:
     input_fields: set[str] = set()
     output_fields: set[str] = set()
-    computations: list[sast.ComputationBlock] = []
+    computations: list[sast.ComputationBlock | sast.ReturnOp] = []
     field_type_by_name = {
         k: _gt4py_to_stencil_ir_type(v, default_float_dtype, default_int_dtype)
         for k, v in zip(program.fields, program.field_types)
@@ -243,19 +259,34 @@ def convert_gt4py_ast_to_stencil_ast(program: gtast.GTProgram, default_float_dty
             computations.append(
                 sast.ComputationBlock(
                     coutputs, cinputs, sast.ComputationType[computation.computation_type.name],
-                    (xintvl, yintvl, zintvl),
-                    sast.OperationType([sast.FieldType.empty() for _ in cinputs],
-                                       [sast.FieldType.empty() for _ in coutputs]), cbody))
+                    [xintvl, yintvl, zintvl],
+                    sast.OperationType([sast.ViewType.empty() for _ in cinputs],
+                                       [sast.ViewType.empty() for _ in coutputs]), cbody))
+
+
+    # Add the necessary return statement
+    computations.append(
+        sast.ReturnOp([sast.Expression(sast.Identifier(field)) for field in sorted(output_fields)],
+                      sast.OperationType([field_type_by_name[field] for field in sorted(output_fields)],)))
 
     return sast.Program(
         outputs=[sast.Identifier(field) for field in sorted(output_fields)],
         name=program.name,
         inputs=[sast.Identifier(field) for field in sorted(input_fields)],
         attributes={},
-        operation_type=sast.OperationType([field_type_by_name[field] for field in sorted(input_fields)],
-                                          [field_type_by_name[field] for field in sorted(output_fields)]),
+        operation_type=sast.OperationType([_view_as_field(field_type_by_name[field]) for field in sorted(input_fields)],
+                                          [_view_as_field(field_type_by_name[field]) for field in sorted(output_fields)]),
         computations=computations,
     )
+
+
+def _view_as_field(view: sast.ViewType) -> sast.FieldType:
+    """
+    Converts a view type to a field type.
+    :param view: The view type to convert.
+    :return: The field type, dropping the extent information.
+    """
+    return sast.FieldType(view.domain, view.dtype)
 
 
 # Helper functions
@@ -277,32 +308,32 @@ def _parse_field(name: str) -> sast.Identifier:
 
 
 def _gt4py_to_stencil_ir_type(dtype: gtast.FieldType, default_float_dtype: sast.ScalarType,
-                              default_int_dtype: sast.ScalarType) -> sast.FieldType:
-    result = sast.FieldType.empty()
+                              default_int_dtype: sast.ScalarType) -> sast.ViewType:
+    result = sast.ViewType.empty()
 
     # TODO(later): Try to use GT4Py type annotations if explicit
     if dtype == gtast.FieldType.Field3D:
         result.dtype = default_float_dtype
     elif dtype == gtast.FieldType.FieldIJ:
         result.dtype = default_float_dtype
-        result.domain = sast.Cartesian(None, None, 1)
+        result.domain = sast.Cartesian.from_sequence((0, None, 0, None, 0, 1))
     elif dtype == gtast.FieldType.FieldI:
         result.dtype = default_float_dtype
-        result.domain = sast.Cartesian(None, 1, 1)
+        result.domain = sast.Cartesian.from_sequence((0, None, 0, 1, 0, 1))
     elif dtype == gtast.FieldType.FieldJ:
         result.dtype = default_float_dtype
-        result.domain = sast.Cartesian(1, None, 1)
+        result.domain = sast.Cartesian.from_sequence((0, 1, 0, None, 0, 1))
     elif dtype == gtast.FieldType.FieldK:
         result.dtype = default_float_dtype
-        result.domain = sast.Cartesian(1, 1, None)
+        result.domain = sast.Cartesian.from_sequence((0, 1, 0, 1, 0, None))
     elif dtype == gtast.FieldType.int:
         result.dtype = default_int_dtype
-        result.domain = sast.Cartesian(1, 1, 1)
-        result.extent = sast.Extent([sast.OffsetAndInterval((0, 0, 0))])
+        result.domain = sast.Cartesian.from_sequence((0, 1, 0, 1, 0, 1))
+        result.extent = sast.Extent([sast.Offset((0, 0, 0))])
     elif dtype == gtast.FieldType.float:
         result.dtype = default_float_dtype
-        result.domain = sast.Cartesian(1, 1, 1)
-        result.extent = sast.Extent([sast.OffsetAndInterval((0, 0, 0))])
+        result.domain = sast.Cartesian.from_sequence((0, 1, 0, 1, 0, 1))
+        result.extent = sast.Extent([sast.Offset((0, 0, 0))])
     else:
         raise TypeError(f'Unsupported field type "{dtype}"')
 
@@ -342,8 +373,8 @@ def _convert_interval_to_computation_body(
                     outputs=[_parse_field(stmt.target)],
                     inputs=stmt_inputs,
                     attributes=[],
-                    operation_type=sast.OperationType([sast.FieldType.empty() for _ in stmt_inputs],
-                                                      [sast.FieldType.empty()]),
+                    operation_type=sast.OperationType([sast.ViewType.empty() for _ in stmt_inputs],
+                                                      [sast.ViewType.empty()]),
                     body=[
                         sast.ReturnOp([sast.Expression(OperationConverter().visit(stmt.body))]),
                     ]))
@@ -378,14 +409,13 @@ def _convert_interval_to_computation_body(
             inputs.update(stmt_inputs)
 
             # Add overall return values to each branch
-            stmt_body.append(
-                sast.ReturnOp([sast.Expression(so) for so in sorted(all_stmt_outputs)],
-                              sast.OperationType([sast.FieldType.empty() for _ in outputs])))
+            stmt_body[-1] = sast.ReturnOp([sast.Expression(so) for so in sorted(all_stmt_outputs)],
+                                          sast.OperationType([sast.ViewType.empty() for _ in all_stmt_outputs]))
             if else_ifs:
                 for else_if in else_ifs:
-                    else_if.body.append(
-                        sast.ReturnOp([sast.Expression(so) for so in sorted(all_stmt_outputs)],
-                                      sast.OperationType([sast.FieldType.empty() for _ in outputs])))
+                    else_if.body[-1] = sast.ReturnOp([sast.Expression(so) for so in sorted(all_stmt_outputs)],
+                                                     sast.OperationType(
+                                                         [sast.ViewType.empty() for _ in all_stmt_outputs]))
 
             # Create IR node
             body.append(
@@ -394,11 +424,16 @@ def _convert_interval_to_computation_body(
                     condition=_parse_field(stmt.condition.id),
                     body=stmt_body,
                     else_ifs=else_ifs,
-                    operation_type=sast.OperationType([sast.FieldType.empty()],
-                                                      [sast.FieldType.empty() for _ in all_stmt_outputs]),
+                    operation_type=sast.OperationType([sast.ViewType.empty()],
+                                                      [sast.ViewType.empty() for _ in all_stmt_outputs]),
                 ))
         else:
             raise TypeError(f'Unsupported statement type "{type(stmt)}"')
+
+    # Add the necessary return statement
+    body.append(
+        sast.ReturnOp([sast.Expression(copy.deepcopy(field)) for field in sorted(outputs)],
+                      sast.OperationType([sast.ViewType.empty() for _ in outputs])))
 
     return body, inputs, outputs
 

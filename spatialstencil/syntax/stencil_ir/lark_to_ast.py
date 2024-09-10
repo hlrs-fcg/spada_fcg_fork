@@ -50,8 +50,10 @@ class TreeToAST(lark.Transformer):
     type_list = list
     subscript_slice = tuple
     multi_interval_type = list
+    computation_interval = list
     attr = tuple
     call_arguments = list
+    domain_list = list
 
     statement_body = list
     computation_body = list
@@ -68,6 +70,12 @@ class TreeToAST(lark.Transformer):
         irnodes.ScalarType, str(args[0]))
     schedule_type = lambda self, args: getattr(irnodes.ComputationType, str(args[0]))
 
+    def schedule_keyword(self, args, meta=None):
+        return "schedule"
+
+    def interval_keyword(self, args, meta=None):
+        return "interval"
+
     def dim_or_end(self, args, meta=None):
         dim = args[0]
         # Dimension can be explicit, end (None), or indeterminate ("?")
@@ -81,15 +89,26 @@ class TreeToAST(lark.Transformer):
             return args[0]
         return irnodes.Expression(*args)
 
+    def unknown_domain_literal(self, args, meta=None):
+        return irnodes.Interval()
+
     # Data types
     def domain_type(self, args, meta=None):
-        return irnodes.Cartesian(*_make_dimtuple(args[0]))
+        intervals = []
+        for interval in args[0]:
+            if isinstance(interval, irnodes.Interval):
+                intervals.append(interval)
+            else:
+                intervals.append(irnodes.Interval())
+        return irnodes.Cartesian(*intervals)
 
     def extent_type(self, args, meta=None):
-        return irnodes.Extent([_make_offset_and_interval(a) for a in args[0]])
+        return irnodes.Extent([_make_offset(a) for a in args[0]])
 
-    field_type = irnodes.FieldType.from_lark
+    view_type = irnodes.ViewType.from_lark
     interval_type = irnodes.Interval.from_lark
+    field_type = irnodes.FieldType.from_lark
+    any_type = lambda self, args: irnodes.AnyType()
 
     # Basic types
     def identifier(self, args, meta=None):
@@ -100,6 +119,7 @@ class TreeToAST(lark.Transformer):
     subscript = irnodes.Subscript.from_lark
     type_info = lambda self, args: irnodes.OperationType(*([arg] for arg in args))
     type_list_info = lambda self, args: irnodes.OperationType(*args)
+    return_type_info = lambda self, args: irnodes.OperationType(*args)
 
     # Operators
     def unary_op(self, args, meta=None):
@@ -140,10 +160,15 @@ class TreeToAST(lark.Transformer):
 
     # Operations
     def return_expr(self, args, meta=None):
-        if isinstance(args[-1], irnodes.OperationType):
-            return irnodes.ReturnOp(args[:-1], args[-1])
-        return irnodes.ReturnOp(args)
 
+        # Find the operation type arguments
+        optype = next((i for i in range(len(args)) if isinstance(args[i], irnodes.OperationType)), None)
+        if optype:
+            return irnodes.ReturnOp(args[:optype], args[optype])
+        else:
+            optype = irnodes.OperationType([irnodes.AnyType() for _ in range(len(args))],
+                                           None)
+            return irnodes.ReturnOp(args, optype)
     materialize_op = irnodes.MaterializeOp.from_lark
 
     def assign_expr(self, args, meta=None):
@@ -160,7 +185,7 @@ class TreeToAST(lark.Transformer):
             operation_type = args[offset]
             offset += 1
         else:
-            operation_type = irnodes.OperationType([irnodes.FieldType.empty()], [irnodes.FieldType.empty()])
+            operation_type = irnodes.OperationType([irnodes.ViewType.empty()], [irnodes.ViewType.empty()])
 
         body = args[offset]
         offset += 1
@@ -199,6 +224,10 @@ class TreeToAST(lark.Transformer):
             raise ValueError('spst.computation is missing the "schedule" attribute')
         if interval is None:
             raise ValueError('spst.computation is missing the "interval" attribute')
+
+        if len(interval) != 3:
+            raise ValueError(f'Expected 3-tuple for interval, got {interval}')
+
         return irnodes.ComputationBlock(results, inputs, schedule, interval, operation_type, body)
 
     def program(self, args, meta=None):
@@ -215,16 +244,14 @@ class TreeToAST(lark.Transformer):
 
 # Helper functions
 def _make_dimtuple(tup):
-    return tuple((None if dim == '?' else dim) for dim in tup)
+    return tuple(tup)
 
 
-def _make_offset_and_interval(extent_tuple):
-    if len(extent_tuple) == 2:
-        interval_list = []
-        for intvl in extent_tuple[1]:
-            interval_list.extend([intvl.start, intvl.end])
-        return irnodes.OffsetAndInterval(_make_dimtuple(extent_tuple[0]), tuple(interval_list))
-    return irnodes.OffsetAndInterval(_make_dimtuple(extent_tuple[0]))
+def _make_offset(extent_tuple):
+    if len(extent_tuple) != 1 and len(extent_tuple[0]) != 3:
+        raise ValueError(f"Expected 3-tuple nested in a length 1 sequence, got {extent_tuple}")
+    assert isinstance(extent_tuple, tuple)
+    return irnodes.Offset(extent_tuple[0])
 
 
 def _expr(val: irnodes.Node | int | float | str) -> irnodes.Expression:

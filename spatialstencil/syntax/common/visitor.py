@@ -19,8 +19,9 @@ class IRNodeVisitor(Generic[BaseNodeT]):
     The class also performs optional language validation checks by passing in the base IR node class.
     """
 
-    def __init__(self, ir_node_class: type[BaseNodeT] = BaseNode):
+    def __init__(self, ir_node_class: type[BaseNodeT] = BaseNode, reverse: bool = False):
         self.base_node = ir_node_class
+        self.reverse = reverse
 
     def _validate_node_type(self, node: BaseNodeT):
         if self.base_node is not BaseNode and isinstance(node, BaseNode) and not isinstance(node, self.base_node):
@@ -52,11 +53,42 @@ class IRNodeVisitor(Generic[BaseNodeT]):
                     self.visit(value)
 
     def generic_visit_sequence(self, sequence: Sequence[BaseNodeT]):
+        if self.reverse:
+            sequence = reversed(sequence)
         for item in sequence:
             if isinstance(item, (list, tuple)):
                 self.generic_visit_sequence(item)
             elif isinstance(item, BaseNode):
                 self.visit(item)
+
+
+class ScopedIRNodeVisitor(IRNodeVisitor[BaseNodeT]):
+
+    _current_scope: list[BaseNodeT]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._current_scope = []
+
+    def get_scope(self) -> BaseNodeT:
+        return self._current_scope[-1]
+
+    def push_scope(self, scope) -> None:
+        self._current_scope.append(scope)
+
+    def pop_scope(self) -> BaseNodeT:
+        return self._current_scope.pop()
+
+    def get_scope_with_type(self, type_var) -> BaseNodeT | None:
+        """
+        Returns the closest enclosing scope with the given type or None if not found.
+        :param type_var:
+        :return:
+        """
+        for scope in reversed(self._current_scope):
+            if isinstance(scope, type_var):
+                return scope
+        return None
 
 
 class IRNodeTransformer(IRNodeVisitor[BaseNodeT]):

@@ -3,10 +3,17 @@ Native class definitions for the spatial stencil Intermediate Representation (IR
 """
 from dataclasses import dataclass, field
 import enum
-from typing import Literal
+from typing import Literal, Sequence
 
 from spatialstencil.syntax.common.basenode import BaseNode
 from spatialstencil.syntax.common import visitor
+
+
+class IRType:
+    """
+    Interface that indicates this node represents a type.
+    """
+    pass
 
 
 class ScalarType(enum.Enum):
@@ -24,6 +31,15 @@ class ScalarType(enum.Enum):
 
     def as_ir(self, indent: int = 0) -> str:
         return self.name
+
+@dataclass(frozen=True)
+class AnyType(IRType):
+
+    def as_ir(self) -> str:
+        return "?"
+
+    def is_unknown(self) -> bool:
+        return True
 
 
 BIT_WIDTH = {
@@ -48,11 +64,6 @@ class ComputationType(enum.Enum):
     BACKWARD = 2
 
 
-class IRType:
-    """
-    Interface that indicates this node represents a type.
-    """
-    pass
 
 
 class Node(BaseNode):
@@ -82,6 +93,9 @@ class Node(BaseNode):
         """
         pass
 
+    def __post_init__(self):
+        self.validate()
+
 
 class Domain(Node, IRType):
     """
@@ -95,13 +109,266 @@ class Domain(Node, IRType):
         raise NotImplementedError('Abstract class. Method implemented in subclasses')
 
 
-def _val_or_unk(val: int | None) -> str:
+def _val_or_unk(val: int | None | Literal["?"]) -> str:
     """
     Helper function that prints out a value or a question mark if None.
     """
     if val is None:
         return '?'
+    if val == '?':
+        return '?'
     return str(val)
+
+
+@dataclass
+class Offset(Node):
+    """
+    Dimension tuple containing an offset and an interval of an ``Extent``.
+    """
+    values: tuple[int | Literal["?"], int | Literal["?"], int | Literal["?"]] = ("?", "?", "?")
+
+    def validate(self) -> None:
+        assert isinstance(self.values, tuple)
+        assert len(self.values) == 3
+        assert all(self.values is not None for v in self.values)
+
+    def as_ir(self, indent: int = 0) -> str:
+        output = f'({", ".join(_val_or_unk(v) for v in self.values)})'
+        return output
+
+    def add(self, other: 'Offset') -> 'Offset':
+        assert all(isinstance(v, int) for v in self.values)
+        assert all(isinstance(v, int) for v in other.values)
+        return Offset((self.values[0] + other.values[0],
+                       self.values[1] + other.values[1],
+                       self.values[2] + other.values[2]))
+
+    def is_unknown(self) -> bool:
+        return all(dim == "?" for dim in self.values)
+
+    def __add__(self, other: 'Offset') -> 'Offset':
+        return self.add(other)
+
+    def __sub__(self, other: 'Offset') -> 'Offset':
+        assert all(isinstance(v, int) for v in self.values)
+        assert all(isinstance(v, int) for v in other.values)
+        return Offset(tuple(self.values[i]-other.values[i] for i in range(3)))
+
+    def l1_norm(self) -> int:
+        assert all(isinstance(v, int) for v in self.values)
+        return sum(abs(v) for v in self.values)
+
+    def __hash__(self):
+        return hash(self.values)
+
+    def __lt__(self, other: 'Offset') -> bool:
+        """
+        Returns True if all values in this offset are less than the values in the other offset.
+        "?" values are considered less than any other value.
+
+        :param other:
+        :return:
+        """
+        self.validate()
+        other.validate()
+        for self_value, other_value in zip(self.values, other.values):
+            # Treat "?" as less than any integer
+            if self_value == "?" and other_value != "?":
+                return True
+            if self_value != "?" and other_value == "?":
+                return False
+            if self_value != other_value:
+                return self_value < other_value
+        return False
+    def __getitem__(self, item):
+        return self.values[item]
+
+
+
+@dataclass
+class Extent(Node, IRType):
+    """
+    Extents of a field.
+    """
+    extents: list[Offset]
+
+    def as_ir(self, indent: int = 0) -> str:
+        return "{" + f'{", ".join(e.as_ir() for e in self.extents)}' + "}"
+
+    def is_unknown(self) -> bool:
+        return all(dim == "?" for extent in self.extents for dim in extent.values)
+
+    def extent_tuples(self):
+        return [extent.values for extent in self.extents]
+
+    def sort_extents(self):
+        """
+        Sorts the extents in the extent list.
+        """
+        self.extents[:] = sorted(set(self.extents))
+
+
+@dataclass
+class ViewType(Node, IRType):
+    domain: Domain
+    extent: Extent
+    dtype: ScalarType
+
+    @classmethod
+    def empty(cls) -> 'ViewType':
+        """
+        Creates an empty (not type/shape-inferred) view type.
+        """
+        return ViewType(
+            domain=Cartesian(Interval(), Interval(), Interval()),
+            extent=Extent([Offset(("?", "?", "?"))]),
+            dtype=ScalarType.UNKNOWN)
+
+    def validate(self) -> None:
+        assert self.dtype != ScalarType.f64
+
+    def as_ir(self, indent: int = 0) -> str:
+        return f'spst.view<{self.domain.as_ir()}, {self.extent.as_ir()}, {self.dtype.as_ir()}>'
+
+@dataclass
+class FieldType(Node, IRType):
+    domain: Domain
+    dtype: ScalarType
+
+    @classmethod
+    def empty(cls) -> 'FieldType':
+        """
+        Creates an empty (not type/shape-inferred) field type.
+        """
+        return FieldType(
+            domain=Cartesian(Interval(), Interval(), Interval()),
+            dtype=ScalarType.UNKNOWN)
+
+    def validate(self) -> None:
+        assert self.dtype != ScalarType.f64
+
+    def as_ir(self, indent: int = 0) -> str:
+        return f'spst.field<{self.domain.as_ir()}, {self.dtype.as_ir()}>'
+
+
+DataType = ViewType | FieldType | ScalarType | AnyType
+
+
+@dataclass
+class OperationType(Node):
+    source: list[DataType] = field(default_factory=lambda: [ViewType.empty()])
+    destination: list[DataType] | None = None
+
+    def validate(self) -> None:
+        assert isinstance(self.source, list)
+        assert self.destination is None or isinstance(self.destination, list)
+
+    def as_ir(self, indent: int = 0) -> str:
+        srcstr = ", ".join(v.as_ir() for v in self.source)
+
+        if self.destination is None:
+            return srcstr
+
+        dststr = ", ".join(v.as_ir() for v in self.destination)
+
+        return f'{srcstr} -> {dststr}'
+
+
+@dataclass
+class Interval(Node, IRType):
+
+    """
+    Interval domain type in one dimension.
+
+    We are using "?" to represent unknown values
+    he None value represents the absence of a limit
+    so start = None represents -inf and end = None represents +inf.
+    """
+    start: int | Literal["?"] | None = "?"
+    end: int | Literal["?"] | None = "?"
+
+    def as_ir(self, indent: int = 0) -> str:
+        return f'{self.start}:{self.end}'
+
+    def as_tuple(self) -> tuple[int | None | Literal["?"], int | None | Literal["?"]]:
+        return (self.start, self.end)
+
+    def is_unknown(self) -> bool:
+        return self.start is None or self.end is None or self.start == "?" or self.end == "?"
+
+    def union(self, other: 'Interval'):
+        """
+        Returns the union of two intervals.
+        If one value is unknown, the other value is returned.
+
+        Assumes none of the values is None.
+        """
+        assert self.start is not None
+        assert self.end is not None
+        assert other.start is not None
+        assert other.end is not None
+
+        if other.start == "?":
+            start = self.start
+        elif self.start == "?":
+            start = other.start
+        else:
+            start = min(self.start, other.start)
+
+        if other.end == "?":
+            end = self.end
+        elif self.end == "?":
+            end = other.end
+        else:
+            end = max(self.end, other.end)
+
+        return Interval(start, end)
+
+    def intersect(self, other: 'Interval'):
+        """
+        Returns the intersection of two intervals.
+
+        :param other:
+        :return:
+        """
+        assert self.start is not None
+        assert self.end is not None
+        assert other.start is not None
+        assert other.end is not None
+
+        if other.start == "?":
+            start = self.start
+        elif self.start == "?":
+            start = other.start
+        else:
+            start = max(self.start, other.start)
+
+        if other.end == "?":
+            end = self.end
+        elif self.end == "?":
+            end = other.end
+        else:
+            end = min(self.end, other.end)
+
+        return Interval(start, end)
+
+    def __hash__(self):
+        if self.start is None:
+            return hash(self.end)
+        elif self.end is None:
+            return hash(self.start)
+        else:
+            return hash((self.start, self.end))
+
+    def __eq__(self, other):
+        return self.start == other.start and self.end == other.end
+
+    def __getitem__(self, item):
+        if item == 0:
+            return self.start
+        elif item == 1:
+            return self.end
+        raise IndexError("Index out of range")
 
 
 @dataclass
@@ -111,107 +378,97 @@ class Cartesian(Domain):
 
     A None value for each dimension means "unknown" (or "?")
     """
-    x: int | None
-    y: int | None
-    z: int | None
+    x: Interval = field(default_factory=lambda: Interval())
+    y: Interval = field(default_factory=lambda: Interval())
+    z: Interval = field(default_factory=lambda: Interval())
 
     def as_ir(self, indent: int = 0) -> str:
-        return f'spst.cartesian<{_val_or_unk(self.x)}, {_val_or_unk(self.y)}, {_val_or_unk(self.z)}>'
+        return f'[{self.x.as_ir()}, {self.y.as_ir()}, {self.z.as_ir()}]'
 
     def is_unknown(self) -> bool:
-        return self.x is None or self.y is None or self.z is None
-
-
-@dataclass
-class OffsetAndInterval(Node):
-    """
-    Dimension tuple containing an offset and an interval of an ``Extent``.
-    """
-    # NOTE: We are using variable-length tuples here so that this type is hashable.
-    values: tuple[int | None]
-    interval: tuple[int | None] = field(default_factory=lambda: (0, None, 0, None, 0, None))
+        return self.x.is_unknown() or self.y.is_unknown() or self.z.is_unknown()
 
     def validate(self) -> None:
-        # For every dimension, an interval has a start and end point
-        assert len(self.interval) == 2 * len(self.values)
+        # Domain must be fully defined
+        assert isinstance(self.x, Interval)
+        assert isinstance(self.y, Interval)
+        assert isinstance(self.z, Interval)
+        assert self.x.start is not None
+        assert self.x.end is not None
+        assert self.y.start is not None
+        assert self.y.end is not None
+        assert self.z.start is not None
+        assert self.z.end is not None
 
-    def as_ir(self, indent: int = 0) -> str:
-        output = f'({", ".join(_val_or_unk(v) for v in self.values)})'
-        if self.interval != (0, None, 0, None, 0, None):
-            interval_str = [f'{start}:{end}' for start, end in zip(self.interval[::2], self.interval[1::2])]
-            output += f' in [{", ".join(interval_str)}]'
-        return output
-
-
-@dataclass
-class Extent(Node, IRType):
-    """
-    Extents of a field.
-    """
-    extents: list[OffsetAndInterval]
-
-    def as_ir(self, indent: int = 0) -> str:
-        return f'spst.extent<{", ".join(e.as_ir() for e in self.extents)}>'
-
-    def is_unknown(self) -> bool:
-        return all(dim is None for extent in self.extents for dim in extent.values)
-
-
-@dataclass
-class FieldType(Node, IRType):
-    domain: Domain
-    extent: Extent
-    dtype: ScalarType
-
-    @classmethod
-    def empty(cls) -> 'FieldType':
+    def union(self, other: 'Cartesian'):
         """
-        Creates an empty (not type/shape-inferred) field type.
+        Returns a new Cartesian domain that is the union of all intervals in the domain.
+        Unknown values are replaced by the other domain's values.
         """
-        return FieldType(
-            domain=Cartesian(None, None, None),
-            extent=Extent([OffsetAndInterval((None, None, None))]),
-            dtype=ScalarType.UNKNOWN)
+        return Cartesian(self.x.union(other.x), self.y.union(other.y), self.z.union(other.z))
 
-    def validate(self) -> None:
-        assert self.dtype != ScalarType.f64
+    def intersect(self, other: 'Cartesian'):
+        """
+        Returns a new Cartesian domain that is the intersection of all intervals in the domain.
+        Unknown values are replaced by the other domain's values.
+        """
+        return Cartesian(self.x.intersect(other.x), self.y.intersect(other.y), self.z.intersect(other.z))
 
-    def as_ir(self, indent: int = 0) -> str:
-        return f'spst.field<{self.domain.as_ir()}, {self.extent.as_ir()}, {self.dtype.as_ir()}>'
+    @staticmethod
+    def from_sequence(seq: Sequence[int | None | Literal['?']]) -> 'Cartesian':
+        """
+        Creates a Cartesian domain from a 6-tuple of integers or "?".
+        """
+        return Cartesian(Interval(seq[0], seq[1]), Interval(seq[2], seq[3]), Interval(seq[4], seq[5]))
 
+    def intersect_with_ranges(self, intervals: Sequence[Interval]) -> 'Cartesian':
+        """
+        Creates a Cartesian sub-domain from 3 intervals
+        that may indicate a sub-domain of the original Cartesian domain
+        through the use of negative values to indicate an offset from the
+        upper bound of the domain and None to indicate the upper or lower bound of the domain.
+        For example None:None denotes the entire domain's dimension,
+        0:-1 denotes the entire domain except the last element.
+        """
+        assert len(intervals) == 3
 
-DataType = FieldType | ScalarType
+        output_lowerbound = [self.x.start, self.y.start, self.z.start]
+        output_upperbound = [self.x.end, self.y.end, self.z.end]
+        assert all(x is not None for x in output_upperbound)
+        result = []
 
+        for i in range(3):
+            assert intervals[i].start != "?"
+            assert intervals[i].end != "?"
 
-@dataclass
-class OperationType(Node):
-    source: list[DataType] = field(default_factory=lambda: [FieldType.empty()])
-    destination: list[DataType] | None = None
+            if intervals[i].start is None:
+                # If none, we take the lower bound of the domain
+                start = output_lowerbound[i]
+            elif intervals[i].start < 0:
+                start = output_upperbound[i] + intervals[i].start
+            else:
+                start = intervals[i].start
 
-    def as_ir(self, indent: int = 0) -> str:
-        if isinstance(self.source, list):
-            srcstr = ", ".join(v.as_ir() for v in self.source)
-        else:
-            srcstr = self.source.as_ir()
+            if intervals[i].end is None:
+                end = output_upperbound[i]
+            elif intervals[i].end < 0:
+                end = output_upperbound[i] + intervals[i].end
+            else:
+                end = intervals[i].end
 
-        if self.destination is None:
-            return srcstr
+            result.append(Interval(start, end))
 
-        if isinstance(self.destination, list):
-            dststr = ", ".join(v.as_ir() for v in self.destination)
-        else:
-            dststr = self.destination.as_ir()
+        domain = Cartesian(result[0], result[1], result[2])
+        return domain
 
-        return f'{srcstr} -> {dststr}'
-
-
-@dataclass
-class Interval(Node, IRType):
-    start: int | Literal["?"] | None = "?"
-    end: int | Literal["?"] | None = "?"
-
-    def as_ir(self, indent: int = 0) -> str:
-        return f'spst.interval<{self.start}, {self.end}>'
+    def add(self, tuple) -> 'Cartesian':
+        # Adds the value of the tuple to the Cartesian domain in each dimension
+        assert len(tuple) == 3
+        assert all(x is not None for x in tuple)
+        assert not self.is_unknown()
+        return Cartesian(Interval(self.x.start + tuple[0], self.x.end + tuple[0]),
+                         Interval(self.y.start + tuple[1], self.y.end + tuple[1]),
+                         Interval(self.z.start + tuple[2], self.z.end + tuple[2]))
 
 
 @dataclass
@@ -368,7 +625,13 @@ class Block:
 @dataclass
 class ReturnOp(Node, Operation):
     values: list[Expression]
-    operation_type: OperationType = field(default_factory=lambda: OperationType([ScalarType.UNKNOWN]))
+    operation_type: OperationType = field(default_factory=lambda: OperationType([AnyType()]))
+
+    def validate(self) -> None:
+        assert all(isinstance(v, Expression) for v in self.values)
+        assert self.operation_type is not None
+        assert self.operation_type.source is not None
+        assert len(self.operation_type.source) == len(self.values)
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
@@ -385,6 +648,8 @@ class MaterializeOp(Node, Operation):
     def validate(self) -> None:
         assert isinstance(self.result, Identifier)
         assert isinstance(self.value, Identifier)
+        assert len(self.operation_type.source) == 1
+        assert len(self.operation_type.destination) == 1
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
@@ -431,6 +696,9 @@ class StatementBlock(Node, Operation, Block):
     def validate(self) -> None:
         assert isinstance(self.body[-1], ReturnOp)
         assert len(self.body[-1].values) == len(self.outputs)
+        assert self.operation_type.destination is not None
+        assert len(self.operation_type.destination) == len(self.outputs)
+        assert len(self.operation_type.source) == len(self.inputs)
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
@@ -458,7 +726,7 @@ class ElseIfBlock(Node, Block):
         if self.condition is None:
             result = ' else '
         else:
-            result += f' elif ({self.condition.as_ir()}) '
+            result = f' elif ({self.condition.as_ir()}) '
 
         result += '{\n'
         result += '\n'.join(stmt.as_ir(indent + 1) for stmt in self.body)
@@ -483,12 +751,14 @@ class IfBlock(Node, Operation, Block):
         assert all(isinstance(r, Identifier) for r in self.outputs)
         assert isinstance(self.condition, Identifier)
         assert isinstance(self.else_ifs, list)
-        assert all(isinstance(econd, Identifier) or econd is None for econd, _ in self.else_ifs)
+        assert all(isinstance(econd, ElseIfBlock) for econd in self.else_ifs)
+        # The source types are the conditions of all if/elif blocks
+        assert len(self.operation_type.source) == 1
 
         # Check terminators
         assert isinstance(self.body[-1], ReturnOp)
         if self.else_ifs:
-            assert all(isinstance(estmts[-1], ReturnOp) for _, estmts in self.else_ifs)
+            assert all(isinstance(estmts.body[-1], ReturnOp) for estmts in self.else_ifs)
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
@@ -512,7 +782,18 @@ class ComputationBlock(Node, Operation, Block):
     schedule: ComputationType
     interval: list[Interval]
     operation_type: OperationType
-    body: list[StatementBlock | IfBlock | MaterializeOp]
+    body: list[StatementBlock | IfBlock | MaterializeOp | ReturnOp]
+
+    def validate(self) -> None:
+        assert self.operation_type.destination is not None
+        assert len(self.outputs) == len(self.operation_type.destination)
+        assert len(self.inputs) == len(self.operation_type.source)
+        assert isinstance(self.schedule, ComputationType)
+        assert isinstance(self.interval, list)
+        assert all(isinstance(i, Interval) for i in self.interval)
+        assert len(self.interval) == 3
+        assert isinstance(self.body[-1], ReturnOp)
+        assert len(self.body[-1].values) == len(self.outputs)
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
@@ -544,7 +825,17 @@ class Program(Node, Operation, Block):
     inputs: list[Identifier]
     attributes: list[Attribute]
     operation_type: OperationType
-    computations: list[ComputationBlock]
+    computations: list[ComputationBlock | ReturnOp]
+
+    def validate(self) -> None:
+        assert all((isinstance(comp, ComputationBlock) or
+                    isinstance(comp, ReturnOp) and
+                    all(isinstance(v.value, Identifier)
+                    for v in comp.values)) for comp in self.computations)
+        # Program arguments must be fields (not views)
+        assert all(isinstance(i, (FieldType, ScalarType, AnyType)) for i in self.operation_type.source)
+        assert all(isinstance(i, (FieldType, ScalarType, AnyType)) for i in self.operation_type.destination)
+        assert isinstance(self.computations[-1], ReturnOp)
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
@@ -564,6 +855,77 @@ class NodeVisitor(visitor.IRNodeVisitor[Node]):
 
     def __init__(self, *args, **kwargs):
         super().__init__(Node, *args, **kwargs)
+
+
+class ScopedNodeVisitor(visitor.ScopedIRNodeVisitor[Node]):
+    def __init__(self, *args, **kwargs):
+        super().__init__(Node, *args, **kwargs)
+
+
+    def visit_Program(self, program: Program):
+        """
+        Visits a program.
+
+        :param program:
+        :return:
+        """
+        self.push_scope(program)
+        self.do_visit_Program(program)
+        self.pop_scope()
+
+    def do_visit_Program(self, program: Program):
+        """
+        Called after entering the scope of the program.
+        If you want to recurse into the program, call self.generic_visit(program).
+
+        :param program:
+        :return:
+        """
+        self.generic_visit(program)
+
+    def visit_ComputationBlock(self, computation: ComputationBlock):
+        """
+        Visits a computation block.
+        Override pre_visit_ComputationBlock, do_visit_ComputationBlock, and post_visit_ComputationBlock
+        to implement the visitor.
+
+        :param computation:
+        :return:
+        """
+        self.pre_visit_ComputationBlock(computation)
+        self.push_scope(computation)
+        self.do_visit_ComputationBlock(computation)
+        self.pop_scope()
+        self.post_visit_ComputationBlock(computation)
+
+
+    def pre_visit_ComputationBlock(self, computation: ComputationBlock):
+        """
+        Called before entering the scope of the computation block.
+
+        :param computation:
+        :return:
+        """
+        pass
+
+    def do_visit_ComputationBlock(self, computation: ComputationBlock):
+        """
+        Called after entering the scope of the computation block.
+        If you want to recurse into the computation block, call self.generic_visit(computation).
+
+        :param computation:
+        :return:
+        """
+        self.generic_visit(computation)
+
+    def post_visit_ComputationBlock(self, computation: ComputationBlock):
+        """
+        Called after leaving the scope of the computation block.
+
+        :param computation:
+        :return:
+        """
+        pass
 
 
 class NodeTransformer(visitor.IRNodeTransformer[Node]):

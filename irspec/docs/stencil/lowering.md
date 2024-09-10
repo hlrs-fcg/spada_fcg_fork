@@ -26,6 +26,82 @@ Within each phase, the lowering contains the following steps:
 2. **Lowering Communication**: Extract the streams from the stencil IR.
 3. **Lowering computations**: Lower the computations to Spatial IR.
 
+
+
+## Placement of Fields
+
+After field placement, each field $f$ is associated with an offset $o(f)=(o_x, o_y)$ and a stride $s(f)=(s_x, s_y)$.
+The offset and stride are determined by the placement strategy of the fields.
+It is based on the construction of a field dataflow graph, whose construction we describe in the following.
+
+### Removing Intermediate Fields
+
+Intermediate fields that are not materialized are replaced by the equivalent accesses to non-intermediate fields.
+
+In particular, accesses to the result of a materialize operation are replaced
+by accesses to the input field of the materialize operation.
+
+### Field Dataflow Graph
+
+
+The field dataflow graph is a directed graph where each node represents a field and each edge represents a field access.
+The edges are annotated with the set of extents at which the access occurs.
+
+Each statement in the stencil IR is translated into a node in the field dataflow graph.
+The edges into the node are given by the arguments to the statement.
+The edge annotations are determined by the type of the respective arguments.
+
+!!! info "Note: Multi-line Statements"
+    A statement may contain multiple lines, each of which may access different fields.
+    The intermediate fields created inside the statement are not represented in the field dataflow graph.
+    Instead, they are treated as local to the resulting field.
+
+!!! info "Note: Field Versions"
+    Nodes with the same name but different versions are represented as multiple nodes in the field dataflow graph.
+    They may be merged later in the field placement process to ensure that the same field is not placed multiple times.
+
+???+ example "Example: Field Dataflow Graph"
+
+    In the following example (taken from the uvbke kernel), we create nodes for each variable#version.
+
+    ```mlir
+    %i16 = spst.statement (%arg1, %arg2) : 
+      field<[-1:128, 0:128, 0:80], {(-1, 0, 0), (0, 0, 0)}, f32>, 
+      field<[0:128, 0:128, 0:80], {(0, 0, 0)}, f32> 
+      -> field<[0:128, 0:128, 0:80], {(0, 0, 0)}, f32> 
+    {
+      %a = %arg1[-1, 0, 0] + %arg1[0, 0, 0] : f32
+      return %a * %arg2[0, 0, 0] : f32
+    }
+    %i19 = spst.statement (%arg0) :
+      field<[0:128, -1:128, 0:80], {(0, -1, 0), (0, 0, 0)}, f32> 
+      -> field<[0:128, 0:128, 0:80], {(0, 0, 0)}, f32>
+    {
+      return (%arg0[0, -1, 0] + %arg0[0, 0, 0]) : f32
+    }
+    %i21 = spst.statement (%i16, %i19) : 
+      field<[0:128, 0:128, 0:80], {(0, 0, 0)}, f32>, 
+      field<[0:128, 0:128, 0:80], {(0, 0, 0)}, f32> 
+      -> field<[0:128, 0:128, 0:80], {(0, 0, 0)}, f32> 
+    {
+      return (112.5 * (%i19 - %i16)) : f32
+    }
+    ```
+    There is an edge from %arg1 to %i16 and from %arg2 to %i16 with the respective extents, and so on.
+    The intermediate %a is not represented in the field dataflow graph.
+
+    ```mermaid
+
+    graph TD
+        %arg1[%arg1 \n -1:128, 0:128, 0:80] -- {(-1, 0, 0), (0, 0, 0)} --> %i16
+        %arg2[%arg2 \n 0:128, 0:128, 0:80] -- {(0, 0, 0)} --> %i16
+        %arg0[%arg0 \n 128, -1:128, 0:80] -- {(0, -1, 0), (0, 0, 0)} --> %i19
+        %i16[%i16 \n 0:128, 0:128, 0:80] -- {(0, 0, 0}) --> %i21
+        %i19[%i19 \n 0:128, 0:128, 0:80] -- {(0, 0, 0)} --> %i21[%i21 \n 0:128, 0:128, 0:80]
+    ```
+
+
+
 ## Lowering spst.program
 
 An spst.program is lowered to a Spatial IR kernel.

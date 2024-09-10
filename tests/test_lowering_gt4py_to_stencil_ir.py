@@ -19,12 +19,12 @@ class TestStencilIRParser(unittest.TestCase):
         assert irprogram.name == 'simple'
         assert [inp.name for inp in irprogram.inputs] == ['inp']
         assert [out.name for out in irprogram.outputs] == ['out']
-        assert len(irprogram.computations) == 1
+        assert len(irprogram.computations) == 2
 
         # Test computation
         comp = irprogram.computations[0]
         assert comp.schedule == sast.ComputationType.PARALLEL
-        assert comp.interval == (sast.Interval(0, None), sast.Interval(0, None), sast.Interval(0, None))
+        assert comp.interval == [sast.Interval(0, None), sast.Interval(0, None), sast.Interval(0, None)]
 
         # Test input/output collection
         assert [inp.name for inp in comp.inputs] == ['inp']
@@ -40,12 +40,12 @@ class TestStencilIRParser(unittest.TestCase):
         assert irprogram.name == 'unused'
         assert [inp.name for inp in irprogram.inputs] == ['inp']
         assert [out.name for out in irprogram.outputs] == ['out']
-        assert len(irprogram.computations) == 2
+        assert len(irprogram.computations) == 3
 
         # Test computation
         comps = irprogram.computations
         assert comps[0].schedule == sast.ComputationType.PARALLEL
-        assert comps[0].interval == (sast.Interval(0, None), sast.Interval(0, None), sast.Interval(0, None))
+        assert comps[0].interval == [sast.Interval(0, None), sast.Interval(0, None), sast.Interval(0, None)]
 
         # Test input/output collection
         assert [inp.name for inp in comps[0].inputs] == ['inp']
@@ -59,12 +59,12 @@ class TestStencilIRParser(unittest.TestCase):
         assert irprogram.name == 'intermediates_versioning'
         assert [inp.name for inp in irprogram.inputs] == ['inp']
         assert [out.name for out in irprogram.outputs] == ['out']
-        assert len(irprogram.computations) == 2
+        assert len(irprogram.computations) == 3
 
         # Test computation
         comps = irprogram.computations
         assert comps[0].schedule == sast.ComputationType.PARALLEL
-        assert comps[0].interval == (sast.Interval(0, None), sast.Interval(0, None), sast.Interval(0, None))
+        assert comps[0].interval == [sast.Interval(0, None), sast.Interval(0, None), sast.Interval(0, None)]
 
         # Test input/output collection
         assert [inp.name for inp in comps[0].inputs] == ['inp']
@@ -81,18 +81,18 @@ class TestStencilIRParser(unittest.TestCase):
         assert irprogram.name == 'intermediates_versioning_2'
         assert [inp.name for inp in irprogram.inputs] == ['inp']
         assert [out.name for out in irprogram.outputs] == ['out']
-        assert len(irprogram.computations) == 2
+        assert len(irprogram.computations) == 3
 
         # Test computation
         comps = irprogram.computations
         assert comps[0].schedule == sast.ComputationType.PARALLEL
-        assert comps[0].interval == (sast.Interval(0, None), sast.Interval(0, None), sast.Interval(0, None))
+        assert comps[0].interval == [sast.Interval(0, None), sast.Interval(0, None), sast.Interval(0, None)]
 
         # Test input/output collection
         assert [inp.name for inp in comps[0].inputs] == ['inp']
         assert [out.name for out in comps[0].outputs] == ['interim', 'tmp']
         assert [inp.name for inp in comps[1].inputs] == ['interim', 'tmp']
-        assert [out.name for out in comps[1].outputs] == ['out']
+        assert [out.name for out in comps[1].outputs] == ['out', 'tmp']
         extents = analysis.collect_extents(comps[0])
         assert next(iter(extents['inp'].values())) == {(0, -1, 0)}
         assert next(iter(extents['tmp'].values())) == {(1, 0, 0), (0, 0, 0)}
@@ -103,18 +103,46 @@ class TestStencilIRParser(unittest.TestCase):
         assert irprogram.name == 'intermediates_versioning_3'
         assert [inp.name for inp in irprogram.inputs] == ['inp']
         assert [out.name for out in irprogram.outputs] == ['out']
-        assert len(irprogram.computations) == 2
+        assert len(irprogram.computations) == 3
 
         # Test computation
         comps = irprogram.computations
         assert comps[0].schedule == sast.ComputationType.PARALLEL
-        assert comps[0].interval == (sast.Interval(0, None), sast.Interval(0, None), sast.Interval(0, None))
+        assert comps[0].interval == [sast.Interval(0, None), sast.Interval(0, None), sast.Interval(0, None)]
 
         # Test input/output collection
         assert comps[0].inputs == [sast.Identifier('inp')]
-        assert comps[0].outputs == [sast.Identifier('tmp', version=1)]
-        assert comps[1].inputs == [sast.Identifier('tmp', version=1)]
-        assert comps[1].outputs == [sast.Identifier('out', version=0)]
+        assert comps[0].outputs == [sast.Identifier('tmp', version=0)]
+        assert comps[1].inputs == [sast.Identifier('tmp', version=0)]
+        assert comps[1].outputs == [sast.Identifier('out', version=0), sast.Identifier('tmp', version=1)]
+
+    def test_versioning_in_ifelse(self):
+        program = self.gtfuncs['versioning_in_ifelse']
+        irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program, materialize=False)
+
+        comp = irprogram.computations[0]
+        assert comp.outputs == [sast.Identifier('out', version=1)]
+        
+        # If block (all version 0)
+        assert isinstance(comp.body[1], sast.IfBlock)
+        ifblock = comp.body[1]
+        assert ifblock.outputs == [sast.Identifier('out', version=2)]
+        stmt = ifblock.body[0]
+        assert stmt.outputs == [sast.Identifier('out', version=0)]
+        assert len(ifblock.else_ifs) == 1
+        ifelse_block = ifblock.else_ifs[0]
+        stmt2 = ifelse_block.body[0]
+        assert stmt2.outputs == [sast.Identifier('out', version=1)]
+        
+        # Successor to if block (version 1)
+        succ = comp.body[2]
+        assert isinstance(succ, sast.StatementBlock)
+        assert succ.outputs == [sast.Identifier('out', version=3)]
+
+        # Return
+        ret = comp.body[3]
+        assert isinstance(ret, sast.ReturnOp)
+        assert succ.outputs == [sast.Identifier('out', version=3)]
 
     def test_lower_mathcall(self):
         program = self.gtfuncs['simple_mathcall']
@@ -138,7 +166,7 @@ class TestStencilIRParser(unittest.TestCase):
         assert isinstance(comp.body[2], sast.IfBlock)
         ifblock = comp.body[2]
         assert len(ifblock.else_ifs) == 2
-        assert ifblock.outputs == [sast.Identifier('qstar')]
+        assert ifblock.outputs == [sast.Identifier('qstar', version=3)]
 
     def test_lower_gt4py_nested_if(self):
         program = self.gtfuncs['satadjust_specific_humidity_nestedif']
@@ -153,11 +181,14 @@ class TestStencilIRParser(unittest.TestCase):
         # Lower without a domain
         irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program)
         assert irprogram.inputs[1].name == 'in_field'
-        assert irprogram.operation_type.source[1].domain == sast.Cartesian(None, None, None)
+        assert irprogram.operation_type.source[1].domain == sast.Cartesian()
 
         # Lower with a domain
-        irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program, domain=(128, 128, 80))
-        assert irprogram.operation_type.source[1].domain == sast.Cartesian(132, 132, 80)
+        domain = (128, 128, 80)
+        irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program, domain=domain)
+        # Check input domain
+        result = sast.Cartesian(sast.Interval(-2, 130), sast.Interval(-2, 130), sast.Interval(0, 80))
+        assert irprogram.operation_type.source[1].domain == result
 
     def test_domain_inference_vertical(self):
         # Parse stencil samples file
@@ -167,16 +198,16 @@ class TestStencilIRParser(unittest.TestCase):
         # Lower without a domain
         irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program)
         assert irprogram.inputs[-1].name == 'wcon'
-        assert irprogram.operation_type.source[-1].domain == sast.Cartesian(None, None, None)
+        assert irprogram.operation_type.source[-1].domain == sast.Cartesian()
         assert irprogram.outputs[0].name == 'utens_stage'
-        assert irprogram.operation_type.destination[0].domain == sast.Cartesian(None, None, None)
+        assert irprogram.operation_type.destination[0].domain == sast.Cartesian()
 
         # Lower with a domain
         irprogram = gt4py_to_stencil_ir.lower_gt4py_to_stencil_ir(program, domain=(128, 128, 80))
         assert irprogram.inputs[-1].name == 'wcon'
-        assert irprogram.operation_type.source[-1].domain == sast.Cartesian(129, 128, 80)
+        assert irprogram.operation_type.source[-1].domain == sast.Cartesian.from_sequence((0, 129, 0, 128, 0, 80))
         assert irprogram.outputs[0].name == 'utens_stage'
-        assert irprogram.operation_type.destination[0].domain == sast.Cartesian(128, 128, 80)
+        assert irprogram.operation_type.destination[0].domain == sast.Cartesian.from_sequence((0, 128, 0, 128, 0, 80))
 
 
 # GT4Py stencils for the test
@@ -234,6 +265,16 @@ def output_overwrite(inp: Field3D, out: Field3D):
     with computation(PARALLEL), interval(...):
         tmp = inp + out
         out = tmp + 1
+
+def versioning_in_ifelse(inp: Field3D,
+                              out: Field3D):
+    with computation(PARALLEL), interval(...):
+        pred1 = inp < 233.16
+        if pred1:
+            out = inp
+        else:
+            out = inp + 1
+        out = out + inp
 
 
 # Adapted saturation adjustment subset code from PyFV3, see:

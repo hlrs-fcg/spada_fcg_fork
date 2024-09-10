@@ -35,6 +35,9 @@ identifier : "%" suffix_id ("#" digits)?
 !unknown_type : "UNKNOWN"
 ?standard_type : float_type | int_type | uint_type | bool_type | unknown_type
 
+// Any type
+any_type : "?"
+
 // Built-in enumerations
 !schedule_type : "PARALLEL" | "FORWARD" | "BACKWARD"
 ?enum_literal : schedule_type
@@ -45,18 +48,22 @@ identifier : "%" suffix_id ("#" digits)?
 dim_list: dim ("," dim)*
 
 interval_type : ("spst.")? "interval" "<" dim_or_end "," dim_or_end ">" | dim_or_end ":" dim_or_end
+computation_interval : "[" interval_type ("," interval_type)* "]"
 multi_interval_type : "[" interval_type ("," interval_type)* "]"
 
 extent_offset_tuple : "(" dim ("," dim)* ")"
-extent_tuple : extent_offset_tuple ("in" multi_interval_type)?
+extent_tuple : extent_offset_tuple
 extent_tuple_list : extent_tuple ("," extent_tuple)*
 extent_type : ("spst.")? "extent" "<" extent_tuple_list ">" | "{" extent_tuple_list "}"
 
-domain_type : ("spst.")? ("domain" | "cartesian") "<" dim_list ">" | "[" dim_list "]"
-field_type : ("spst.")? "field" "<" domain_type "," extent_type "," standard_type ">"
+domain_list : (interval_type | unknown_dim_literal) ("," (interval_type | unknown_dim_literal))*
+domain_type : ("spst.")? ("domain" | "cartesian") "<" domain_list ">" | "[" domain_list "]"
+view_type : ("spst.")? "view" "<" domain_type "," extent_type "," standard_type ">"
+field_type: ("spst.")? "field" "<" domain_type "," standard_type ">"
 
-?builtin_type : field_type | domain_type | extent_type | interval_type | multi_interval_type
-?field_or_scalar_type : field_type | standard_type
+
+?builtin_type : view_type | domain_type | extent_type | interval_type | multi_interval_type | computation_interval
+?field_or_scalar_type : view_type | field_type | standard_type | any_type
 
 ////////////////////////////////////////////////////
 // Operators and operator precedence
@@ -120,11 +127,14 @@ type_list : field_or_scalar_type ("," field_or_scalar_type)*
 type_info : ":" field_or_scalar_type ("->" field_or_scalar_type)?
 type_list_info : ":" type_list ("->" type_list)?
 
-attr : bare_id "=" (identifier | constant_literal | enum_literal | builtin_type)
+schedule_keyword : "schedule"
+interval_keyword : "interval"
+attr : schedule_keyword "=" schedule_type | interval_keyword "=" computation_interval
+
 attributes : "{" attr? ("," attr)* "}"
 
 // Define program
-program : id_list "=" "spst.program" ("@" bare_id)? params attributes type_list_info program_body
+program : id_list "=" "spst.program" ("@" bare_id)? params (attributes)? type_list_info program_body
 
 // Define computation
 computation : id_list "=" "spst.computation" params attributes type_list_info computation_body
@@ -137,7 +147,7 @@ statement : id_list "=" "spst.statement" params (attributes)? type_list_info sta
 subscript_slice : posneg_integer_literal ("," posneg_integer_literal)*
 value_expr : test     // Basic value type. See operator precedence for more information
 assign_expr : id_list "=" value_expr (";")? type_info?
-return_expr : ("spst.")? "return" value_expr  ("," value_expr)* (";")? type_info?
+return_expr : ("spst.")? "return" value_expr  ("," value_expr)* (";")? type_list_info?
 ?statement_contents : assign_expr | return_expr
 
 materialize_op : identifier "=" "spst.materialize" "(" identifier ")" type_info?
@@ -148,7 +158,7 @@ else_block : "else" computation_body
 
 ////////////////////////////////////////////////////
 // AST tree structure
-program_body : "{" computation* "}"
+program_body : "{" computation* return_expr "}"
 computation_body : "{" (statement | if_op | materialize_op | return_expr)* "}"
 statement_body : "{" statement_contents* "}"
 

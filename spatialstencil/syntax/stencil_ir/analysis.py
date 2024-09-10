@@ -41,8 +41,8 @@ class ExtentCollector(sast.NodeVisitor):
             self.visit(out)
 
     def visit_MaterializeOp(self, node: sast.MaterializeOp):
-        self.visit(node.value)
-        # Do not visit the result
+        # Skip value
+        pass
 
     def visit_Identifier(self, node: sast.Identifier):
         # If a bare identifier (i.e., no subscript) is used, the extent (0, 0, 0) should be added
@@ -51,7 +51,7 @@ class ExtentCollector(sast.NodeVisitor):
     def visit_Subscript(self, node: sast.Subscript):
         # If a subscript is found, add its subscript to the extents.
         # Make sure not to recursively visit into the subscript to avoid adding (0, 0, 0)
-        self.extents[node.value.name][self.flat_interval].add(node.subscript)
+        self.extents[node.value.name][self.flat_interval].add(tuple(node.subscript))
 
 
 def collect_extents(node: sast.Node) -> dict[str, set[tuple[int]]]:

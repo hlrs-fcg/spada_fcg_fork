@@ -3,27 +3,27 @@
  * See https://github.com/spcl/open-earth-compiler/blob/1e48dee6a1a021bc11d6621432450406349b3733/test/Examples/hdiffsa.mlir
  **/
 
-%arg2 = spst.program @hdiffsa(%arg0, %arg1, %arg3, %arg4) {} : 
-       field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-       field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-       field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-       field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
-    -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
+%res = spst.program @hdiffsa(%arg0, %arg1, %arg3, %arg4) {} :
+       field<domain<?, ?, ?>, f32>,
+       field<domain<?, ?, ?>, f32>,
+       field<domain<?, ?, ?>, f32>,
+       field<domain<?, ?, ?>, f32>
+    -> field<domain<?, ?, ?>, f32> {
    // This stencil contains one parallel computation block
    %arg2 = spst.computation(%arg0, %arg1, %arg3, %arg4) {
      schedule = PARALLEL,
-     interval = [interval<?, ?>, interval<?, ?>, interval<?, ?>]
-   } : field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-       field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-       field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-       field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
-    -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
+     interval = [interval<None, None>, interval<None, None>, interval<None, None>]
+   } : view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+       view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+       view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+       view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
+    -> view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
         // Stencil statements
         %9 = spst.statement(%arg0, %arg3, %arg4) {} : 
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
                 %15 = %arg0[0, 0, 0]
                 %16 = %arg0[-1, 0, 0] + %arg0[1, 0, 0]
                 %17 = -2.0 * %15
@@ -36,19 +36,19 @@
                 return %28
         }
         %10 = spst.statement(%arg0, %9) {} : 
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
                 %15 = %9[1, 0, 0] - %9[0, 0, 0]
                 %18 = %arg0[1, 0, 0] - %arg0[0, 0, 0]
                 %19 = %15 * %18
                 return 0 if (%19 > 0) else %15
         }
         %11 = spst.statement(%arg0, %9, %arg3) {} : 
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
                 %15 = %9[0, 1, 0] - %9[0, 0, 0]
                 %17 = %15 * %arg3[0, 0, 0]
                 %20 = %arg0[0, 1, 0] - %arg0[0, 0, 0]
@@ -56,16 +56,18 @@
                 return 0 if (%21 > 0) else %17
         }
         // Output
-        %arg2 = spst.statement(%arg0, %10, %11, %arg1) {} : 
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
-            field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
+        %arg2 = spst.statement(%arg0, %10, %11, %arg1) {} :
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>,
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
+            view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
                 %15 = %10[-1, 0, 0] - %10[0, 0, 0]
                 %18 = %11[0, -1, 0] - %11[0, 0, 0]
                 %23 = %arg0[0, 0, 0] + %arg1[0, 0, 0] * (%15 + %18)
                 return %23
         }
+        return %arg2
     }
+    return %arg2
 }

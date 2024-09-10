@@ -49,36 +49,6 @@ the following rules in this order:
     * Example: `i16 + u16 -> u16`
   * For the purposes of type promotion, `bool` is considered an unsigned integral 1-bit value.
 
-#### Domain types
-
-The abstract base domain type is
-```
-spst.domain
-```
-
-For every triple of positive integers `x, y, z`, there is a domain sub-type
-
-```
-spst.cartesian<x, y, z>
-```
-
-If one or more dimensions of the domain are unknown,
-they may be replaced with a `?` placeholder:
-```
-spst.cartesian<?, ?, ?>
-spst.cartesian<x, ?, ?>
-spst.cartesian<x, y, ?>
-...
-```
-The purpose of placeholders is to allow type-inference to deduce the
-domain sizes. To lower the representation, we require all dimensions
-of the iteration domain have been inferred at compile time.
-
-!!! abstract "Domain Shorthand Notation"
-    When clear from context, the shorthand notation `[x, y, z]` may be used instead.
-
-    For example, `[1, ?, 3]` is equivalent to `spst.cartesian<1, ?, 3>`
-
 #### Interval Types
 
 An interval type defines an inclusive lower bound and exclusive upper bound for an iteration. Both upper and lower bound are optional.
@@ -109,6 +79,47 @@ After type-inference all placeholders must have been removed.
     For any `a` and `b`, `a:b` is equivalent to `spst.interval<a, b>`
     
     For example, `0:None` is equivalent to `spst.interval<0, None>`
+
+
+#### Domain types
+
+The abstract base domain type is
+```
+spst.domain
+```
+
+For every triple of interval types `x`, `y`, `z`, there is a domain sub-type
+
+```
+spst.cartesian<x, y, z>
+```
+
+If one or more dimensions of the domain are unknown,
+they may be replaced with a `?` placeholder:
+```
+spst.cartesian<?, ?, ?>
+spst.cartesian<x, ?, ?>
+spst.cartesian<x, y, ?>
+...
+```
+The purpose of placeholders is to allow type-inference to deduce the
+domain sizes. To lower the representation, we require all dimensions
+of the iteration domain have been inferred at compile time.
+
+!!! abstract "Domain Shorthand Notation"
+    When clear from context, the shorthand notation `[x, y, z]` may be used instead.
+
+    For example, `[0:1, ?, -1:3]` is equivalent to
+    `spst.cartesian<spst.interval<0, 1>, spst.interval<?, ?>, spst.interval<-1, 3>>`
+
+
+A cartesian domain represents a set of grid points in 3D space.
+Notably, its coordinates can be negative to easily represent padded domains.
+
+Every domain that represents a sub-set of another domain is a sub-type of the super-domain.
+For example, the domain `[0:1, 0:1, 0:1]` is a sub-type of `[0:2, -2:2, ?]`.
+
+The semantics of a domain is that it represents the set of vectors in 3D space.
 
 #### Extent types
 
@@ -164,6 +175,9 @@ As such, values of type `E_sub` may be consumed everywhere that values of type `
     When clear from context, the shorthand notation `{(i, j, k) in [is:ie, js:je, ks:ke], ...}` 
     or `{(i, j, k), ...}` may be used instead.
 
+The semantics of an extent is that it represents a set of vectors in 3D space,
+where each vector is a relative offset to the current grid point.
+
 #### Field Types
 
 For every domain type D, scalar type T, and extent type E,
@@ -183,6 +197,7 @@ The domains and scalar types must match.
     For example, `field<[x, y, z], {(0, 0, 0)}, f32>`
     is equivalent to `spst.field<spst.cartesian<x, y, z>, spst.extent<(0, 0, 0)>, f32>`
     
+
 #### Schedule Type
 
 There are three possible schedules
@@ -239,15 +254,25 @@ The output type's extent `E_0` defines which values are available for subsequent
 In particular, if every output value is computed only once at `(0, 0, 0)`, then the extent is ` spst.extent<(0, 0, 0)>`.
 If also the right-neighbor is available, then the extent is ` spst.extent<(0, 0, 0), (0, 1, 0)>`.
 
-The expression may only contain accesses to the fields `in_1, ... in _n` at the allowed extents.
-For any field, only accesses that are within their extent type are permitted within the statements.
-Which accesses are permitted is relative to the output's extent type.
-Specifically, every access to `(i, j, k)` is added to every output extent `(x, y, z)`
-and results in an access to `(i+x, j+y, k+z)`.
 
-This corresponds to a Minkovski sum of the accesses of the statements and the accesses of the output's extent type._
-The arguments to the statement must be a sub-type of the union of all these accesses.
-Specifically, accessing a field with placeholders in their extent type always type checks.
+The expression may only contain accesses to the fields `in_1, ... in _n` at the allowed extents:
+!!! info "Definition: Extent Type Compatibility"
+    For any field, only accesses that are within their extent type are permitted within the statements.
+    Which accesses are permitted is relative to the output's extent type.
+    Specifically, every access to `(i, j, k)` is added to every output extent `(x, y, z)`
+    and results in an access to `(i+x, j+y, k+z)`.
+
+    This corresponds to a Minkowski sum of the accesses of the statements and the accesses of the output's extent type.
+    The arguments to the statement must be a sub-type of the union of all these accesses.
+    Specifically, accessing a field with placeholders in their extent type always type checks.
+
+The domains of the inputs must be compatible with the domains of the output:
+
+!!! info "Definition: Domain Compatibility"
+    Consider the domain $D$ of an input field and the domain $D'$ of the output field,
+    some input extent $E$ and output extent $E'$,
+    viewing the domains and extents as sets of vectors.
+    Then, we must have that $D \oplus E \supseteq D' \oplus E'$, where $\oplus$ is the Minkowski sum.
 
 ### spst.computation
 

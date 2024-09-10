@@ -11,26 +11,28 @@ class TestStencilIRParser(unittest.TestCase):
         """
         src = '''
         %out = spst.program (%inp) {} : 
-          field<domain<?, ?, ?>, extent<(?, ?, ?)>, bool> ->
-          field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
+          field<domain<?, ?, ?>, bool> ->
+          field<domain<?, ?, ?>, f32> {
             %out = spst.computation(%inp) {
               schedule = PARALLEL,
               interval = [interval<?, ?>, interval<?, ?>, interval<?, ?>]
-            } : field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {                    
-                    %b = spst.if (%inp) : field<domain<?, ?, ?>, extent<(?, ?, ?)>, bool> -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
+            } : view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {                    
+                    %b = spst.if (%inp) : view<domain<?, ?, ?>, extent<(?, ?, ?)>, bool> -> view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
                         spst.return %inp
                     } elif (%arg1) {
-                        spst.return %inp + 1 : field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32>
+                        spst.return %inp + 1
                     } else {
-                        spst.return 0;
+                        spst.return 0
                     }
-                    %out = spst.if (%b) : field<domain<?, ?, ?>, extent<(?, ?, ?)>, bool> -> field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
+                    %out = spst.if (%b) : view<domain<?, ?, ?>, extent<(?, ?, ?)>, bool> -> view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
                         spst.return %inp
                     } else {
-                        spst.return 0;
+                        spst.return 0
                     }
+                    spst.return %out
             }
+            spst.return %out
         }
         '''
         program = parser.parse_string(src)
@@ -58,19 +60,21 @@ class TestStencilIRParser(unittest.TestCase):
         """
         src = '''
         %out = spst.program (%inp) {} : 
-          field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
-          field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {
+          field<domain<?, ?, ?>, f32> ->
+          field<domain<?, ?, ?>, f32> {
             %out = spst.computation(%inp) {
               schedule = PARALLEL,
               interval = [interval<?, ?>, interval<?, ?>, interval<?, ?>]
-            } : field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
-                field<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {                    
+            } : view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> ->
+                view<domain<?, ?, ?>, extent<(?, ?, ?)>, f32> {                    
                     %out = spst.statement (%inp) {} : 
-                      spst.field<spst.cartesian<?, ?, ?>, spst.extent<(?, ?, ?)>, f32> -> 
-                      spst.field<spst.cartesian<?, ?, ?>, spst.extent<(?, ?, ?)>, f32> {
+                      spst.view<spst.cartesian<?, ?, ?>, spst.extent<(?, ?, ?)>, f32> -> 
+                      spst.view<spst.cartesian<?, ?, ?>, spst.extent<(?, ?, ?)>, f32> {
                           spst.return sqrt(%inp) : f32
-                    }  
+                    }
+                    spst.return %out
             }
+            spst.return %out
         }
         '''
         program = parser.parse_string(src)
