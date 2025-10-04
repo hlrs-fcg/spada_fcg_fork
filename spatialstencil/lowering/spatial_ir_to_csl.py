@@ -4,6 +4,7 @@ Converts routed Spatial IR code to Cerebras CSL.
 
 from collections import defaultdict
 import copy
+import functools
 from io import StringIO
 from spatialstencil.syntax.spatial_ir import irnodes as spir, canonicalization, analysis, passes
 from spatialstencil.syntax.spatial_ir.canonicalization import PEBlock, Rectangle
@@ -43,7 +44,6 @@ def lower_spatial_ir_to_csl(kernel: spir.Kernel,
     kernel = canonicalization.canonicalize_phases(kernel)
     kernel = canonicalization.reduce_streams(kernel)
     kernel = canonicalization.inline_phases(kernel)
-    print(kernel.as_ir())
 
     # Check if we are streaming or using memcpy mode
     use_memcpy_mode = analysis.kernel_uses_memcpy_mode(kernel)
@@ -73,11 +73,14 @@ def lower_spatial_ir_to_csl(kernel: spir.Kernel,
     csl_codes: list[CodeFile] = []
     routing_instructions: list[str] = []
     color_maps = []
+
+    channel_to_color = _collect_colors_globally(kernel, rectangles, use_memcpy_mode)
+
     for rect in rectangles:
         # Create a unique CSL code file based on rectangle offset
         csl_name = f'code_{rect.x_range[0]}_{rect.y_range[0]}.csl'
         rect_code, color_map = generate_rectangle(kernel, rect, routing_instructions, scalar_arguments, use_memcpy_mode,
-                                                  stream_rects, disable_benchmarking)
+                                                  stream_rects, channel_to_color, disable_benchmarking)
         color_maps.append(color_map)
         csl_codes.append(CodeFile(csl_name, rect_code))
 
@@ -161,7 +164,7 @@ const memcpy = @import_module("<memcpy/get_params>", .{{
         layout_code.write(f'''
     for (@range(i16, {xb}, {xe}, {xs})) |pe_x| {{
         for (@range(i16, {yb}, {ye}, {ys})) |pe_y| {{
-            @set_tile_code(pe_x, pe_y, "{code_filename}", .{{ .memcpy_params = memcpy.get_params(pe_x) }});
+            @set_tile_code(pe_x, pe_y, "{code_filename}", .{{ .memcpy_params = memcpy.get_params(pe_x), .pe_x = pe_x, .pe_y = pe_y }});
 {routes_per_rectangle[(xb, yb)]}
         }}
     }}\n''')
@@ -174,8 +177,15 @@ const memcpy = @import_module("<memcpy/get_params>", .{{
     # Emit symbol names for arguments and kernel
     layout_code.write('\n    // Arguments\n')
     for argument in kernel.arguments:
+        dtype = argument.dtype
+        if isinstance(argument.dtype, spir.ArrayType) and isinstance(argument.dtype.base_type, spir.StreamType):
+            pass
+        elif isinstance(argument.dtype, spir.StreamType):
+            # Support scalar streams
+            dtype = spir.ArrayType(argument.dtype, [1])
+
         layout_code.write(
-            f'    @export_name("{argument.identifier.name}", {dtype_as_csl(argument.dtype, export=True)}, true);\n')
+            f'    @export_name("{argument.identifier.name}", {dtype_as_csl(dtype, export=True)}, true);\n')
 
     # Generate benchmarking code
     if not disable_benchmarking:
@@ -197,6 +207,7 @@ def generate_rectangle(kernel: spir.Kernel,
                        scalar_arguments: list[str],
                        use_memcpy_mode: bool,
                        stream_extents: analysis.StreamExtents,
+                       channel_to_color: dict[int, int],
                        disable_benchmarking: bool = False) -> tuple[str, dict[str, int]]:
     # Code generation carets
     header = StringIO()
@@ -205,6 +216,8 @@ def generate_rectangle(kernel: spir.Kernel,
 
     header.write("""
 param memcpy_params: comptime_struct;
+param pe_x: i16;
+param pe_y: i16;
 const sys_mod = @import_module("<memcpy/memcpy>", memcpy_params);
 """)
 
@@ -221,9 +234,13 @@ const sys_mod = @import_module("<memcpy/memcpy>", memcpy_params);
     #     * Make (unique) DSDs out of memory accesses in compute blocks
     #     * Generate routing instructions from dataflow blocks
     #     * Make unique colors out of streams, reduce number of streams
-    color_map = _collect_and_allocate_colors(rect, header, kernel, use_memcpy_mode, stream_extents)
+    color_map = _allocate_colors(rect, header, kernel, use_memcpy_mode, stream_extents, channel_to_color)
     _collect_and_generate_fields(rect.metadata.place, header, footer, kernel, use_memcpy_mode)
     dtypes = _collect_identifier_types(rect.metadata, kernel.arguments)
+
+    # Preprocess potential data tasks to convert to loops if possible
+    if use_memcpy_mode:
+        canonicalization.convert_foreach_data_tasks_to_loops(rect, dtypes, kernel.arguments)
 
     # Convert compute block subgraphs into tasks:
     #    * Make task DAG out of computations
@@ -239,10 +256,26 @@ const sys_mod = @import_module("<memcpy/memcpy>", memcpy_params);
     dsds = _collect_unique_dsds(tasks, rect.metadata, header, dtypes, kernel, use_memcpy_mode)
 
     # Generate each task
-    max_task_id = -1
+    max_task_id = csl.LOCAL_TASK_IDS[0] - 1
     for i, task in enumerate(tasks):
         prefix = "d" if task.task_type == 'data' else ""
-        current_code.write(f'const {prefix}task_{i}_id = @get_{task.task_type}_task_id({task.task_id});\n')
+
+        if task.task_type == "local":
+            current_code.write(f'const {prefix}task_{i}_id = @get_local_task_id({task.task_id});\n')
+        elif task.task_type == "data":
+            stmt = rect.metadata.compute.statements[task.statements[0]]
+            assert isinstance(stmt, spir.ForeachStatement)
+            sname = stmt.receive_stream.stream_name
+            if isinstance(sname, spir.ArraySlice):
+                sname = sname.array
+            if sname.as_ir() + "_H2D" in color_map:
+                color = color_map[sname.as_ir() + "_H2D"]
+            elif sname.as_ir() + "_IN" in color_map:
+                color = color_map[sname.as_ir() + "_IN"]
+            else:
+                raise ValueError(f'Cannot find color for stream "{sname.as_ir()}" in data task {i}')
+            current_code.write(f'const {prefix}task_{i}_id = @get_data_task_id(@get_color({color}));\n')
+
         max_task_id = max(max_task_id, task.task_id)
         if task.task_type == 'local':
             current_code.write(f'task task_{task.task_id}() void {{\n')
@@ -310,21 +343,86 @@ task exit_task() void {{
     return header.getvalue() + '\n' + current_code.getvalue() + '\n' + footer.getvalue(), color_map
 
 
-def _collect_and_allocate_colors(rect: Rectangle[PEBlock], header: StringIO, kernel: spir.Kernel, use_memcpy_mode: bool,
-                                 stream_extents: analysis.StreamExtents) -> dict[str, int]:
+def _collect_colors_globally(kernel: spir.Kernel, rectangles: list[Rectangle[PEBlock]],
+                             use_memcpy_mode: bool) -> dict[str, int]:
     """
-    Returns a mapping of each stream to a CSL color, and adds an allocation there.
+    Returns a mapping of each channel to a CSL color.
+
+    :param kernel: The kernel to use for argument colors.
+    :param use_memcpy_mode: Whether to use memcpy mode.
+    :return: Dictionary mapping each channel to its respective color.
+    """
+    channel_to_color: dict[int, int] = {}
+    color_offset: int = 0
+
+    # Collect colors from kernel arguments if in streaming mode
+    if not use_memcpy_mode:
+        for arg in kernel.arguments:
+            if arg.compiletime:
+                continue
+            is_input = not arg.writeonly
+            is_output = not arg.readonly
+
+            if ((isinstance(arg.dtype, spir.StreamType) and arg.dtype.buffer_size is None) or
+                (isinstance(arg.dtype, spir.ArrayType) and isinstance(arg.dtype.base_type, spir.StreamType) and
+                 arg.dtype.base_type.buffer_size is None)):
+
+                if is_input:
+                    color_offset += 1
+                if is_output:
+                    color_offset += 1
+
+    # Collect, for each rectangle, which channels are being read from and written to
+    channel_is_read = set()
+    channel_is_written = set()
+    for rect in rectangles:
+        sends_recvs = analysis.sends_and_receives(rect.metadata.compute)
+        for stream_decl in rect.metadata.dataflow.statements:
+            if stream_decl.stream_name not in sends_recvs:
+                continue  # Unused stream
+            outbound, inbound = sends_recvs[stream_decl.stream_name]
+            if outbound:
+                channel_is_written.add(stream_decl.routing.channel)
+            if inbound:
+                channel_is_read.add(stream_decl.routing.channel)
+
+    # Allocate colors for each channel
+    max_channel = max(channel_is_read.union(channel_is_written), default=-1)
+    for channel in range(max_channel + 1):
+        if channel in channel_to_color:
+            continue
+        if channel not in channel_is_read and channel not in channel_is_written:
+            continue  # Unused channel
+        if color_offset >= len(csl.COLORS):
+            raise SyntaxError(
+                f'Too many communication channels allocated for CSL: channel {channel} cannot be assigned a color')
+        if channel in channel_is_written:
+            channel_to_color[channel] = csl.COLORS[color_offset]
+            color_offset += 1
+        if channel in channel_is_read:
+            if channel not in channel_to_color:
+                channel_to_color[channel] = csl.COLORS[color_offset]
+                color_offset += 1
+
+    return channel_to_color
+
+
+def _allocate_colors(rect: Rectangle[PEBlock], header: StringIO, kernel: spir.Kernel, use_memcpy_mode: bool,
+                     stream_extents: analysis.StreamExtents, channel_to_color: dict[int, int]) -> dict[str, int]:
+    """
+    Creates a mapping of each stream to a CSL color, and adds an allocation there.
 
     :param rect: The rectangle to use.
     :param header: A code generator stream for a file's header (where the declarations are).
     :param kernel: The kernel to use for argument colors.
     :param use_memcpy_mode: Whether to use memcpy mode.
     :param stream_extents: The stream extents to use for argument color assignment.
+    :param channel_to_color: A mapping of Spatial IR channels to colors to use for routed streams.
     :return: Dictionary mapping each stream to its respective color
     """
     result: dict[str, int] = {}
     wrote_header: bool = False
-    color_offset: int = 0
+    channel_offset: int = 0
 
     # Collect colors from kernel arguments if in streaming mode
     if not use_memcpy_mode:
@@ -355,23 +453,23 @@ def _collect_and_allocate_colors(rect: Rectangle[PEBlock], header: StringIO, ker
                 # If the argument is a stream, allocate a color for h2d and d2h transfers
                 name = name_to_csl(arg.identifier)
                 if not is_output:
-                    result[name + "_H2D"] = csl.COLORS[color_offset]
-                    color_offset += 1
+                    result[name + "_H2D"] = csl.COLORS[channel_offset]
+                    channel_offset += 1
                     header.write(f'const {name}_H2D_color: color = @get_color({result[name + "_H2D"]});\n')
                 else:
-                    result[name + "_D2H"] = csl.COLORS[color_offset]
-                    color_offset += 1
+                    result[name + "_D2H"] = csl.COLORS[channel_offset]
+                    channel_offset += 1
                     header.write(f'const {name}_D2H_color: color = @get_color({result[name + "_D2H"]});\n')
 
     if rect.metadata.dataflow.statements:
         header.write('\n// Colors\n')
 
-    channel_to_in_color: dict[int, int] = {}
-    channel_to_out_color: dict[int, int] = {}
     sends_recvs = analysis.sends_and_receives(rect.metadata.compute)
     # Collect colors from streams in dataflow
     for stream_decl in rect.metadata.dataflow.statements:
         name = name_to_csl(stream_decl.stream_name)
+        cdir = 'x' if stream_decl.dx.eval() != 0 else 'y'
+
         if stream_decl.stream_name not in sends_recvs:
             continue  # Unused stream
         outbound, inbound = sends_recvs[stream_decl.stream_name]
@@ -382,40 +480,23 @@ def _collect_and_allocate_colors(rect: Rectangle[PEBlock], header: StringIO, ker
             raise SyntaxError(f'"auto" stream channel found in stream "{name}". All streams must be concretized prior '
                               'to lowering to CSL')
 
-        if inbound:
-            # Register or lookup channel in color map
-            if stream_decl.routing.channel in channel_to_in_color:
-                this_color = channel_to_in_color[stream_decl.routing.channel]
-            else:
-                this_color = color_offset
-                color_offset += 1
-                channel_to_in_color[stream_decl.routing.channel] = this_color
+        if outbound:
+            # Look up channel in color map
+            this_color = channel_to_color[channel_offset + stream_decl.routing.channel]
 
-            if this_color not in csl.COLORS:
-                raise SyntaxError(f'Too many communication channels allocated for CSL: stream {name} has channel '
-                                  f'{stream_decl.routing.channel} (inbound)')
+            # Add to mapping
+            result[name + "_OUT"] = csl.COLORS[this_color]
+            # Declare color
+            header.write(f'const {name}_color_out: color = @get_color({result[name + "_OUT"]});\n')
+
+        if inbound:
+            # Look up channel in color map
+            this_color = channel_to_color[channel_offset + stream_decl.routing.channel]
 
             # Add to mapping
             result[name + "_IN"] = csl.COLORS[this_color]
             # Declare color
             header.write(f'const {name}_color_in: color = @get_color({result[name + "_IN"]});\n')
-
-        if outbound:
-            # Register or lookup channel in color map
-            if stream_decl.routing.channel in channel_to_out_color:
-                this_color = channel_to_out_color[stream_decl.routing.channel]
-            else:
-                this_color = color_offset
-                color_offset += 1
-                channel_to_out_color[stream_decl.routing.channel] = this_color
-
-            if this_color not in csl.COLORS:
-                raise SyntaxError(f'Too many communication channels allocated for CSL: stream {name} has channel '
-                                  f'{stream_decl.routing.channel} (outbound)')
-            # Add to mapping
-            result[name + "_OUT"] = csl.COLORS[this_color]
-            # Declare color
-            header.write(f'const {name}_color_out: color = @get_color({result[name + "_OUT"]});\n')
 
     if result:
         header.write('\n')
@@ -440,17 +521,19 @@ def _collect_and_generate_fields(place: spir.PlaceBlock, header: StringIO, foote
     # Add arguments to header and footer
     if use_memcpy_mode:
         for argument in kernel.arguments:
+            name = name_to_csl(argument.identifier)
             if isinstance(argument.dtype, spir.ArrayType) and isinstance(argument.dtype.base_type, spir.StreamType):
                 assert argument.dtype.base_type.buffer_size is not None, f'Argument {argument.identifier.name} has no buffer size defined'
-                name = name_to_csl(argument.identifier)
                 # Ignore array size in arguments, as they are spatially mapped
                 size = argument.dtype.base_type.buffer_size.eval()
+                ptrtype = dtype_as_csl(argument.dtype, export=True)
             else:
                 size = 1
+                ptrtype = dtype_as_csl(spir.ArrayType(argument.dtype, [1]), export=True)
 
             header.write(f'var {name}: [{size}]'
                          f'{dtype_as_csl(argument.dtype.element_type.element_type.element_type)};\n')
-            header.write(f'var __{name}_ptr: {dtype_as_csl(argument.dtype, export=True)} = &{name};\n')
+            header.write(f'var __{name}_ptr: {ptrtype} = &{name};\n')
             footer.write(f'    @export_symbol(__{name}_ptr, "{name}");\n')
     else:
         # TODO(later): Some scaffolding for streaming indices within rectangle code
@@ -563,7 +646,7 @@ def _collect_unique_dsds(
     stream_args: set[spir.Identifier] = set()
     for df_statement in rect.dataflow.statements:
         if isinstance(df_statement, spir.RelativeStreamDeclaration):
-            buffer_size = df_statement.dtype.buffer_size or 1
+            buffer_size = df_statement.dtype.buffer_size or None
             stream_candidates[df_statement.stream_name.as_ir()] = (df_statement, buffer_size)
     for place_statement in rect.place.statements:
         if isinstance(place_statement, spir.FieldDeclaration):
@@ -591,6 +674,8 @@ def _collect_unique_dsds(
 
     # Find used DSDs in compute block
     # TODO: Infer input/output queue ID based on concurrency
+    input_queue_id_ctr = 0
+    output_queue_id_ctr = 0
     for stmt in rect.compute.statements:
         # Find out if compute block uses this stream for receive/send
         if isinstance(stmt, (spir.ReceiveStatement, spir.SendStatement)):
@@ -603,17 +688,39 @@ def _collect_unique_dsds(
                 dsd_type = cslstruct.DSDType.fabin
                 dsd_name = f'{name_to_csl(stream_name)}_in_dsd'
                 extents = stream_candidates[stream_name.as_ir()][1]
-                extents = extents if isinstance(extents, int) else extents.eval()
+                if extents is not None:  # Use buffer size
+                    extents = extents if isinstance(extents, int) else extents.eval()
+                else:  # Infer from receive count
+                    if isinstance(dtypes[stmt.local_array], spir.ScalarType):
+                        # Scalar receive
+                        extents = 1
+                    else:
+                        extents = functools.reduce(
+                            lambda a, b: a * b,
+                            [s.eval() if not isinstance(s, int) else s for s in dtypes[stmt.local_array].shape], 1)
                 fabric_color = f'{name_to_csl(stream_name)}_color'
-                dsd = cslstruct.FabricDSD(dsd_type, fabric_color, extents, 1)
+                dsd = cslstruct.FabricDSD(dsd_type, fabric_color, extents,
+                                          csl.INPUT_QUEUE_IDS[input_queue_id_ctr % len(csl.INPUT_QUEUE_IDS)])
+                input_queue_id_ctr += 1
                 dsds[stream_name.as_ir()].append((dsd_name, dsd))
             elif isinstance(stmt, spir.SendStatement) and stream_name.as_ir() in stream_candidates:
                 dsd_type = cslstruct.DSDType.fabout
                 dsd_name = f'{name_to_csl(stream_name)}_out_dsd'
                 extents = stream_candidates[stream_name.as_ir()][1]
-                extents = extents if isinstance(extents, int) else extents.eval()
+                if extents is not None:  # Use buffer size
+                    extents = extents if isinstance(extents, int) else extents.eval()
+                else:  # Infer from send count
+                    if isinstance(dtypes[stmt.local_array], spir.ScalarType):
+                        # Scalar send
+                        extents = 1
+                    else:
+                        extents = functools.reduce(
+                            lambda a, b: a * b,
+                            [s.eval() if not isinstance(s, int) else s for s in dtypes[stmt.local_array].shape], 1)
                 fabric_color = f'{name_to_csl(stream_name)}_color'
-                dsd = cslstruct.FabricDSD(dsd_type, fabric_color, extents, 1)
+                dsd = cslstruct.FabricDSD(dsd_type, fabric_color, extents,
+                                          csl.OUTPUT_QUEUE_IDS[output_queue_id_ctr % len(csl.OUTPUT_QUEUE_IDS)])
+                output_queue_id_ctr += 1
                 dsds[stream_name.as_ir()].append((dsd_name, dsd))
 
             if isinstance(stmt, spir.SendStatement) and stream_name.as_ir() in stream_candidates:
@@ -658,10 +765,21 @@ def _collect_unique_dsds(
                     else:
                         dsd_name = f'{name_to_csl(stream_name)}_in_dsd'
                         extents = stream_candidates[stream_name.as_ir()][1]
-                        extents = extents if isinstance(extents, int) else extents.eval()
+                        if extents is not None:  # Use buffer size
+                            extents = extents if isinstance(extents, int) else extents.eval()
+                        else:  # Infer from foreach range
+                            if len(stmt.parameter_range) != 1:
+                                raise SyntaxError(
+                                    f'Expected one-dimensional foreach range for stream "{stream_name.as_ir()}", got {stmt.parameter_range}.\n  In line {stmt.lineinfo}'
+                                )
+                            start, end, step = stmt.parameter_range[0].start, stmt.parameter_range[
+                                0].stop, stmt.parameter_range[0].step
+                            extents = (end.eval() - start.eval()) // (step.eval() if step is not None else 1)
                         fabric_color = f'{name_to_csl(stream_name)}_color'
-                        dsd = cslstruct.FabricDSD(cslstruct.DSDType.fabin, fabric_color, extents, 1)
+                        dsd = cslstruct.FabricDSD(cslstruct.DSDType.fabin, fabric_color, extents,
+                                                  csl.INPUT_QUEUE_IDS[input_queue_id_ctr % len(csl.INPUT_QUEUE_IDS)])
                         dsds[stream_name.as_ir()].append((dsd_name, dsd))
+                        input_queue_id_ctr += 1
 
         def _visit_dsd(substmt, in_foreach_or_map):
             if (isinstance(substmt, spir.Identifier) and substmt.as_ir() in array_candidates and

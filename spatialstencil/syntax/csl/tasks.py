@@ -157,7 +157,8 @@ def create_csl_tasks(completion_dag: nx.DiGraph, block: spir.ComputeBlock, dtype
         # Create a new task
         task_id = len(result)
         cnode_to_task_id[cnode] = task_id
-        current_task = CSLTask(task_id, this_task_type, [], [], blocked=(indeg > 1))
+        current_task = CSLTask(
+            task_id, this_task_type, [], [], blocked=((indeg > 1) or (this_task_type == 'data' and indeg > 0)))
         result.append(current_task)
         statement_id_to_task_id[cnode.statement_id] = task_id
 
@@ -209,7 +210,7 @@ def create_csl_tasks(completion_dag: nx.DiGraph, block: spir.ComputeBlock, dtype
             etype = InterTaskEdge.SEQUENCE
         else:
             # Check if task already has an activate edge
-            if succ_task in task_has_activate:
+            if succ_task in task_has_activate or result[succ_task].task_type == 'data':
                 etype = InterTaskEdge.UNBLOCK
             else:
                 etype = InterTaskEdge.ACTIVATE
@@ -293,8 +294,11 @@ def create_csl_tasks(completion_dag: nx.DiGraph, block: spir.ComputeBlock, dtype
         if task.statements[-1] != "TERMINATOR" and task.outgoing[-1][0] != -1:
             task.statements.append("TERMINATOR")
             task.outgoing.append((-1, InterTaskEdge.ACTIVATE if i == 0 else InterTaskEdge.UNBLOCK))
-        elif task.outgoing[-1][0] == -1 and i != 0:  # Modify existing UNBLOCK edge if there is more than one sink
-            task.outgoing[-1] = (-1, InterTaskEdge.UNBLOCK)
+        elif task.outgoing[-1][0] == -1:  # Modify existing UNBLOCK edge if there is more than one sink
+            if i == 0 and task.outgoing[-1][1] != InterTaskEdge.ACTIVATE:
+                task.outgoing[-1] = (-1, InterTaskEdge.ACTIVATE)
+            elif i != 0:
+                task.outgoing[-1] = (-1, InterTaskEdge.UNBLOCK)
 
     return result
 

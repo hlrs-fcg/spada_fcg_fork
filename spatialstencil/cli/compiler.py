@@ -3,6 +3,7 @@ import itertools
 import os
 from spatialstencil.lowering import spatial_ir_to_csl as s2c
 from spatialstencil.syntax.spatial_ir import parser, passes, analysis, irnodes as spa, canonicalization
+from spatialstencil.syntax.csl import constants as csl
 from spatialstencil.syntax.common import serialization
 import subprocess
 
@@ -41,7 +42,8 @@ def compile_spatial_ir(input_file: str, output_folder: str, param: list[str], of
                          'Please provide values for them using --param option. For example: -p I=128 -p J=128 -p K=80')
 
     # Concretize parameters and propagate constant expressions
-    print("Concretizing parameters:", kernel_parameters)
+    if kernel_parameters:
+        print("Concretizing parameters:", kernel_parameters)
     kernel = passes.concretize_parameters(kernel, **kernel_parameters)
     kernel = passes.constexpr_propagation(kernel)
 
@@ -53,11 +55,6 @@ def compile_spatial_ir(input_file: str, output_folder: str, param: list[str], of
             arg.dtype.shape = [dim.eval() if isinstance(dim, spa.Expression) else int(dim) for dim in arg.dtype.shape]
         # Check if the argument is a stream and has a memcpy mode
         if isinstance(arg.dtype, spa.ArrayType) and isinstance(arg.dtype.base_type, spa.StreamType):
-            # Ensure all stream arguments are readonly or writeonly
-            if not (arg.readonly or arg.writeonly):
-                raise ValueError(f"Argument '{arg.identifier.name}' must be either readonly or writeonly, "
-                                 f"but it is neither. Please check the kernel definition.")
-
             if arg.dtype.base_type.buffer_size is not None:
                 if using_memcpy_mode is None:
                     using_memcpy_mode = True
@@ -109,9 +106,11 @@ def compile_spatial_ir(input_file: str, output_folder: str, param: list[str], of
         if arg_id not in stream_extents.extents:
             raise ValueError(f"Argument '{argname}' does not have a detected extent. "
                              "Please ensure the argument is properly defined in the kernel.")
-        arg["rect_offset"] = [
+        arg["rect_offset_used"] = [
             stream_extents.extents[arg_id][0].x_range[0], stream_extents.extents[arg_id][0].y_range[0]
         ]
+        arg["column_major"] = stream_extents.is_transposed[arg_id]
+        arg["rect_offset"] = list(next(iter(stream_extents.offsets[arg_id])))
     metadata = {
         "kernel_name": kernel.name,
         "inputs": input_args,
@@ -129,7 +128,7 @@ def compile_spatial_ir(input_file: str, output_folder: str, param: list[str], of
         return
 
     cslc_command = [
-        'cslc', 'layout.csl', f'--fabric-dims={xend},{yend}',
+        'cslc', f'--arch={csl.ARCH}', 'layout.csl', f'--fabric-dims={xend},{yend}',
         f'--fabric-offsets={offset_x + xbegin},{offset_y + ybegin}', '--memcpy', f'--channels={memcpy_channels}'
     ]
     print("Compiling with command:", ' '.join(cslc_command))
