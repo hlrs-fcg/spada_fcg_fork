@@ -18,7 +18,10 @@ UniqueDSDDict = dict[str, list[tuple[str, cslstruct.DataStructureDescriptor]]]
 
 def lower_spatial_ir_to_csl(kernel: spir.Kernel,
                             rect_offset: tuple[int, int] = (0, 0),
-                            disable_benchmarking: bool = False) -> list[CodeFile]:
+                            disable_benchmarking: bool = False,
+                            disable_asynchronous: bool = False,
+                            disable_dsd: bool = False,
+                            task_fusion: bool = True) -> list[CodeFile]:
     """
     Lowers a routed Spatial IR kernel into Cerebras CSL code.
 
@@ -26,6 +29,9 @@ def lower_spatial_ir_to_csl(kernel: spir.Kernel,
     :param rect_offset: The offset of the output rectangle to use.
     :param disable_benchmarking: If True, disables benchmarking code generation (and memory overhead).
                                  Use in memory-limited scenarios.
+    :param disable_asynchronous: If True, disables asynchronous task code generation.
+    :param disable_dsd: If True, disables DSD operation detection and code generation.
+    :param task_fusion: If True, enables task fusion to reduce number of tasks.
     :return: List of code-file objects that can be written to files. See ``write_code_to_files``.
     """
     # PRECONDITION: Rectangles of dataflow/compute/place do not intersect (comes from Spatial IR)
@@ -68,6 +74,10 @@ def lower_spatial_ir_to_csl(kernel: spir.Kernel,
     # Collect scalar argument types
     scalar_argument_types = []
     scalar_arguments = []
+    for argument in kernel.arguments:
+        if isinstance(argument.dtype, spir.ScalarType):
+            scalar_argument_types.append(dtype_as_csl(argument.dtype))
+            scalar_arguments.append(f'__arg_{name_to_csl(argument.identifier)}: {dtype_as_csl(argument.dtype)}')
 
     # For each rectangle, collect metadata and generate code
     csl_codes: list[CodeFile] = []
@@ -80,7 +90,8 @@ def lower_spatial_ir_to_csl(kernel: spir.Kernel,
         # Create a unique CSL code file based on rectangle offset
         csl_name = f'code_{rect.x_range[0]}_{rect.y_range[0]}.csl'
         rect_code, color_map = generate_rectangle(kernel, rect, routing_instructions, scalar_arguments, use_memcpy_mode,
-                                                  stream_rects, channel_to_color, disable_benchmarking)
+                                                  stream_rects, channel_to_color, disable_benchmarking,
+                                                  disable_asynchronous, disable_dsd, task_fusion)
         color_maps.append(color_map)
         csl_codes.append(CodeFile(csl_name, rect_code))
 
@@ -208,11 +219,17 @@ def generate_rectangle(kernel: spir.Kernel,
                        use_memcpy_mode: bool,
                        stream_extents: analysis.StreamExtents,
                        channel_to_color: dict[int, int],
-                       disable_benchmarking: bool = False) -> tuple[str, dict[str, int]]:
+                       disable_benchmarking: bool = False,
+                       disable_asynchronous: bool = False,
+                       disable_dsd: bool = False,
+                       task_fusion: bool = True) -> tuple[str, dict[str, int]]:
     # Code generation carets
     header = StringIO()
     current_code = StringIO()
     footer = StringIO()
+
+    if disable_dsd:
+        dsd_ops.DISABLE_DSD = True
 
     header.write("""
 param memcpy_params: comptime_struct;
@@ -252,8 +269,29 @@ const sys_mod = @import_module("<memcpy/memcpy>", memcpy_params);
     #    * (re)cycle task IDs based on ``csl.{DATA,LOCAL,CONTROL}_TASK_IDS``: becomes switch-case on the variable that
     #      maintains the current state
     completion_dag = analysis.to_completion_dag(rect.metadata.compute)
-    tasks = tdag.create_csl_tasks(completion_dag, rect.metadata.compute, dtypes)
-    dsds = _collect_unique_dsds(tasks, rect.metadata, header, dtypes, kernel, use_memcpy_mode)
+    task_creation_behavior = (
+        tdag.TaskCreationBehavior.NO_TASKS if disable_asynchronous else tdag.TaskCreationBehavior.FAIL_ON_OVERRUN)
+    tasks = tdag.create_csl_tasks(completion_dag, rect.metadata.compute, dtypes, task_creation_behavior)
+    try:
+        dsds = _collect_unique_dsds(tasks, rect.metadata, header, dtypes, kernel, use_memcpy_mode)
+    except KeyError as e:
+        if e.args and isinstance(e.args[0], spir.Identifier):
+            raise ValueError(f"Error in {e.args[0].lineinfo}. Undefined identifier \"{e.args[0].as_ir()}\".")
+        raise
+
+    # Fuse tasks as much as possible to reduce number of resources
+    if task_fusion:
+        orig_len = 0
+        len_for_reporting = len(tasks)
+        while orig_len != len(tasks):  # Run to a fixed point
+            orig_len = len(tasks)
+            tasks = tdag.fuse_tasks(tasks, dsds, dtypes, rect, use_memcpy_mode, rect.metadata.compute)
+
+        if len(tasks) != len_for_reporting:
+            print(f'P{rect.x_range[0]},{rect.y_range[0]}: Reduced from {len_for_reporting} to {len(tasks)} tasks.')
+
+    # Map task IDs to CSL task IDs
+    tdag.renumber_tasks(tasks, task_creation_behavior)
 
     # Generate each task
     max_task_id = csl.LOCAL_TASK_IDS[0] - 1
@@ -303,16 +341,29 @@ const sys_mod = @import_module("<memcpy/memcpy>", memcpy_params);
         if task.blocked:
             footer.write(f'    @block({prefix}task_{i}_id);\n')
 
-    # Bind exit task
-    footer.write(f'    @bind_local_task(exit_task, exit_task_id);\n')
-
+    # Create exit task that unblocks command stream
+    exit_task_sequential = all(typ == tdag.InterTaskEdge.SEQUENCE for t in tasks for n, typ in t.outgoing if n == -1)
+    exit_task_sequential &= not any(
+        t.task_type == 'data' for t in tasks for n, _ in t.outgoing if n == -1)  # No data tasks
     exit_task_blocked = any(n == -1 and typ == tdag.InterTaskEdge.UNBLOCK for t in tasks for n, typ in t.outgoing)
+
+    # Bind exit task
+    if not exit_task_sequential:
+        footer.write(f'    @bind_local_task(exit_task, exit_task_id);\n')
+
     if exit_task_blocked:
         footer.write('    @block(exit_task_id);\n')
 
     # Write entry point code
     current_code.write(f'''\nfn {kernel.name}({", ".join(scalar_arguments)}) void {{
 ''')
+
+    # Copy scalar arguments to local variables
+    for argument in scalar_arguments:
+        arg_name = argument.split(':')[0].strip().removeprefix('__arg_')
+        current_code.write(f'    {arg_name} = __arg_{arg_name};\n')
+
+    # Activate all source tasks
     non_source_tasks = set(n for i, t in enumerate(tasks) for n, _ in t.outgoing if n != i)
     source_tasks = [t for i, t in enumerate(tasks) if i not in non_source_tasks]
     for i, task in enumerate(source_tasks):
@@ -323,12 +374,13 @@ const sys_mod = @import_module("<memcpy/memcpy>", memcpy_params);
         current_code.write(f'    sys_mod.unblock_cmd_stream();\n')
     current_code.write('}\n')
 
-    current_code.write(f'''
-const exit_task_id = @get_local_task_id({max_task_id + 1});
-task exit_task() void {{
-    // On completion, unblock command stream
-    sys_mod.unblock_cmd_stream();
-}}''')
+    if not exit_task_sequential:
+        current_code.write(f'''
+    const exit_task_id = @get_local_task_id({max_task_id + 1});
+    task exit_task() void {{
+        // On completion, unblock command stream
+        sys_mod.unblock_cmd_stream();
+    }}''')
 
     # Write benchmarking code
     if not disable_benchmarking:
@@ -521,6 +573,8 @@ def _collect_and_generate_fields(place: spir.PlaceBlock, header: StringIO, foote
     # Add arguments to header and footer
     if use_memcpy_mode:
         for argument in kernel.arguments:
+            if not isinstance(argument.dtype, spir.ArrayType):  # Skip scalar arguments
+                continue
             name = name_to_csl(argument.identifier)
             if isinstance(argument.dtype, spir.ArrayType) and isinstance(argument.dtype.base_type, spir.StreamType):
                 assert argument.dtype.base_type.buffer_size is not None, f'Argument {argument.identifier.name} has no buffer size defined'
@@ -538,6 +592,13 @@ def _collect_and_generate_fields(place: spir.PlaceBlock, header: StringIO, foote
     else:
         # TODO(later): Some scaffolding for streaming indices within rectangle code
         pass
+
+    # Add scalar arguments to header
+    for argument in kernel.arguments:
+        if not isinstance(argument.dtype, spir.ScalarType):  # Skip non-scalar arguments
+            continue
+        name = name_to_csl(argument.identifier)
+        header.write(f'var {name}: {dtype_as_csl(argument.dtype)};\n')
 
     header.write('\n')
 
@@ -781,7 +842,36 @@ def _collect_unique_dsds(
                         dsds[stream_name.as_ir()].append((dsd_name, dsd))
                         input_queue_id_ctr += 1
 
+        def _visit_nested_send(substmt: spir.SendStatement):
+            if substmt.stream_name.as_ir() not in stream_candidates:
+                return
+            # Stream DSD (i.e., await send in a foreach)
+            stream_name = substmt.stream_name
+            dsd_type = cslstruct.DSDType.fabout
+            dsd_name = f'{name_to_csl(stream_name)}_out_dsd'
+            extents = stream_candidates[stream_name.as_ir()][1]
+            if extents is not None:  # Use buffer size
+                extents = extents if isinstance(extents, int) else extents.eval()
+            else:  # Infer from send count
+                if isinstance(substmt.local_array, spir.ArraySlice) or isinstance(dtypes[substmt.local_array],
+                                                                                  spir.ScalarType):
+                    # Scalar send
+                    extents = 1
+                else:
+                    extents = functools.reduce(
+                        lambda a, b: a * b,
+                        [s.eval() if not isinstance(s, int) else s for s in dtypes[substmt.local_array].shape], 1)
+            fabric_color = f'{name_to_csl(stream_name)}_color'
+            nonlocal output_queue_id_ctr
+            dsd = cslstruct.FabricDSD(dsd_type, fabric_color, extents,
+                                      csl.OUTPUT_QUEUE_IDS[output_queue_id_ctr % len(csl.OUTPUT_QUEUE_IDS)])
+            output_queue_id_ctr += 1
+            dsds[stream_name.as_ir()].append((dsd_name, dsd))
+
         def _visit_dsd(substmt, in_foreach_or_map):
+            if isinstance(substmt, spir.SendStatement) and in_foreach_or_map:
+                _visit_nested_send(substmt)
+                return
             if (isinstance(substmt, spir.Identifier) and substmt.as_ir() in array_candidates and
                     substmt.as_ir() not in dsds):
                 dsds[substmt.as_ir()].append((f"{name_to_csl(substmt)}_dsd", _dsd_from_array(array_candidates,
@@ -850,6 +940,10 @@ class DSDVisitor(spir.NodeVisitor):
         self.in_map = False
 
     def visit_Identifier(self, node: spir.Identifier):
+        self.callback(node, self.in_foreach or self.in_map)
+        return
+
+    def visit_SendStatement(self, node: spir.SendStatement):
         self.callback(node, self.in_foreach or self.in_map)
         return
 
@@ -1042,7 +1136,7 @@ def _generate_data_task(
 
     # Write op contents
     for substmt in stmt.body:
-        code = cslstmt.generate_csl_statement(substmt, dsds, dtypes, None, header)
+        code = cslstmt.generate_csl_statement(substmt, dsds, dtypes, None, header, in_foreach_or_map=True)
 
         for line in code.splitlines():
             current_code.write(f'    {line}\n')
@@ -1108,6 +1202,11 @@ def _generate_task_code(rect: PEBlock, task: tdag.CSLTask, current_code: StringI
 
             for line in lines:
                 current_code.write(f'    {line}\n')
+
+        if next_task == -1 and itedge == tdag.InterTaskEdge.SEQUENCE:
+            # Run exit task directly
+            current_code.write(f'    sys_mod.unblock_cmd_stream();\n')
+            continue
 
         if skip_activation:
             continue

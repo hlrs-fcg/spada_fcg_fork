@@ -16,8 +16,12 @@ import subprocess
 @click.option('--offset-y', '-y', default=0, type=int, help='Offset for rectangular region in y direction')
 @click.option('--generate-only', '-g', is_flag=True, help='Only generate the output files without compiling them')
 @click.option('--disable-benchmarking', is_flag=True, help='Disable benchmarking code generation (and memory overhead)')
+@click.option('--disable-asynchronous', is_flag=True, help='Disable asynchronous task code generation')
+@click.option('--disable-dsd', is_flag=True, help='Disable DSD operation detection and code generation')
+@click.option('--disable-task-fusion', is_flag=True, help='Disable task fusion optimization')
 def compile_spatial_ir(input_file: str, output_folder: str, param: list[str], offset_x: int, offset_y: int,
-                       generate_only: bool, disable_benchmarking: bool):
+                       generate_only: bool, disable_benchmarking: bool, disable_asynchronous: bool, disable_dsd: bool,
+                       disable_task_fusion: bool):
     # Parse parameters into dictionary
     kernel_parameters = {}
     for p in param:
@@ -73,7 +77,13 @@ def compile_spatial_ir(input_file: str, output_folder: str, param: list[str], of
         using_memcpy_mode = False
 
     # Lower the spatial IR to CSL
-    csl_files = s2c.lower_spatial_ir_to_csl(kernel, disable_benchmarking=disable_benchmarking)
+    csl_files = s2c.lower_spatial_ir_to_csl(
+        kernel,
+        disable_benchmarking=disable_benchmarking,
+        disable_asynchronous=disable_asynchronous,
+        disable_dsd=disable_dsd,
+        task_fusion=not disable_task_fusion,
+    )
 
     # Create output folder if it doesn't exist
     os.makedirs(output_folder, exist_ok=True)
@@ -102,15 +112,21 @@ def compile_spatial_ir(input_file: str, output_folder: str, param: list[str], of
     rectangles = canonicalization.consolidate_rectangles_to_equivalence_classes(kernel)
     stream_extents = analysis.detect_stream_argument_extents(rectangles, kernel)
     for argname, arg in itertools.chain(input_args.items(), output_args.items()):
-        arg_id = spa.Identifier(argname, 0)
-        if arg_id not in stream_extents.extents:
-            raise ValueError(f"Argument '{argname}' does not have a detected extent. "
-                             "Please ensure the argument is properly defined in the kernel.")
-        arg["rect_offset_used"] = [
-            stream_extents.extents[arg_id][0].x_range[0], stream_extents.extents[arg_id][0].y_range[0]
-        ]
-        arg["column_major"] = stream_extents.is_transposed[arg_id]
-        arg["rect_offset"] = list(next(iter(stream_extents.offsets[arg_id])))
+        if len(arg["shape"]) > 0: # Ignore scalar arguments
+            arg_id = spa.Identifier(argname, 0)
+            if arg_id not in stream_extents.extents:
+                raise ValueError(f"Argument '{argname}' does not have a detected extent. "
+                                "Please ensure the argument is properly defined in the kernel.")
+            arg["rect_offset_used"] = [
+                stream_extents.extents[arg_id][0].x_range[0], stream_extents.extents[arg_id][0].y_range[0]
+            ]
+            arg["column_major"] = stream_extents.is_transposed[arg_id]
+            arg["rect_offset"] = list(next(iter(stream_extents.offsets[arg_id])))
+        else:
+            arg["rect_offset_used"] = [0, 0]
+            arg["column_major"] = False
+            arg["rect_offset"] = [0, 0]
+
     metadata = {
         "kernel_name": kernel.name,
         "inputs": input_args,

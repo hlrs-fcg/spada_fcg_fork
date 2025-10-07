@@ -1,3 +1,4 @@
+import copy
 from dataclasses import dataclass
 from typing import Union, Tuple, Optional, Literal
 from spatialstencil.syntax.common import visitor
@@ -138,8 +139,11 @@ class ArrayType(SpatialNode, IRType):
         assert all(isinstance(dim, (int, Expression)) for dim in self.shape)
         assert len(self.shape) > 0
 
+    def dimensions(self) -> list:
+        return copy.copy(self.shape)
+
     def as_ir(self, indent: int = 0) -> str:
-        dims = ", ".join(str(dim.as_ir() if isinstance(dim, SpatialNode) else dim) for dim in self.shape)
+        dims = ", ".join(str(d) if isinstance(d, int) else d.as_ir() for d in self.shape)
         return f'{self.base_type.as_ir()}[{dims}]'
 
     @property
@@ -317,7 +321,7 @@ class ArraySlice(SpatialNode):
         assert isinstance(self.array, Identifier)
         assert isinstance(self.indices, list)
         assert all(isinstance(idx, (Expression, RangeExpression)) for idx in self.indices)
-
+ 
     def as_ir(self, indent: int = 0) -> str:
         index_strs = []
         for idx in self.indices:
@@ -377,13 +381,9 @@ class RangeExpression(SpatialNode):
     def from_args(start: int, stop: int, step: int = None) -> 'RangeExpression':
         start_expr = Expression(ConstantLiteral(start, ScalarType.i32))
         stop_expr = Expression(ConstantLiteral(stop, ScalarType.i32))
-        if step is not None:
-            step_expr = Expression(ConstantLiteral(step, ScalarType.i32))
-            return RangeExpression(start_expr, stop_expr, step_expr)
-        if abs(start - stop) == 1:
-            return RangeExpression(start_expr)
-        else:
-            return RangeExpression(start_expr, stop_expr)
+        step_expr = Expression(ConstantLiteral(step if step else 1, ScalarType.i32))
+
+        return RangeExpression(start_expr, stop_expr, step_expr)
 
     def as_tuple(self) -> tuple:
         if self.step:
@@ -504,6 +504,11 @@ class PlaceBlock(SpatialNode):
     variables: list[TypedIdentifier]
     subgrid: SubgridExpression
     statements: list[FieldDeclaration]
+
+    def get_rectangle(self) -> Rectangle['PlaceBlock']:
+        xs, xe, ys, ye = self.get_grid_rect()
+        xss, yss = self.get_grid_stride()
+        return Rectangle((xs, xe, xss), (ys, ye, yss), self)
 
     def get_grid_rect(self) -> tuple[int, int, int, int]:
         return self.subgrid.get_grid_rect()
@@ -666,7 +671,9 @@ class SendStatement(Statement):
 
     def validate(self) -> None:
         assert isinstance(self.local_array, (Identifier, ArraySlice))
-        assert isinstance(self.stream_name, (Identifier, ArraySlice))
+        # TODO(later): Defer validation of stream_name to after constant propagation.
+        #              In the meantime, allow ternary operators here.
+        assert isinstance(self.stream_name, (Identifier, ArraySlice, TernaryOperator))
         if self.completion_name:
             assert isinstance(self.completion_name, Completion)
 
@@ -943,6 +950,11 @@ class ComputeBlock(SpatialNode):
         assert all(isinstance(var, TypedIdentifier) for var in self.variables)
         assert all(isinstance(stmt, Statement) for stmt in self.statements)
         assert len(self.variables) == 2
+
+    def get_rectangle(self) -> Rectangle['ComputeBlock']:
+        xs, xe, ys, ye = self.get_grid_rect()
+        xss, yss = self.get_grid_stride()
+        return Rectangle((xs, xe, xss), (ys, ye, yss), self)
 
     def get_grid_rect(self) -> tuple[int, int, int, int]:
         """

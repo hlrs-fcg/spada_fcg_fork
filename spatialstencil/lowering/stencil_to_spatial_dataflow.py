@@ -35,6 +35,11 @@ class ProgramDataflow:
     # the destination field is the first 
     _stream_map: dict[sast.Identifier, dict[sast.Identifier, dict[sast.Offset, spa.Identifier]]]
 
+    # stream -> x-y range where the stream sends
+    stream_send_range_map: dict[spa.Identifier, tuple[tuple[int, int, int], tuple[int, int, int]]]
+    # stream -> x-y range where the stream receives
+    stream_receive_range_map: dict[spa.Identifier, tuple[tuple[int, int, int], tuple[int, int, int]]]
+
     def __init__(self,
                  domain_shift: tuple,
                  versioning: Versioning[spa.Identifier],
@@ -43,6 +48,8 @@ class ProgramDataflow:
         self.domain_shift = domain_shift
         self._stream_map = defaultdict(lambda: defaultdict(dict))
         self.grid_var_t = grid_var_type
+        self.stream_send_range_map = dict()
+        self.stream_receive_range_map = dict()
 
     def get_stream(self,
                    input_id: sast.Identifier,
@@ -98,6 +105,8 @@ class ProgramDataflow:
 
                         # Generate stream
                         x_range, y_range = self.get_x_y_range(out_t, -dx, -dy)
+                        self.stream_send_range_map[identifier] = self.get_x_y_send_range(out_t, -dx, -dy)
+                        self.stream_receive_range_map[identifier] = self.get_x_y_receive_range(out_t, -dx, -dy)
 
                         astream = AbstractStream(x_range, y_range, metadata)
                         abstract_streams.append(astream)
@@ -127,6 +136,9 @@ class ProgramDataflow:
 
                                 # Generate stream
                                 x_range, y_range = self.get_x_y_range(out_t, -dx, -dy)
+
+                                self.stream_send_range_map[identifier] = self.get_x_y_send_range(out_t, -dx, -dy)
+                                self.stream_receive_range_map[identifier] = self.get_x_y_receive_range(out_t,- dx, -dy)
 
                                 astream = AbstractStream(x_range, y_range, metadata)
                                 abstract_streams.append(astream)
@@ -172,12 +184,13 @@ class ProgramDataflow:
 
         return blocks
 
-    def get_x_y_send_range(self, out_t: sast.ViewType | sast.FieldType, dx: int, dy: int):
+    def get_x_y_send_range(self, out_t: sast.ViewType | sast.FieldType, dx: int, dy: int) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
         """Defines the subgrid that sends for the given type and stream offset (dx, dy)
         """
         assert isinstance(out_t.domain, sast.Cartesian)
-        # We need a buffer of +- the extent around the domain
-        send_domain = out_t.domain.union(out_t.domain.add((dx, dy, 0)))
+        
+        # We need a buffer of + the extent around the domain
+        send_domain = out_t.domain.add((dx, dy, 0))
         x_range = (send_domain.x[0] + self.domain_shift[0],
                    send_domain.x[1] + self.domain_shift[0],
                    1)
@@ -185,19 +198,20 @@ class ProgramDataflow:
                    send_domain.y[1] + self.domain_shift[1],
                    1)
 
-        assert x_range[0] >= 0
-        assert x_range[1] >= x_range[0]
-        assert y_range[0] >= 0
-        assert y_range[1] >= y_range[0]
+        assert x_range[0] >= 0, f"Type {out_t.as_ir()} at {dx}, {dy} has invalid send range"
+        assert x_range[1] >= x_range[0], f"Type {out_t.as_ir()} at {dx}, {dy} has invalid send range"
+        assert y_range[0] >= 0, f"Type {out_t.as_ir()} at {dx}, {dy} has invalid send range"
+        assert y_range[1] >= y_range[0], f"Type {out_t.as_ir()} at {dx}, {dy} has invalid send range"
 
         return x_range, y_range
     
-    def get_x_y_receive_range(self, out_t: sast.ViewType | sast.FieldType, dx: int, dy: int):
+    def get_x_y_receive_range(self, out_t: sast.ViewType | sast.FieldType, dx: int, dy: int) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
         """Defines the subgrid receives for the given type and stream offset (dx, dy)
         """
         assert isinstance(out_t.domain, sast.Cartesian)
-        # We need a buffer of +- the extent around the domain
-        send_domain = out_t.domain.union(out_t.domain.add((-dx, -dy, 0)))
+                
+        # We need a buffer of - the extent around the domain
+        send_domain = out_t.domain
         x_range = (send_domain.x[0] + self.domain_shift[0],
                    send_domain.x[1] + self.domain_shift[0],
                    1)
@@ -205,19 +219,21 @@ class ProgramDataflow:
                    send_domain.y[1] + self.domain_shift[1],
                    1)
 
-        assert x_range[0] >= 0
-        assert x_range[1] >= x_range[0]
-        assert y_range[0] >= 0
-        assert y_range[1] >= y_range[0]
+        assert x_range[0] >= 0, f"Type {out_t.as_ir()} at {dx}, {dy} has invalid receive range"
+        assert x_range[1] >= x_range[0], f"Type {out_t.as_ir()} at {dx}, {dy} has invalid receive range"
+        assert y_range[0] >= 0, f"Type {out_t.as_ir()} at {dx}, {dy} has invalid receive range"
+        assert y_range[1] >= y_range[0], f"Type {out_t.as_ir()} at {dx}, {dy} has invalid receive range"
 
         return x_range, y_range
 
-    def get_x_y_range(self, out_t: sast.ViewType | sast.FieldType, dx: int, dy: int):
+    def get_x_y_range(self, out_t: sast.ViewType | sast.FieldType, dx: int, dy: int) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
         """Defines the subgrid sends OR receives for the given type and stream offset (dx, dy)
         """
         assert isinstance(out_t.domain, sast.Cartesian)
+
         # We need a buffer of +- the extent around the domain
-        send_domain = out_t.domain.union(out_t.domain.add((dx, dy, 0))).union(out_t.domain.add((-dx, -dy, 0)))
+        send_domain = out_t.domain.union(out_t.domain.add((dx, dy, 0)))
+        #print(f"Send {send_domain}")
         x_range = (send_domain.x[0] + self.domain_shift[0],
                    send_domain.x[1] + self.domain_shift[0],
                    1)
@@ -225,9 +241,9 @@ class ProgramDataflow:
                    send_domain.y[1] + self.domain_shift[1],
                    1)
 
-        assert x_range[0] >= 0
-        assert x_range[1] >= x_range[0]
-        assert y_range[0] >= 0
-        assert y_range[1] >= y_range[0]
+        assert x_range[0] >= 0, f"Type {out_t.as_ir()} at {dx}, {dy} has invalid range {x_range}"
+        assert x_range[1] >= x_range[0], f"Type {out_t.as_ir()} at {dx}, {dy} has invalid range"
+        assert y_range[0] >= 0, f"Type {out_t.as_ir()} at {dx}, {dy} has invalid range"
+        assert y_range[1] >= y_range[0], f"Type {out_t.as_ir()} at {dx}, {dy} has invalid range"
 
         return x_range, y_range
