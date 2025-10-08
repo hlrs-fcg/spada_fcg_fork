@@ -175,7 +175,7 @@ const memcpy = @import_module("<memcpy/get_params>", .{{
         layout_code.write(f'''
     for (@range(i16, {xb}, {xe}, {xs})) |pe_x| {{
         for (@range(i16, {yb}, {ye}, {ys})) |pe_y| {{
-            @set_tile_code(pe_x, pe_y, "{code_filename}", .{{ .memcpy_params = memcpy.get_params(pe_x), .pe_x = pe_x, .pe_y = pe_y }});
+            @set_tile_code(pe_x, pe_y, "{code_filename}", .{{ .memcpy_params = memcpy.get_params(pe_x) }});
 {routes_per_rectangle[(xb, yb)]}
         }}
     }}\n''')
@@ -233,8 +233,6 @@ def generate_rectangle(kernel: spir.Kernel,
 
     header.write("""
 param memcpy_params: comptime_struct;
-param pe_x: i16;
-param pe_y: i16;
 const sys_mod = @import_module("<memcpy/memcpy>", memcpy_params);
 """)
 
@@ -293,6 +291,8 @@ const sys_mod = @import_module("<memcpy/memcpy>", memcpy_params);
     # Map task IDs to CSL task IDs
     tdag.renumber_tasks(tasks, task_creation_behavior)
 
+    print(f'Stats: Using {sum(1 if t.task_type == "local" else 0 for t in tasks)} local tasks, {sum(1 if t.task_type == "data" else 0 for t in tasks)} data tasks, {len(set(color_map.values()))} colors')
+
     # Generate each task
     max_task_id = csl.LOCAL_TASK_IDS[0] - 1
     for i, task in enumerate(tasks):
@@ -306,12 +306,13 @@ const sys_mod = @import_module("<memcpy/memcpy>", memcpy_params);
             sname = stmt.receive_stream.stream_name
             if isinstance(sname, spir.ArraySlice):
                 sname = sname.array
-            if sname.as_ir() + "_H2D" in color_map:
-                color = color_map[sname.as_ir() + "_H2D"]
-            elif sname.as_ir() + "_IN" in color_map:
-                color = color_map[sname.as_ir() + "_IN"]
+            if name_to_csl(sname) + "_H2D" in color_map:
+                color = color_map[name_to_csl(sname) + "_H2D"]
+            elif name_to_csl(sname) + "_IN" in color_map:
+                color = color_map[name_to_csl(sname) + "_IN"]
             else:
-                raise ValueError(f'Cannot find color for stream "{sname.as_ir()}" in data task {i}')
+                print(color_map)
+                raise ValueError(f'Cannot find color for stream "{name_to_csl(sname)}" in data task {i}')
             current_code.write(f'const {prefix}task_{i}_id = @get_data_task_id(@get_color({color}));\n')
 
         max_task_id = max(max_task_id, task.task_id)
@@ -366,7 +367,8 @@ const sys_mod = @import_module("<memcpy/memcpy>", memcpy_params);
     # Activate all source tasks
     non_source_tasks = set(n for i, t in enumerate(tasks) for n, _ in t.outgoing if n != i)
     source_tasks = [t for i, t in enumerate(tasks) if i not in non_source_tasks]
-    for i, task in enumerate(source_tasks):
+    for task in source_tasks:
+        i = next(i for i, t in enumerate(tasks) if task is t)
         prefix = "d" if task.task_type == 'data' else ""
         current_code.write(f'    @activate({prefix}task_{i}_id);\n')
     if not source_tasks:
@@ -1073,7 +1075,7 @@ def _generate_data_task(
     current_code: StringIO,
     header: StringIO,
     footer: StringIO,
-    dsds: list[tuple[str, cslstruct.DataStructureDescriptor]],
+    dsds: UniqueDSDDict,
     dtypes: dict[spir.Identifier, spir.IRType],
     color_map: dict[str, int],
     tasks: list[tdag.CSLTask],
