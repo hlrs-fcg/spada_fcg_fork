@@ -44,16 +44,6 @@ class ProgramCompute:
             body = self.vertical_visitor.stmts
 
         # Merge all statements into a compute blocks
-
-        # Add a dummy compute block that spans everything
-        max_x, max_y = 0, 0
-        for grid in body:
-            assert isinstance(grid, spa.Rectangle)
-            max_x = max(max_x, grid.x_range[1])
-            max_y = max(max_y, grid.y_range[1])
-        rect = Rectangle[tuple[int, spa.Statement]]((0, max_x, 1), (0, max_y, 1), (0, None))
-        body.append(rect)
-
         split = split_rectangles(body)
         merged = group_rectangles_by_domain(split)
 
@@ -722,11 +712,18 @@ class HorizontalStencilTransformer(PatternTransformer[sast.AssignOp | sast.Retur
 
             # Build the source expression
             if local is not None:
+                
+                local_array_expr = spa.ArraySlice(
+                    local_id,
+                    [spa.Expression(var_k)]
+                )
+                
                 src_expr = spa.Expression(spa.BinaryOperator(
-                    spa.Expression(local_id),
+                    spa.Expression(local_array_expr),
                     op,
                     spa.Expression(var_x),
                 ))
+                
             elif factor is not None:
                 # %d = %factor * %b[dx, dy, 0] : f32
                 if isinstance(factor, int):
