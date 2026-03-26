@@ -1,5 +1,5 @@
 import pytest
-from spatialstencil.syntax.spatial_ir import irnodes as spir, canonicalization, parser
+from spatialstencil.syntax.spatial_ir import irnodes as spir, canonicalization, parser, passes, copy_elimination
 
 
 def test_canonicalize_nochange():
@@ -322,9 +322,43 @@ def test_lower_to_for(should_lower: bool):
         assert any(isinstance(stmt, spir.ForeachStatement) for stmt in rect.metadata.compute.statements)
 
 
+def test_prune_unused_fields():
+    code = '''kernel @test<N>() {
+    place u16 i, u16 j in [0:N, 0:N] {
+        f32 erase;
+        f32 do_not_erase_1;
+        f32[N] do_not_erase_2;
+        f32 do_not_erase_3;
+        f32[N] do_not_erase_4;
+        f32[N] do_not_erase_5;
+        f32[N] erase_arr;
+    }
+    compute u16 i, u16 j in [0:N, 0:N] {
+        do_not_erase_1 = 5.0;
+        await receive(do_not_erase_2, a[i, j]);
+        for u16 k in [0:N] {
+            do_not_erase_3 = do_not_erase_2[k] + 1.0;
+        }
+        completion c2 = foreach u16 k, f32 x in [0:N], receive(do_not_erase_4) {
+            do_not_erase_5[k] = x + 2.0;
+            await send(do_not_erase_5[k], b[i, j]);
+        }
+        await c2;
+    }
+}'''
+    kernel = parser.parse_string(code)
+    passes.concretize_parameters(kernel, N=8)
+    rects = canonicalization.consolidate_rectangles_to_equivalence_classes(kernel)
+    assert len(rects) == 1
+    kernel = copy_elimination.prune_unused_fields(rects)
+    assert len(rects[0].metadata.place.statements) == 5
+    assert all(decl.field_name.name.startswith('do_not_erase') for decl in rects[0].metadata.place.statements)
+
+
 if __name__ == '__main__':
     test_canonicalize_nochange()
     test_canonicalize_singlephase()
     test_canonicalize_multiphase()
     test_lower_to_for(False)
     test_lower_to_for(True)
+    test_prune_unused_fields()

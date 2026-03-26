@@ -62,6 +62,9 @@ class ConstantLiteral(SpatialNode):
         """
         return self.value
 
+    def __hash__(self) -> int:
+        return hash((ConstantLiteral, self.value, self.dtype))
+
 
 # Parameters
 @dataclass
@@ -707,12 +710,12 @@ class SendStatement(Statement):
     """
     Send statement for sending data asynchronously through a stream.
     """
-    local_array: Union[Identifier, ArraySlice]
+    local_array: Union[Identifier, ArraySlice, ConstantLiteral]
     stream_name: Union[Identifier, ArraySlice]
     completion_name: Optional[Completion] = None
 
     def validate(self) -> None:
-        assert isinstance(self.local_array, (Identifier, ArraySlice))
+        assert isinstance(self.local_array, (Identifier, ArraySlice, ConstantLiteral))
         # TODO(later): Defer validation of stream_name to after constant propagation.
         #              In the meantime, allow ternary operators here.
         assert isinstance(self.stream_name, (Identifier, ArraySlice, TernaryOperator))
