@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from math import gcd
 from typing import Generic, TypeVar, Union
 
 T = TypeVar('T')
@@ -11,8 +12,10 @@ class Rectangle(Generic[T]):
     metadata: T
 
     def __post_init__(self):
-        assert self.x_range[0] <= self.x_range[1]
-        assert self.y_range[0] <= self.y_range[1]
+        assert self.x_range[2] >= 1, "Strides must be positive"
+        assert self.y_range[2] >= 1, "Strides must be positive"
+        assert self.x_range[0] <= self.x_range[1], "Rectangle x Range is invalid"
+        assert self.y_range[0] <= self.y_range[1], "Rectangle y Range is invalid"
         assert isinstance(self.x_range[0], int)
         assert isinstance(self.x_range[1], int)
         assert isinstance(self.x_range[2], int)
@@ -72,6 +75,32 @@ class Rectangle(Generic[T]):
         """
         return _rectangles_intersect(self, other)
 
+    def largest_contained_x(self) -> int:
+        """
+        Return the largest X index actually covered by this rectangle.
+
+        For a range [start:stop:stride], the last covered PE is
+        ``start + floor((stop - start - 1) / stride) * stride``.
+        This differs from the canonical stop (``start + ceil(…) * stride``)
+        by at most ``stride - 1``, which matters when building the layout
+        rectangle size.
+        """
+        start, stop, stride = self.x_range
+        if start >= stop:
+            return start
+        return start + ((stop - start - 1) // stride) * stride
+
+    def largest_contained_y(self) -> int:
+        """
+        Return the largest Y index actually covered by this rectangle.
+
+        See :meth:`largest_contained_x` for details.
+        """
+        start, stop, stride = self.y_range
+        if start >= stop:
+            return start
+        return start + ((stop - start - 1) // stride) * stride
+
     def __str__(self):
         return f"[({self.x_range[0]}, {self.x_range[1]}, {self.x_range[2]}) x ({self.y_range[0]}, {self.y_range[1]}, {self.y_range[2]}) - {self.metadata}]"
 
@@ -110,85 +139,72 @@ def ranges_equal(r1: tuple[int, int, int], r2: tuple[int, int, int]) -> bool:
 
 def intersect_ranges(range1: tuple[int, int, int], range2: tuple[int, int, int]) -> None | tuple[int, int, int]:
     """
-    Optimized intersection calculation using modular arithmetic.
-    Assumes strides are either the same or at least one equals 1.
-    
+    Compute the intersection of two arithmetic progressions using the Chinese Remainder Theorem.
+
+    Two progressions {start1 + k*stride1 | k≥0, val<stop1} and {start2 + k*stride2 | …}
+    intersect iff gcd(stride1, stride2) divides (start2 - start1).  When they do, the
+    intersection is an arithmetic progression with stride = lcm(stride1, stride2).
+
     Args:
         range1: tuple of (start, stop, stride)
         range2: tuple of (start, stop, stride)
-    
+
     Returns:
-        tuple: (intersects: bool, intersection: tuple or None)
-               intersection is (start, stop, stride) if ranges intersect, None otherwise
+        (start, stop, stride) of the intersection, or None if empty.
     """
     start1, stop1, stride1 = range1
     start2, stop2, stride2 = range2
-    
+
     # Handle empty ranges
     if start1 >= stop1 or start2 >= stop2:
-        return False, None
-    
-    # Ensure range1 has the larger or equal stride for consistent handling
+        return None
+
+    # Ensure stride1 >= stride2 for a consistent orientation
     if stride2 > stride1:
         start1, stop1, stride1, start2, stop2, stride2 = start2, stop2, stride2, start1, stop1, stride1
-    
-    # Case 1: Both strides are 1 (continuous integers)
-    if stride1 == 1 and stride2 == 1:
-        inter_start = max(start1, start2)
-        inter_stop = min(stop1, stop2)
-        
-        if inter_start >= inter_stop:
-            return None
-        
-        return (inter_start, inter_stop, 1)
-    
-    # Case 2: Both strides are equal (and > 1)
-    elif stride1 == stride2:
-        # Check if the ranges are aligned (same remainder modulo stride)
+
+    interval_start = max(start1, start2)
+    interval_stop  = min(stop1,  stop2)
+    if interval_start >= interval_stop:
+        return None
+
+    # Equal-stride fast path
+    if stride1 == stride2:
         if start1 % stride1 != start2 % stride1:
             return None
-        
-        inter_start = max(start1, start2)
-        inter_stop = min(stop1, stop2)
-        
-        if inter_start >= inter_stop:
-            return None
-        
-        return (inter_start, inter_stop, stride1)
-    
-    # Case 3: One stride is 1, the other is > 1
+        return (interval_start, interval_stop, stride1)
+
+    # General case: stride1 > stride2, use CRT.
+    # Find smallest x ≡ start1 (mod stride1) and x ≡ start2 (mod stride2).
+    g   = gcd(stride1, stride2)
+    if (start2 - start1) % g != 0:
+        return None            # No common residue class
+
+    lcm = stride1 * stride2 // g
+    mod = stride2 // g          # Coprime with stride1 // g
+
+    if mod == 1:
+        t = 0                   # Any element of range1 automatically satisfies range2's congruence
     else:
-        if not (stride1 == 1 or stride2 == 1):
-            raise NotImplementedError(f"Unsupported Strides: {stride1}, {stride2}")
-        
-        assert stride1 > stride2
-        # stride1 > stride2 == 1 (due to our swap above)
-        # Find the overlapping interval
-        interval_start = max(start1, start2)
-        interval_stop = min(stop1, stop2)
-        
-        if interval_start >= interval_stop:
-            return None
-        
-        # Find the first element from range1 that falls within the interval
-        if start1 >= interval_start:
-            first_val = start1
-        else:
-            # Calculate how many steps needed to reach or exceed interval_start
-            k = (interval_start - start1 + stride1 - 1) // stride1  # Ceiling division
-            first_val = start1 + k * stride1
-        
-        # Check if the first value is within the interval
-        if first_val >= interval_stop:
-            return None
-        
-        # Calculate the stop of the intersection
-        # Find the last element from range1 that is < interval_stop
-        num_steps = (interval_stop - first_val - 1) // stride1
-        last_val = first_val + num_steps * stride1
-        inter_stop = last_val + stride1
-        
-        return (first_val, inter_stop, stride1)
+        s1_red   = stride1 // g
+        diff_red = (start2 - start1) // g
+        inv      = pow(s1_red, -1, mod)   # Modular inverse (requires Python 3.8+)
+        t        = (diff_red * inv) % mod
+
+    first_x = start1 + t * stride1
+
+    # Advance first_x into [interval_start, interval_stop)
+    if first_x < interval_start:
+        steps   = (interval_start - first_x + lcm - 1) // lcm
+        first_x += steps * lcm
+
+    if first_x >= interval_stop:
+        return None
+
+    num_steps  = (interval_stop - first_x - 1) // lcm
+    inter_stop = first_x + num_steps * lcm + lcm   # Exclusive stop
+
+    return (first_x, inter_stop, lcm)
 
 def _canonicalize_stop(start: int, stop: int, stride: int) -> int:
     """
@@ -238,18 +254,53 @@ def _rectangles_equal(rect1: Rectangle, rect2: Rectangle) -> bool:
     """
     return rect1.x_range == rect2.x_range and rect1.y_range == rect2.y_range
 
+def _checkerboard(rect: Rectangle[T], x_stride: int, y_stride: int) -> list[Rectangle[T]]:
+    """
+    Decompose a rectangle into sub-rectangles whose strides match (x_stride, y_stride).
+
+    When rect has stride 1 in a dimension and the target stride is N > 1, this produces
+    N sub-rectangles (one per offset 0..N-1) that together tile rect exactly.
+    If the strides already match in a dimension no extra splitting happens there.
+
+    :param rect: The rectangle to checkerboard.
+    :param x_stride: Target X stride (must be a multiple of rect.x_range[2]).
+    :param y_stride: Target Y stride (must be a multiple of rect.y_range[2]).
+    :return: List of rectangles with the target strides that together cover rect.
+    """
+    x_start, x_stop, x_s = rect.x_range
+    y_start, y_stop, y_s = rect.y_range
+
+    results: list[Rectangle[T]] = []
+    for dx in range(x_stride // x_s):
+        new_x_start = x_start + dx * x_s
+        if new_x_start >= x_stop:
+            continue
+        for dy in range(y_stride // y_s):
+            new_y_start = y_start + dy * y_s
+            if new_y_start >= y_stop:
+                continue
+            results.append(Rectangle(
+                (new_x_start, x_stop, x_stride),
+                (new_y_start, y_stop, y_stride),
+                rect.metadata,
+            ))
+    return results
+
+
 def split_rectangle(rect1: Rectangle[T], rect2: Rectangle) -> list[Rectangle[T]]:
     """
     Split rect1 by rect2 and return the non-overlapping parts, preserving metadata.
-    Assumes x-strides are equal to each other and y-strides are equal to each other.
-    If not the case, please apply checkerboarding first.
-    
-    The result consists of the intersection (if any) plus up to 4 rectangles:
+
+    When the strides of rect1 and rect2 differ (and one stride is 1), rect1 is first
+    checkerboarded into sub-blocks whose strides match rect2, then each sub-block is
+    split using the equal-stride path.
+
+    The equal-stride result consists of the intersection (if any) plus up to 4 rectangles:
     - Top: above the intersection (spans full width of rect1)
     - Bottom: below the intersection (spans full width of rect1)
     - Left: to the left of the intersection (spans intersection height)
     - Right: to the right of the intersection (spans intersection height)
-    
+
     :param rect1: The rectangle to split
     :param rect2: The rectangle to split by
     :return: A list of non-overlapping sub-rectangles of rect1, which together
@@ -260,10 +311,21 @@ def split_rectangle(rect1: Rectangle[T], rect2: Rectangle) -> list[Rectangle[T]]
     y1_start, y1_stop, y1_stride = rect1.y_range
     x2_start, x2_stop, x2_stride = rect2.x_range
     y2_start, y2_stop, y2_stride = rect2.y_range
-    
-    # Verify equal strides assumption
-    assert x1_stride == x2_stride, "X strides must be equal. Apply checkerboarding before splitting."
-    assert y1_stride == y2_stride, "Y strides must be equal. Apply checkerboarding before splitting."
+
+    # When rect1 is finer-grained than rect2 (smaller stride in any dimension), checkerboard
+    # rect1 into sub-blocks whose strides match rect2's, then apply the equal-stride split to
+    # each piece.  When rect1 is already coarser, fall through to the direct intersection split
+    # (which now uses the CRT-based intersect_ranges and works for arbitrary stride pairs).
+    if x1_stride != x2_stride or y1_stride != y2_stride:
+        if x1_stride < x2_stride or y1_stride < y2_stride:
+            target_x = max(x1_stride, x2_stride)
+            target_y = max(y1_stride, y2_stride)
+            pieces = _checkerboard(rect1, target_x, target_y)
+            result: list[Rectangle[T]] = []
+            for piece in pieces:
+                result.extend(split_rectangle(piece, rect2))
+            return result
+        # rect1 has larger or equal strides than rect2; fall through to direct split.
     
     intersection = rect1.intersection(rect2)
     
@@ -329,10 +391,13 @@ def split_rectangles(rectangles: list[Rectangle]) -> list[Rectangle]:
     """
     Main function to split rectangles until no intersections remain.
 
+    Empty rectangles (where start >= stop in any dimension) are discarded immediately
+    and never contribute to the output.
+
     :param rectangles: A list of rectangles to split
     :return: A list of non-overlapping rectangles (preserving metadata)
     """
-    result = rectangles.copy()
+    result = [r for r in rectangles if r.x_range[0] < r.x_range[1] and r.y_range[0] < r.y_range[1]]
     i = 0
     while i < len(result):
         has_split = False

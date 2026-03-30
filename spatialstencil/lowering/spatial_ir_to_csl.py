@@ -8,6 +8,7 @@ import functools
 from io import StringIO
 from spatialstencil.syntax.spatial_ir import irnodes as spir, canonicalization, analysis, passes
 from spatialstencil.syntax.spatial_ir import copy_elimination
+from spatialstencil.syntax.spatial_ir import canonical_subgrids
 from spatialstencil.syntax.spatial_ir.canonicalization import PEBlock, Rectangle
 from spatialstencil.syntax.csl import constants as csl, preprocessing, tasks as tdag, statements as cslstmt, dsd_ops
 from spatialstencil.syntax.csl import structures as cslstruct
@@ -15,6 +16,28 @@ from spatialstencil.syntax.csl.codefile import CodeFile
 from spatialstencil.syntax.csl.statements import name_to_csl, dtype_as_csl, expr_to_csl
 
 UniqueDSDDict = dict[str, list[tuple[str, cslstruct.DataStructureDescriptor]]]
+
+
+def canonicalize_kernel(kernel: spir.Kernel) -> spir.Kernel:
+    """
+    Runs the full canonicalization pipeline required before CSL lowering.
+
+    This is the single source of truth for the pass ordering.  Both
+    :func:`lower_spatial_ir_to_csl` and the metadata generation in
+    ``compiler.py`` must call this function so that the two pipelines
+    always stay in sync.
+
+    :param kernel: A fully concretized Spatial IR kernel.
+    :return: The transformed kernel, ready for
+             :func:`~spatialstencil.syntax.spatial_ir.canonicalization.consolidate_rectangles_to_equivalence_classes`.
+    """
+    kernel = canonicalization.inline_metaprogramming(kernel)
+    kernel = canonicalization.canonicalize_phases(kernel)
+    kernel = canonicalization.reduce_streams(kernel)
+    kernel = canonical_subgrids.canonicalize_subgrids(kernel)
+    kernel = canonicalization.resolve_auto_hops(kernel)
+    kernel = canonicalization.inline_phases(kernel)
+    return kernel
 
 
 def lower_spatial_ir_to_csl(kernel: spir.Kernel,
@@ -51,11 +74,8 @@ def lower_spatial_ir_to_csl(kernel: spir.Kernel,
     #        * There is no "orphan" block that does not have all matching place/dataflow/compute (pass)
     #     * There are no phases in the code, there may be local phases for each rectangle (pass)
 
-    # Check if virtual rectangles are equal, consolidate, add phase-end remark at end of computation
-    kernel = canonicalization.inline_metaprogramming(kernel)
-    kernel = canonicalization.canonicalize_phases(kernel)
-    kernel = canonicalization.reduce_streams(kernel)
-    kernel = canonicalization.inline_phases(kernel)
+    # Run the shared canonicalization pipeline
+    kernel = canonicalize_kernel(kernel)
 
     # Check if we are streaming or using memcpy mode
     use_memcpy_mode = analysis.kernel_uses_memcpy_mode(kernel)
@@ -118,8 +138,13 @@ def lower_spatial_ir_to_csl(kernel: spir.Kernel,
 
     ###############################################
     # Generate main layout file
-    grid_rect = kernel.get_grid_rect()
-    rect_size = grid_rect[1] - grid_rect[0], grid_rect[3] - grid_rect[2]
+
+    # Compute the tight PE bounding box. kernel.get_grid_rect() now returns tight bounds
+    # (last-contained PE + 1) rather than canonicalized stops.
+    x0, x1, y0, y1 = kernel.get_grid_rect()
+    assert x0 == 0, "PE Grid must start at x=0"
+    assert y0 == 0, "PE Grid must start at y=0"
+    rect_size = x1 - x0, y1 - y0
 
     # Collect unique routes for all rectangles
     routes_per_rectangle = _collect_routes(rectangles, color_maps)
@@ -180,26 +205,44 @@ const memcpy = @import_module("<memcpy/get_params>", .{{
     // Rectangle and code setup
     @set_rectangle{rect_size};''')
 
+    # First pass: @set_tile_code for every PE.
+    # All tile codes must be established before any @set_color_config call,
+    # because multi-hop routing config may reference neighboring PEs that
+    # belong to a different rectangle (e.g. pass-through relays).
     for rect in rectangles:
-        xb, xe, xs, yb, ye, ys = *rect.x_range, *rect.y_range
-        code_filename = f'code_{xb}_{yb}.csl'
-        # Add global offsets as necessary
-        xb += rect_offset[0]
-        xe += rect_offset[0]
-        yb += rect_offset[1]
-        ye += rect_offset[1]
+        xb_pre, xe_pre, xs, yb_pre, ye_pre, ys = *rect.x_range, *rect.y_range
+        code_filename = f'code_{xb_pre}_{yb_pre}.csl'
+        xb = xb_pre + rect_offset[0]
+        xe = xe_pre + rect_offset[0]
+        yb = yb_pre + rect_offset[1]
+        ye = ye_pre + rect_offset[1]
 
-        # Emit rectangle code setup
         layout_code.write(f'''
     for (@range(i16, {xb}, {xe}, {xs})) |pe_x| {{
         for (@range(i16, {yb}, {ye}, {ys})) |pe_y| {{
             @set_tile_code(pe_x, pe_y, "{code_filename}", .{{ .memcpy_params = memcpy.get_params(pe_x) }});
-{routes_per_rectangle[(xb, yb)]}
         }}
     }}\n''')
 
-    # Emit routing instructions
+    # Second pass: routing (@set_color_config).  By emitting these after all
+    # @set_tile_code calls, every PE referenced by a multi-hop offset is
+    # guaranteed to already have tile code assigned.
     layout_code.write('\n    // Routes\n')
+    for rect in rectangles:
+        xb_pre, xe_pre, xs, yb_pre, ye_pre, ys = *rect.x_range, *rect.y_range
+        xb = xb_pre + rect_offset[0]
+        xe = xe_pre + rect_offset[0]
+        yb = yb_pre + rect_offset[1]
+        ye = ye_pre + rect_offset[1]
+        route_code = routes_per_rectangle.get((xb_pre, yb_pre), '')
+        if route_code.strip():
+            layout_code.write(f'''
+    for (@range(i16, {xb}, {xe}, {xs})) |pe_x| {{
+        for (@range(i16, {yb}, {ye}, {ys})) |pe_y| {{
+{route_code}
+        }}
+    }}\n''')
+
     for rinst in routing_instructions:
         layout_code.write(rinst + '\n')
 
@@ -414,13 +457,20 @@ const sys_mod = @import_module("<memcpy/memcpy>", memcpy_params);
             prefix = "d" if task.task_type == 'data' else ""
             current_code.write(f'    @block({prefix}task_{i}_id);\n')
 
-    # Activate all source tasks
+    # Activate/unblock all source tasks.
+    # Local tasks are started with @activate;
+    # data tasks run when data arrives on their color channel.
     non_source_tasks = set(n for i, t in enumerate(tasks) for n, _ in t.outgoing if n != i)
     source_tasks = [t for i, t in enumerate(tasks) if i not in non_source_tasks]
     for task in source_tasks:
         i = next(i for i, t in enumerate(tasks) if task is t)
         prefix = "d" if task.task_type == 'data' else ""
-        current_code.write(f'    @activate({prefix}task_{i}_id);\n')
+        if task.task_type == 'data':
+            # Data tasks are activated by data
+            # And start as unblocked - noop
+            pass
+        else:
+            current_code.write(f'    @activate({prefix}task_{i}_id);\n')
     if not source_tasks:
         current_code.write(benchmark_postamble)
         # Unblock command stream if function is empty
@@ -467,23 +517,23 @@ def _collect_colors_globally(kernel: spir.Kernel, rectangles: list[Rectangle[PEB
             if stream_decl.stream_name not in sends_recvs:
                 continue  # Unused stream
             outbound, inbound = sends_recvs[stream_decl.stream_name]
-            if stream_decl.stream.routing.channel == "auto":
+            if stream_decl.stream.routing.resolved_channel == "auto":
                 if outbound:
                     auto_stream_is_written.add(stream_decl.stream_name)
                 if inbound:
                     auto_stream_is_read.add(stream_decl.stream_name)
                 continue  # Skip remainder of "auto" channels and assign them below
             if outbound:
-                channel_is_written.add(stream_decl.stream.routing.channel)
+                channel_is_written.add(stream_decl.stream.routing.resolved_channel)
             if inbound:
-                channel_is_read.add(stream_decl.stream.routing.channel)
+                channel_is_read.add(stream_decl.stream.routing.resolved_channel)
 
     max_channel = max(channel_is_read.union(channel_is_written), default=-1)
 
     # Assign all "auto" channels
     for rect in rectangles:
         for stream_decl in rect.metadata.dataflow.statements:
-            if stream_decl.stream.routing.channel == "auto":
+            if stream_decl.stream.routing.resolved_channel == "auto":
                 stream_decl.stream.routing.channel = max_channel + 1
                 if stream_decl.stream_name in auto_stream_is_written:
                     channel_is_written.add(max_channel + 1)
@@ -542,13 +592,14 @@ def _allocate_colors(rect: Rectangle[PEBlock], header: StringIO, kernel: spir.Ke
         if stream_decl.stream.routing is None:
             raise SyntaxError(f'Non-routed stream "{name}". When generating CSL, Spatial IR code must have all streams '
                               'routed.')
-        if stream_decl.stream.routing.channel == 'auto':
+        resolved = stream_decl.stream.routing.resolved_channel
+        if resolved == 'auto':
             raise SyntaxError(f'"auto" stream channel found in stream "{name}". All streams must be concretized prior '
                               'to lowering to CSL')
 
         if outbound:
             # Look up channel in color map
-            this_color = channel_to_color[channel_offset + stream_decl.stream.routing.channel]
+            this_color = channel_to_color[channel_offset + resolved]
 
             # Add to mapping
             result[name + "_OUT"] = csl.COLORS[this_color]
@@ -557,7 +608,7 @@ def _allocate_colors(rect: Rectangle[PEBlock], header: StringIO, kernel: spir.Ke
 
         if inbound:
             # Look up channel in color map
-            this_color = channel_to_color[channel_offset + stream_decl.stream.routing.channel]
+            this_color = channel_to_color[channel_offset + resolved]
 
             # Add to mapping
             result[name + "_IN"] = csl.COLORS[this_color]
@@ -1070,6 +1121,110 @@ def _collect_routes(rectangles: list[Rectangle[PEBlock]], color_maps: list[dict[
             if isinstance(stream.stream, spir.ExternStreamDeclaration):
                 continue  # Extern streams do not have on-chip routing
 
+            if isinstance(stream.stream, spir.MulticastRangeStreamDeclaration):
+                if sent and received:
+                    raise ValueError(
+                        f"Multicast stream '{stream.stream_name.as_ir()}' is both sent and received "
+                        f"within the same compute rectangle [{rect.x_range[0]}:{rect.x_range[1]}, "
+                        f"{rect.y_range[0]}:{rect.y_range[1]}]. "
+                        "Sender and receiver compute blocks must be in separate rectangles for multicast streams."
+                    )
+                if not sent:
+                    # All multicast routing is emitted by the rectangle that sends this stream.
+                    continue
+                rng = stream.stream.multicast_range
+                start = int(rng.start.eval())
+                stop = int(rng.stop.eval())
+                axis = stream.stream.multicast_axis
+                is_negative = start < 0
+
+                if axis == 'y':
+                    if is_negative:
+                        tx_dir, rx_dir = 'NORTH', 'SOUTH'
+                    else:
+                        tx_dir, rx_dir = 'SOUTH', 'NORTH'
+
+                    def _coord(k):  # noqa: E731
+                        if k >= 0:
+                            return 'pe_x', f'pe_y + {k}'
+                        return 'pe_x', f'pe_y - {-k}'
+                else:
+                    if is_negative:
+                        tx_dir, rx_dir = 'WEST', 'EAST'
+                    else:
+                        tx_dir, rx_dir = 'EAST', 'WEST'
+
+                    def _coord(k):  # noqa: E731
+                        if k >= 0:
+                            return f'pe_x + {k}', 'pe_y'
+                        return f'pe_x - {-k}', 'pe_y'
+
+                # Sender: inject into fabric toward receivers.
+                routing_inst = INDENT + '@set_color_config(pe_x, pe_y, %s, .{ .routes = .{ .rx = .{RAMP}, .tx = .{%s} } });\n' % (
+                    color_name_outbound, tx_dir)
+                if routing_inst not in routing_instructions:
+                    inst += routing_inst
+                    routing_instructions.add(routing_inst)
+
+                if is_negative:
+                    # Negative multicast: receivers at start, start-1, …, stop+1 (stop exclusive).
+                    k_last = stop + 1  # farthest receiver
+
+                    # Gap relay-only PEs between sender and first receiver (when start < -1).
+                    for k in range(-1, start, -1):
+                        cx, cy = _coord(k)
+                        routing_inst = INDENT + '@set_color_config(%s, %s, %s, .{ .routes = .{ .rx = .{%s}, .tx = .{%s} } });\n' % (
+                            cx, cy, color_name_outbound, rx_dir, tx_dir)
+                        if routing_inst not in routing_instructions:
+                            inst += routing_inst
+                            routing_instructions.add(routing_inst)
+
+                    # Intermediate receivers: forward toward farthest and deliver to RAMP.
+                    for k in range(start, k_last, -1):
+                        cx, cy = _coord(k)
+                        routing_inst = INDENT + '@set_color_config(%s, %s, %s, .{ .routes = .{ .rx = .{%s}, .tx = .{%s, RAMP} } });\n' % (
+                            cx, cy, color_name_outbound, rx_dir, tx_dir)
+                        if routing_inst not in routing_instructions:
+                            inst += routing_inst
+                            routing_instructions.add(routing_inst)
+
+                    # Last (farthest) receiver: deliver to RAMP only, no forwarding.
+                    cx, cy = _coord(k_last)
+                    routing_inst = INDENT + '@set_color_config(%s, %s, %s, .{ .routes = .{ .rx = .{%s}, .tx = .{RAMP} } });\n' % (
+                        cx, cy, color_name_outbound, rx_dir)
+                    if routing_inst not in routing_instructions:
+                        inst += routing_inst
+                        routing_instructions.add(routing_inst)
+                else:
+                    # Positive multicast: receivers at start, start+1, …, stop-1 (stop exclusive).
+                    # Gap relay-only PEs between sender and first receiver (when start > 1).
+                    for k in range(1, start):
+                        cx, cy = _coord(k)
+                        routing_inst = INDENT + '@set_color_config(%s, %s, %s, .{ .routes = .{ .rx = .{%s}, .tx = .{%s} } });\n' % (
+                            cx, cy, color_name_outbound, rx_dir, tx_dir)
+                        if routing_inst not in routing_instructions:
+                            inst += routing_inst
+                            routing_instructions.add(routing_inst)
+
+                    # Intermediate receivers: forward and simultaneously deliver to RAMP.
+                    for k in range(start, stop - 1):
+                        cx, cy = _coord(k)
+                        routing_inst = INDENT + '@set_color_config(%s, %s, %s, .{ .routes = .{ .rx = .{%s}, .tx = .{%s, RAMP} } });\n' % (
+                            cx, cy, color_name_outbound, rx_dir, tx_dir)
+                        if routing_inst not in routing_instructions:
+                            inst += routing_inst
+                            routing_instructions.add(routing_inst)
+
+                    # Last receiver: deliver to RAMP only, no forwarding.
+                    k_last = stop - 1
+                    cx, cy = _coord(k_last)
+                    routing_inst = INDENT + '@set_color_config(%s, %s, %s, .{ .routes = .{ .rx = .{%s}, .tx = .{RAMP} } });\n' % (
+                        cx, cy, color_name_outbound, rx_dir)
+                    if routing_inst not in routing_instructions:
+                        inst += routing_inst
+                        routing_instructions.add(routing_inst)
+                continue
+
             if len(stream.stream.routing.hops) == 1:  # Inbound and outbound generated together
                 route = _route_dir(*stream.stream.routing.hops[0].offset)
                 if sent:
@@ -1105,26 +1260,16 @@ def _collect_routes(rectangles: list[Rectangle[PEBlock]], color_maps: list[dict[
                             inst += routing_inst
                             routing_instructions.add(routing_inst)
                 if received:
-                    cur_offx = 0
-                    cur_offy = 0
+                    # The receiver only configures itself (pe_x + 0, pe_y + 0).
+                    # Intermediate PEs are configured by the sender block above,
+                    # which walks forward through hops[1:] relative to the sender PE.
                     last_hop = stream.stream.routing.hops[-1]
                     route = (_route_dir(*last_hop.offset)[0], 'RAMP')
-                    routing_inst = INDENT + '@set_color_config(pe_x + %d, pe_y + %d, %s, .{ .routes = .{ .rx = .{%s}, .tx = .{%s} } });\n' % (
-                        cur_offx, cur_offy, color_name_inbound, route[0], route[1])
+                    routing_inst = INDENT + '@set_color_config(pe_x, pe_y, %s, .{ .routes = .{ .rx = .{%s}, .tx = .{%s} } });\n' % (
+                        color_name_inbound, route[0], route[1])
                     if routing_inst not in routing_instructions:
                         inst += routing_inst
                         routing_instructions.add(routing_inst)
-                    cur_offx += last_hop.offset[0]
-                    cur_offy += last_hop.offset[1]
-                    for hop in reversed(stream.stream.routing.hops[:-1]):
-                        route = _route_dir(*hop.offset)
-                        routing_inst = INDENT + '@set_color_config(pe_x + %d, pe_y + %d, %s, .{ .routes = .{ .rx = .{%s}, .tx = .{%s} } });\n' % (
-                            cur_offx, cur_offy, color_name_inbound, route[0], route[1])
-                        if routing_inst not in routing_instructions:
-                            inst += routing_inst
-                            routing_instructions.add(routing_inst)
-                        cur_offx += hop.offset[0]
-                        cur_offy += hop.offset[1]
 
         result[(rect.x_range[0], rect.y_range[0])] = inst
 

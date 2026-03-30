@@ -393,6 +393,103 @@ def reduce_streams(kernel: spir.Kernel) -> spir.Kernel:
     return kernel
 
 
+class _AutoHopResolver(spir.NodeTransformer):
+    """
+    Replaces ``hops = auto`` in every RelativeStreamDeclaration with an explicit
+    hop list computed from the stream's (dx, dy) offset.
+
+    Routing heuristic: move in the X direction first (one step at a time),
+    then in the Y direction.  Each hop has |step| == 1 in exactly one axis.
+    """
+
+    def visit_RelativeStreamDeclaration(self, node: spir.RelativeStreamDeclaration):
+        node = self.generic_visit(node)
+        if node.routing is None:
+            return node
+
+        if node.routing.hops != "auto":
+            # Explicit hops provided: verify the hop count equals |dx| + |dy|.
+            dx = node.dx.eval()
+            dy = node.dy.eval()
+            expected = abs(dx) + abs(dy)
+            actual = len(node.routing.hops)
+            if actual != expected:
+                raise ValueError(
+                    f"Stream relative_stream({dx}, {dy}) has {actual} explicit hop(s) "
+                    f"but requires exactly {expected} (|{dx}| + |{dy}|)."
+                )
+            return node
+
+        dx = node.dx.eval()
+        dy = node.dy.eval()
+
+        step_x = 1 if dx > 0 else -1
+        step_y = 1 if dy > 0 else -1
+
+        hops = (
+            [spir.RoutingHop((step_x, 0)) for _ in range(abs(dx))]
+            + [spir.RoutingHop((0, step_y)) for _ in range(abs(dy))]
+        )
+
+        new_routing = copy.copy(node.routing)
+        new_routing.hops = hops
+        node.routing = new_routing
+        return node
+
+    def visit_MulticastRangeStreamDeclaration(self, node: spir.MulticastRangeStreamDeclaration):
+        node = self.generic_visit(node)
+        # Inject default routing if none provided.
+        if node.routing is None:
+            node.routing = spir.RoutingDeclaration(hops=[], channel="auto")
+            return node
+        # Normalize hops: multicast does not use point-to-point hops.
+        new_routing = copy.copy(node.routing)
+        new_routing.hops = []
+        node.routing = new_routing
+        # Validate the range and fixed offset.
+        rng = node.multicast_range
+        start = rng.start.eval()
+        stop = rng.stop.eval() if rng.stop is not None else None
+
+        fixed = node.fixed_offset.eval()
+        if fixed != 0:
+            raise ValueError(
+                f"Multicast stream has a non-zero fixed offset ({fixed}) in the non-multicast dimension. "
+                "Combined-axis multicasting is not yet supported; the fixed offset must be 0."
+            )
+
+        if start == 0:
+            raise ValueError(
+                f"Multicast stream range start must be >= 1 for positive multicast or <= -1 for "
+                "negative multicast; start=0 means the sender is its own receiver."
+            )
+        if start > 0:
+            # Positive multicast: receivers at offsets start, start+1, …, stop-1.
+            if stop is not None and stop <= start:
+                raise ValueError(
+                    f"Multicast stream range [{start}:{stop}] is empty (stop must be > start)."
+                )
+        else:
+            # Negative multicast: receivers at offsets start, start-1, …, stop+1.
+            if stop is not None and stop >= start:
+                raise ValueError(
+                    f"Multicast stream range [{start}:{stop}] is empty "
+                    "(for negative multicast stop must be < start)."
+                )
+        return node
+
+
+def resolve_auto_hops(kernel: spir.Kernel) -> spir.Kernel:
+    """
+    Resolves all ``hops = auto`` routing declarations into explicit hop lists.
+
+    Uses a shortest X-then-Y path: first traverse all steps in the X direction,
+    then all steps in the Y direction.  This matches the natural column-major
+    routing expected by the CSL backend.
+    """
+    return _AutoHopResolver().visit(kernel)
+
+
 class _BulkCommunicationLowerer(spir.NodeTransformer):
 
     def __init__(self, place: spir.PlaceBlock):

@@ -434,6 +434,10 @@ class SubgridExpression(SpatialNode):
         """
         Get the concrete grid rectangle defined by the subgrid expression.
 
+        Stop values are canonicalized by rounding up to the next stride boundary so that
+        ranges that cover the same set of PEs (e.g., (3,4,2) and (3,5,2)) produce the
+        same key regardless of which split path generated them.
+
         :return: A tuple of (start_x, stop_x, start_y, stop_y)
         """
         start_x, start_y = self.x_range.start.eval(), self.y_range.start.eval()
@@ -454,7 +458,12 @@ class SubgridExpression(SpatialNode):
         if not isinstance(stop_y, int):
             raise TypeError(f'Cannot obtain concrete grid size. y range value "{stop_y.as_ir()}" is not integral')
 
-        return start_x, stop_x, start_y, stop_y
+        x_stride, y_stride = self.get_grid_stride()
+        # Canonicalize: round stop up to the next stride boundary relative to start.
+        def _canon(start, stop, stride):
+            offset = stop - start
+            return start + ((offset + stride - 1) // stride) * stride
+        return start_x, _canon(start_x, stop_x, x_stride), start_y, _canon(start_y, stop_y, y_stride)
 
     def get_grid_stride(self) -> tuple[int, int]:
         """
@@ -558,9 +567,18 @@ class RoutingHop(SpatialNode):
 class RoutingDeclaration(SpatialNode):
     """
     A routing declaration for a stream, optionally specifying hops and channel.
+
+    The ``channel`` field may hold:
+    * ``"auto"``  – the channel number is assigned automatically.
+    * ``int``     – a literal channel number (assigned programmatically or parsed from
+                    a plain integer literal).
+    * ``Expression`` – a compile-time constant expression (e.g. a parameter or
+                    meta-for loop variable such as ``stage``).  It must evaluate to
+                    an integer by the time CSL lowering runs; use
+                    :attr:`resolved_channel` to obtain the concrete value.
     """
     hops: Union[list[RoutingHop], Literal["auto"]] = "auto"  # list of hops or 'auto'
-    channel: Union[int, Literal["auto"]] = "auto"  # Channel ID or 'auto'
+    channel: Union["Expression", int, Literal["auto"]] = "auto"
 
     def validate(self) -> None:
         if isinstance(self.hops, list):
@@ -568,10 +586,34 @@ class RoutingDeclaration(SpatialNode):
                 dx, dy = hop.offset
                 assert abs(dx) + abs(dy) == 1, "Each hop must have an absolute sum of 1."
 
+    @property
+    def resolved_channel(self) -> Union[int, Literal["auto"]]:
+        """
+        Return the channel as a concrete integer, evaluating any compile-time
+        constant expression if necessary.  Raises ``ValueError`` if the channel
+        expression has not been fully reduced to a constant yet.
+        """
+        if self.channel == "auto":
+            return "auto"
+        if isinstance(self.channel, int):
+            return self.channel
+        val = self.channel.eval()
+        if not isinstance(val, int):
+            raise ValueError(
+                f"Channel expression '{self.channel.as_ir()}' did not evaluate to an integer. "
+                "Ensure all parameters and loop variables are concretized before CSL lowering."
+            )
+        return val
+
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
         hops_str = "auto" if self.hops == "auto" else f"[{', '.join(hop.as_ir() for hop in self.hops)}]"
-        channel_str = "auto" if self.channel == "auto" else str(self.channel)
+        if self.channel == "auto":
+            channel_str = "auto"
+        elif isinstance(self.channel, int):
+            channel_str = str(self.channel)
+        else:
+            channel_str = self.channel.as_ir()
         return f"{indent_str}hops = {hops_str}, \n{indent_str}channel = {channel_str}"
 
 
@@ -597,6 +639,65 @@ class RelativeStreamDeclaration(SpatialNode):
         if self.routing:
             routing_str = f" {{\n{self.routing.as_ir(indent + 1)}\n{indent_str}}}"
         return (f'relative_stream({self.dx.as_ir()}, {self.dy.as_ir()}){routing_str}')
+
+
+@dataclass
+class MulticastRangeStreamDeclaration(SpatialNode):
+    """
+    A stream declaration that multicasts to a contiguous range of PEs along one axis.
+
+    Exactly one of ``dx`` / ``dy`` must be a :class:`RangeExpression`; the other
+    must be a scalar :class:`Expression` equal to 0 (non-multicast axis).
+
+    Two directions are supported:
+
+    * **Positive** – ``start ≥ 1``, ``stop > start`` (exclusive).  Receivers are at
+      offsets ``start, start+1, …, stop-1`` in the positive axis direction.
+      Example: ``relative_stream(0, [1:K])`` reaches y+1 … y+K-1.
+
+    * **Negative** – ``start ≤ -1``, ``stop < start`` (exclusive in the negative
+      direction).  Receivers are at offsets ``start, start-1, …, stop+1``.
+      Example: ``relative_stream(0, [-1:-K])`` reaches y-1 … y-(K-1).
+
+    If ``start < -1`` (negative) or ``start > 1`` (positive), PEs between the sender
+    and the first receiver are configured as relay-only nodes.
+    """
+    dx: Union['Expression', 'RangeExpression']
+    dy: Union['Expression', 'RangeExpression']
+    routing: Optional[RoutingDeclaration] = None
+
+    def validate(self) -> None:
+        dx_is_range = isinstance(self.dx, RangeExpression)
+        dy_is_range = isinstance(self.dy, RangeExpression)
+        assert dx_is_range != dy_is_range, \
+            "Exactly one of dx/dy must be a RangeExpression in MulticastRangeStreamDeclaration."
+        if not dx_is_range:
+            assert isinstance(self.dx, Expression)
+        if not dy_is_range:
+            assert isinstance(self.dy, Expression)
+        if self.routing:
+            assert isinstance(self.routing, RoutingDeclaration)
+
+    @property
+    def multicast_axis(self) -> Literal['x', 'y']:
+        return 'x' if isinstance(self.dx, RangeExpression) else 'y'
+
+    @property
+    def multicast_range(self) -> 'RangeExpression':
+        return self.dx if isinstance(self.dx, RangeExpression) else self.dy
+
+    @property
+    def fixed_offset(self) -> 'Expression':
+        return self.dy if isinstance(self.dx, RangeExpression) else self.dx
+
+    def as_ir(self, indent: int = 0) -> str:
+        indent_str = '  ' * indent
+        routing_str = ""
+        if self.routing:
+            routing_str = f" {{\n{self.routing.as_ir(indent + 1)}\n{indent_str}}}"
+        dx_str = f'[{self.dx.as_ir()}]' if isinstance(self.dx, RangeExpression) else self.dx.as_ir()
+        dy_str = f'[{self.dy.as_ir()}]' if isinstance(self.dy, RangeExpression) else self.dy.as_ir()
+        return f'relative_stream({dx_str}, {dy_str}){routing_str}'
 
 
 @dataclass
@@ -630,12 +731,12 @@ class StreamDeclaration(SpatialNode):
     """
     dtype: StreamType
     stream_name: Identifier
-    stream: RelativeStreamDeclaration | ExternStreamDeclaration
+    stream: RelativeStreamDeclaration | MulticastRangeStreamDeclaration | ExternStreamDeclaration
 
     def validate(self) -> None:
         assert isinstance(self.dtype, StreamType)
         assert isinstance(self.stream_name, Identifier)
-        assert isinstance(self.stream, (RelativeStreamDeclaration, ExternStreamDeclaration))
+        assert isinstance(self.stream, (RelativeStreamDeclaration, MulticastRangeStreamDeclaration, ExternStreamDeclaration))
 
     def as_ir(self, indent: int = 0) -> str:
         indent_str = '  ' * indent
@@ -754,7 +855,8 @@ class ReceiveStatement(Statement):
 
     def validate(self) -> None:
         assert isinstance(self.local_array, (Identifier, ArraySlice))
-        assert isinstance(self.stream_name, (Identifier, ArraySlice))
+        # Allows conditionals for flexible stream choice (must be compile-time constant value!)
+        assert isinstance(self.stream_name, (Identifier, ArraySlice, TernaryOperator))
         if self.completion_name:
             assert isinstance(self.completion_name, Completion)
 
@@ -1216,15 +1318,23 @@ class Kernel(SpatialNode):
 
     def get_grid_rect(self) -> tuple[int, int, int, int]:
         """
-        Returns the total PE grid size for this kernel.
-        
-        :return: A rectangle as a tuple of (x range begin, x range end, y range begin, y range end).
-        """
-        grid_rect: list[int | None] = [None, None, None, None]
-        for block in self.body:
-            grid_rect = _combine_grids(block.get_grid_rect(), grid_rect)
+        Returns the tight PE grid rectangle occupied by this kernel.
 
-        return tuple(grid_rect)  # type: ignore
+        Stop values reflect the actual last PE index + 1, not a
+        canonicalized stride boundary (which can be one stride larger).
+        
+        Kernel must have `MetaForBlock`'s resolved.
+
+        :return: (x_begin, x_end, y_begin, y_end)
+        """
+        rects = self.subgrids()
+        if not rects:
+            return (0, 0, 0, 0)
+        x0 = min(r.x_range[0] for r in rects)
+        y0 = min(r.y_range[0] for r in rects)
+        x1 = max(r.largest_contained_x() + 1 for r in rects)
+        y1 = max(r.largest_contained_y() + 1 for r in rects)
+        return (x0, x1, y0, y1)
 
     def get_grid_stride(self) -> tuple[int, int]:
         """
@@ -1247,32 +1357,53 @@ class Kernel(SpatialNode):
             else f'kernel<{param_str}>({arg_str}) {{\n{body_str}\n}}'
 
     def subgrids(self) -> list[Subgrid]:
+        """
+        Return every place/dataflow/compute block in this kernel as a flat list of
+        :class:`Rectangle` objects whose metadata is ``(phase_id, block)``.
+
+        **Phase IDs**: top-level blocks (outside any ``phase { }`` wrapper) receive
+        ``phase_id=0``; blocks inside the first ``phase`` receive ``phase_id=1``,
+        the second ``phase_id=2``, and so on.  The phase ID is used by
+        :func:`canonicalize_subgrids` to keep blocks from different phases separate.
+
+        **Empty ranges**: after parameter concretisation an explicit range such as
+        ``[2:PX-1:2]`` may evaluate to a range where ``start > stop`` (e.g.
+        ``[2:1:2]`` when ``PX=2``).  Such blocks cover zero PEs and are silently
+        omitted from the result rather than raising an assertion error.
+
+        :raises NotImplementedError: if the kernel body contains any
+            :class:`MetaForBlock`; those must be unrolled before calling this method.
+        """
         if any(isinstance(stmt, MetaForBlock) for stmt in self.body):
             raise NotImplementedError('Subgrid extraction requires unrolling of metaprogramming blocks.')
+
+        def _to_range3(t: tuple) -> tuple[int, int, int]:
+            """Normalize a 1-tuple (scalar point) to a 3-tuple (start, start+1, 1)."""
+            if len(t) == 1:
+                return (t[0], t[0] + 1, 1)
+            return t
+
+        def _make_rect(block, phase_id):
+            """Return a Rectangle for *block*, or None if the range is empty."""
+            x = _to_range3(block.subgrid.x_range.as_tuple())
+            y = _to_range3(block.subgrid.y_range.as_tuple())
+            if x[0] > x[1] or y[0] > y[1]:
+                return None
+            return Rectangle(x, y, (phase_id, block))
 
         rectangles = []
         phase_id = 1
         for elem in self.body:
             if isinstance(elem, Phase):
-                rectangles.extend([
-                    Rectangle(a.subgrid.x_range.as_tuple(), a.subgrid.y_range.as_tuple(), (phase_id, a))
-                    for a in elem.place
-                ])
-
-                rectangles.extend([
-                    Rectangle(a.subgrid.x_range.as_tuple(), a.subgrid.y_range.as_tuple(), (phase_id, a))
-                    for a in elem.dataflow
-                ])
-
-                rectangles.extend([
-                    Rectangle(a.subgrid.x_range.as_tuple(), a.subgrid.y_range.as_tuple(), (phase_id, a))
-                    for a in elem.compute
-                ])
+                rectangles.extend([r for a in elem.place     if (r := _make_rect(a, phase_id)) is not None])
+                rectangles.extend([r for a in elem.dataflow  if (r := _make_rect(a, phase_id)) is not None])
+                rectangles.extend([r for a in elem.compute   if (r := _make_rect(a, phase_id)) is not None])
                 phase_id += 1
             else:
                 assert isinstance(elem, (ComputeBlock, DataflowBlock, PlaceBlock))
-                rectangles.append(
-                    Rectangle(elem.subgrid.x_range.as_tuple(), elem.subgrid.y_range.as_tuple(), (0, elem)))
+                r = _make_rect(elem, 0)
+                if r is not None:
+                    rectangles.append(r)
 
         return rectangles
 
