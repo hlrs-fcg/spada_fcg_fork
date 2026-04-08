@@ -393,7 +393,8 @@ const sys_mod = @import_module("<memcpy/memcpy>", memcpy_params);
         if len(tasks) != len_for_reporting:
             print(f'P{rect.x_range[0]},{rect.y_range[0]}: Reduced from {len_for_reporting} to {len(tasks)} tasks.')
 
-    task_bindings = task_recycling.plan_task_bindings(tasks, task_creation_behavior)
+    task_bindings = task_recycling.plan_task_bindings(tasks, task_creation_behavior, set(color_map.values()))
+
     place_block_bytes = _place_block_storage_bytes(rect.metadata.place)
 
     print(f'Stats P{rect.x_range[0]},{rect.y_range[0]}: {place_block_bytes} bytes/PE, '
