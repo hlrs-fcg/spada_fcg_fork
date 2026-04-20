@@ -29,8 +29,8 @@ For full details, see the paper:
 Clone the repository and install the package:
 
 ```bash
-git clone https://github.com/glukas/spatialstencil.git
-cd spatialstencil
+git clone https://github.com/glukas/spada.git
+cd spada
 pip install -e .
 ```
 
@@ -64,7 +64,7 @@ Key options:
 To compile a GT4Py stencil file to SPADA IR (`.spst` and `.sptl`):
 
 ```bash
-python -m spatialstencil.cli.gt4py_to_spatial samples/stencils.py 128,128,80 output/ --function-name laplacian
+python -m spada.cli.gt4py_to_spatial samples/stencils.py 128,128,80 output/ --function-name laplacian
 ```
 
 Arguments in order: `input_file`, `domain_size` (comma-separated `x,y,z`), `output_dir`. Omitting `--function-name` compiles all stencils in the file.
@@ -76,13 +76,13 @@ The resulting `.sptl` file can then be passed to `sptlc`.
 After compiling with `cslc` (invoked automatically by `sptlc` unless `--generate-only` is set), run the kernel via the Cerebras `cs_python` launcher:
 
 ```bash
-cs_python spatialstencil/runtime/runtime.py output/ in_field.npy
+cs_python spada/runtime/runtime.py output/ in_field.npy
 ```
 
 Alternatively, use the `Program` class directly from Python (must be run with `cs_python`):
 
 ```python
-from spatialstencil.runtime.runtime import Program
+from spada.runtime.runtime import Program
 import numpy as np
 
 program = Program("output/")
@@ -183,23 +183,26 @@ brew install lima qemu lima-additional-guestagents   # one-time
 tests/csl_runtime/run-in-lima.sh --sdk-url <url>
 ```
 
-This creates the Lima VM on first use (~5–10 min), downloads and extracts the SDK to `tests/csl_runtime/cerebras-sdk/`, installs Python dependencies inside the VM, and runs the full test suite. Other modes:
+This creates the Lima VM on first use (~5–10 min), downloads and extracts the SDK to `tests/csl_runtime/cerebras-sdk/`, installs Python dependencies inside the VM, and runs the full test suite. 
+If the SDK tarball is already downloaded or extracted, use `--sdk /path/to/cs_sdk` instead of `--sdk-url`.
+
+Other modes:
 
 ```bash
 # Run a single test
-tests/csl_runtime/run-in-lima.sh --sdk-url <url> --test test_add.sh
+tests/csl_runtime/run-in-lima.sh --sdk <dir> --test test_add.sh
 
 # Verify the SDK toolchain only
-tests/csl_runtime/run-in-lima.sh --sdk-url <url> --check
+tests/csl_runtime/run-in-lima.sh  --sdk <dir> --check
 
 # Run the Cerebras SDK smoke test
-tests/csl_runtime/run-in-lima.sh --sdk-url <url> --smoke /path/to/csl-extras-*
+tests/csl_runtime/run-in-lima.sh  --sdk <dir> --smoke /path/to/csl-extras-*
 
 # Drop into an interactive shell inside the VM
-tests/csl_runtime/run-in-lima.sh --sdk-url <url> --shell
+tests/csl_runtime/run-in-lima.sh  --sdk <dir> --shell
 ```
 
-If the SDK tarball is already downloaded or extracted, use `--sdk /path/to/cs_sdk` instead of `--sdk-url`. The repository must reside under `$HOME` (Lima mounts the Mac home directory by default). The Lima configuration is in `tests/csl_runtime/lima-ubuntu-x86_64.yaml`.
+ The repository must reside under `$HOME` (Lima mounts the Mac home directory by default). The Lima configuration is in `tests/csl_runtime/lima-ubuntu-x86_64.yaml`.
 
 **Cleanup** generated test artifacts:
 
@@ -214,7 +217,7 @@ make -C tests/csl_runtime clean-sdk  # also remove the downloaded SDK
 
 Questions, discussions, and feedback are welcome via GitHub Issues:
 
-- **Bug reports and feature requests**: [GitHub Issues](https://github.com/glukas/spatialstencil/issues)
+- **Bug reports and feature requests**: [GitHub Issues](https://github.com/glukas/spada/issues)
 
 ---
 
@@ -227,9 +230,9 @@ Contributions are welcome. Please follow these steps:
 3. **Write tests** for any new functionality. Tests live in `tests/` and are organized by subsystem (`stencil_ir/`, `spatial_ir/`, `placement/`, `gt4py/`, `csl_runtime/`).
 4. **Format** your code with `black` and `isort`, and verify with `flake8`:
    ```bash
-   black spatialstencil tests
-   isort spatialstencil tests
-   flake8 spatialstencil tests
+   black spada tests
+   isort spada tests
+   flake8 spada tests
    ```
 5. **Run tests**: see the [Testing](#testing) section for Python unit tests and CSL runtime tests.
 6. **Open a pull request** against `main` with a clear description of the change and its motivation.

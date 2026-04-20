@@ -6,9 +6,9 @@ import sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 from enum import Enum
-from spatialstencil.runtime.cerebras_runtime_stub import MemcpyDataType, MemcpyOrder
+from spada.runtime.cerebras_runtime_stub import MemcpyDataType, MemcpyOrder
 
-# Mock the Cerebras SDK module BEFORE any imports from spatialstencil
+# Mock the Cerebras SDK module BEFORE any imports from spada
 # This needs to be done at the very beginning to prevent ImportError
 
 
@@ -139,45 +139,12 @@ sys.modules["cerebras.sdk.runtime.sdkruntimepybind"] = mock_crt
 # End of mocking the Cerebras SDK
 
 # Now we can safely import the runtime classes
-from spatialstencil.runtime.runtime import Program, ProgramMetadata, copy_back_sync_benchmark_data
+from spada.runtime.runtime import Program, ProgramMetadata
 
 
 def mock_kernel(a, b, out):
     """Mock kernel function that adds two arrays."""
     out[:] = a + b
-
-
-class MockSyncBenchmarkRuntime:
-    def __init__(self, time_start_hwe: np.ndarray, time_stop_hwe: np.ndarray, time_ref_hwe: np.ndarray):
-        self.buffer_names = {"__benchmark_start": 1, "__benchmark_stop": 2, "__benchmark_refclock": 3}
-        self.data_buffers = {
-            1: time_start_hwe.transpose(1, 0, 2).ravel(),
-            1: time_stop_hwe.transpose(1, 0, 2).ravel(),
-            2: time_ref_hwe.transpose(1, 0, 2).ravel(),
-        }
-
-    def launch(self, symbol: str, nonblock: bool = False):
-        return None
-
-    def get_id(self, symbol: str) -> int:
-        return self.buffer_names[symbol]
-
-    def memcpy_d2h(
-        self,
-        dest: np.ndarray,
-        src: int,
-        px: int,
-        py: int,
-        w: int,
-        h: int,
-        elem_per_pe: int,
-        *,
-        streaming: bool,
-        data_type,
-        order,
-        nonblock: bool
-    ):
-        dest[:] = self.data_buffers[src]
 
 
 class TestProgramWithMockRuntime(unittest.TestCase):
@@ -226,7 +193,7 @@ class TestProgramWithMockRuntime(unittest.TestCase):
 
         shutil.rmtree(self.temp_dir)
 
-    @patch("spatialstencil.runtime.runtime.crt.SdkRuntime")
+    @patch("spada.runtime.runtime.crt.SdkRuntime")
     def test_program_initialization(self, mock_sdk_runtime_class):
         """Test that Program initializes correctly with metadata."""
         mock_sdk_runtime_class.return_value = self.mock_runtime
@@ -244,7 +211,7 @@ class TestProgramWithMockRuntime(unittest.TestCase):
     def test_program_execution_with_positional_args(self):
         """Test program execution with positional arguments."""
         # Patch the SdkRuntime class directly in the runtime module
-        with patch("spatialstencil.runtime.runtime.crt.SdkRuntime", return_value=self.mock_runtime):
+        with patch("spada.runtime.runtime.crt.SdkRuntime", return_value=self.mock_runtime):
             program = Program(str(self.program_dir))
 
             # Create test input data
@@ -261,7 +228,7 @@ class TestProgramWithMockRuntime(unittest.TestCase):
 
     def test_program_execution_with_keyword_args(self):
         """Test program execution with keyword arguments."""
-        with patch("spatialstencil.runtime.runtime.crt.SdkRuntime", return_value=self.mock_runtime):
+        with patch("spada.runtime.runtime.crt.SdkRuntime", return_value=self.mock_runtime):
             program = Program(str(self.program_dir))
 
             # Create test input data
@@ -278,7 +245,7 @@ class TestProgramWithMockRuntime(unittest.TestCase):
 
     def test_program_shape_validation(self):
         """Test that program validates input shapes correctly."""
-        with patch("spatialstencil.runtime.runtime.crt.SdkRuntime", return_value=self.mock_runtime):
+        with patch("spada.runtime.runtime.crt.SdkRuntime", return_value=self.mock_runtime):
             program = Program(str(self.program_dir))
 
             # Create test input data with wrong shape
@@ -291,7 +258,7 @@ class TestProgramWithMockRuntime(unittest.TestCase):
 
     def test_program_missing_input(self):
         """Test that program raises error for missing inputs."""
-        with patch("spatialstencil.runtime.runtime.crt.SdkRuntime", return_value=self.mock_runtime):
+        with patch("spada.runtime.runtime.crt.SdkRuntime", return_value=self.mock_runtime):
             program = Program(str(self.program_dir))
 
             # Create test input data - only provide one input
@@ -303,7 +270,7 @@ class TestProgramWithMockRuntime(unittest.TestCase):
 
     def test_mock_kernel_execution_verification(self):
         """Test that our mock kernel is actually being executed with correct data."""
-        with patch("spatialstencil.runtime.runtime.crt.SdkRuntime", return_value=self.mock_runtime):
+        with patch("spada.runtime.runtime.crt.SdkRuntime", return_value=self.mock_runtime):
             program = Program(str(self.program_dir))
 
             # Create specific test input data to verify kernel execution
@@ -325,7 +292,7 @@ class TestProgramWithMockRuntime(unittest.TestCase):
 
     def test_program_unexpected_input(self):
         """Test that program raises error for unexpected inputs."""
-        with patch("spatialstencil.runtime.runtime.crt.SdkRuntime", return_value=self.mock_runtime):
+        with patch("spada.runtime.runtime.crt.SdkRuntime", return_value=self.mock_runtime):
             program = Program(str(self.program_dir))
 
             # Create test input data
@@ -338,7 +305,7 @@ class TestProgramWithMockRuntime(unittest.TestCase):
                 program(a=a, b=b, c=c)
 
     def test_benchmark_requires_symbols(self):
-        with patch("spatialstencil.runtime.runtime.crt.SdkRuntime", return_value=self.mock_runtime):
+        with patch("spada.runtime.runtime.crt.SdkRuntime", return_value=self.mock_runtime):
             program = Program(str(self.program_dir), benchmark=True)
 
             a = np.ones((4, 4, 1), dtype=np.float32)
