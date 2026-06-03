@@ -1,6 +1,3 @@
-// Two awaitall groups
-// 
-// This test was altered because the old test with one awaitall fails on WSE-3
 kernel @task_recycling_merge<>(stream<f32, 22>[1, 1] readonly input, stream<f32, 1>[1, 1] writeonly output) {
     place u16 i, u16 j in [0:1, 0:1] {
         f32[22] buf
