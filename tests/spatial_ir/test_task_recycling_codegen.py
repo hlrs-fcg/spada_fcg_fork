@@ -5,6 +5,7 @@ import pytest
 
 from spada.lowering.spatial_ir_to_csl import lower_spatial_ir_to_csl
 from spada.syntax.spatial_ir import parser, passes
+from spada.syntax.csl import constants
 
 _CSL_RUNTIME_TASK_RECYCLING_SAMPLES = os.path.join(os.path.dirname(__file__), '..', 'csl_runtime', 'samples')
 
@@ -36,9 +37,9 @@ def test_task_recycling_codegen_uses_else_if_dispatch_for_recycled_slots():
 @pytest.mark.parametrize(
     'filename',
     (
-        f'task_recycling_merge_{os.getenv("WSE_ARCH", "wse2")}.sptl',
-        f'task_recycling_two_stage_{os.getenv("WSE_ARCH", "wse2")}.sptl',
-        f'task_recycling_three_stage_{os.getenv("WSE_ARCH", "wse2")}.sptl',
+        f'task_recycling_merge_{constants.ARCH}.sptl',
+        f'task_recycling_two_stage_{constants.ARCH}.sptl',
+        f'task_recycling_three_stage_{constants.ARCH}.sptl',
     ),
 )
 def test_csl_runtime_task_recycling_sample_lowers(filename: str):

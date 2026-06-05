@@ -8,7 +8,7 @@ from spada.syntax.spatial_ir.canonicalization import PEBlock
 
 
 def _load_sample_kernel():
-    sample = os.path.join(os.path.dirname(__file__), '..', 'csl_runtime', 'samples', 'task_recycling_merge.sptl')
+    sample = os.path.join(os.path.dirname(__file__), '..', 'csl_runtime', 'samples', f'task_recycling_merge_{constants.ARCH}.sptl')
     kernel = parser.parse_file(sample)
     return passes.constexpr_propagation(kernel)
 
